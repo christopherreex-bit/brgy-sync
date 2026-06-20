@@ -104,22 +104,27 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             ),
           ),
 
-          // Case list
+          // Case list — simple stream with limit for performance
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _activeFilter == 'all'
                   ? FirebaseFirestore.instance
                       .collection('cases')
                       .orderBy('submissionTimestamp', descending: true)
+                      .limit(50)
                       .snapshots()
                   : FirebaseFirestore.instance
                       .collection('cases')
                       .where('status', isEqualTo: _activeFilter)
                       .orderBy('submissionTimestamp', descending: true)
+                      .limit(50)
                       .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
                 }
 
                 var docs = snapshot.data?.docs ?? [];

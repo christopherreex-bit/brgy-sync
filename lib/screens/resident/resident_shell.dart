@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
+import '../../services/auth_service.dart';
 import 'home_screen.dart';
 import 'submit_request_screen.dart';
 import 'track_request_screen.dart';
@@ -26,6 +29,9 @@ class ResidentShellState extends State<ResidentShell> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthService>();
+    final user = auth.currentUserModel;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: kNavy,
@@ -44,11 +50,33 @@ class ResidentShellState extends State<ResidentShell> {
         ),
         actions: [
           Container(
-            margin: const EdgeInsets.only(right: 16),
+            margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
             child: const Text('Resident Portal', style: TextStyle(color: Colors.white, fontSize: 13)),
           ),
+          if (user != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: InkWell(
+                onTap: () async {
+                  await auth.logout();
+                  if (context.mounted) context.go('/login');
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.logout, color: Colors.white70, size: 18),
+                      SizedBox(width: 4),
+                      Text('Log Out', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
       body: Column(

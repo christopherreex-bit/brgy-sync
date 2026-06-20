@@ -105,6 +105,9 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+                }
                 final logs = snapshot.data ?? [];
                 if (logs.isEmpty) {
                   return Center(

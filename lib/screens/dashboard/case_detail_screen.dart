@@ -11,17 +11,18 @@ class CaseDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Single stream for case data — no nested StreamBuilders
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('cases').doc(caseId).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      builder: (context, caseSnapshot) {
+        if (caseSnapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (!snapshot.hasData || !snapshot.data!.exists) {
+        if (!caseSnapshot.hasData || !caseSnapshot.data!.exists) {
           return const Center(child: Text('Case not found.'));
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>;
+        final data = caseSnapshot.data!.data() as Map<String, dynamic>;
         final isConfidential = data['isConfidential'] ?? false;
         final residentName = isConfidential ? 'Confidential' : (data['residentName'] ?? '');
         final ref = data['referenceNumber'] ?? '';
@@ -126,21 +127,18 @@ class CaseDetailScreen extends StatelessWidget {
 
               const SizedBox(height: 24),
               // Action buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => context.go('/dashboard/case/$caseId/update-status'),
-                      icon: const Icon(Icons.edit),
-                      label: const Text('Update status'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kNavy,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(0, 44),
-                      ),
-                    ),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: ElevatedButton.icon(
+                  onPressed: () => context.go('/dashboard/case/$caseId/update-status'),
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Update status'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kNavy,
+                    foregroundColor: Colors.white,
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -185,15 +183,23 @@ class CaseDetailScreen extends StatelessWidget {
     );
   }
 
+  // Action log as a FutureBuilder (one-time fetch, not a stream — reduces listeners)
   Widget _actionLogWidget() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
           .collection('cases')
           .doc(caseId)
           .collection('actionLog')
           .orderBy('timestamp', descending: true)
-          .snapshots(),
+          .limit(50)
+          .get(),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ));
+        }
         final logs = snapshot.data?.docs ?? [];
         return Container(
           width: double.infinity,

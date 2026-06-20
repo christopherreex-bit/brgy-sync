@@ -91,7 +91,7 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
                         final pct = total > 0 ? (entry.value['requests']! / total * 100).toStringAsFixed(1) : '0.0';
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(border: Border.top(borderSide: BorderSide(color: Colors.grey.shade200))),
+                          decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade200))),
                           child: Row(
                             children: [
                               Expanded(flex: 3, child: Text(entry.key.toUpperCase(), style: const TextStyle(fontSize: 12))),

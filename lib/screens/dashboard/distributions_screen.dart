@@ -62,14 +62,18 @@ class _DistributionsScreenState extends State<DistributionsScreen> {
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _activeTab == 'all'
-                  ? FirebaseFirestore.instance.collection('distributions').snapshots()
+                  ? FirebaseFirestore.instance.collection('distributions').limit(50).snapshots()
                   : FirebaseFirestore.instance
                       .collection('distributions')
                       .where('programType', isEqualTo: _activeTab)
+                      .limit(50)
                       .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
                 }
                 final docs = snapshot.data?.docs ?? [];
                 if (docs.isEmpty) {

@@ -89,7 +89,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       if (!valid.contains(_newStatus)) {
         setState(() {
           _loading = false;
-          _error = 'Cannot transition from "$currentStatus" to "$$_newStatus".';
+          _error = 'Cannot transition from "$currentStatus" to "$_newStatus".';
         });
         return;
       }

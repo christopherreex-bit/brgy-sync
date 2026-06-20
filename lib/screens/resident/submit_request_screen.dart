@@ -399,8 +399,8 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('${cat.name} — $_selectedSubType',
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kNavy)),

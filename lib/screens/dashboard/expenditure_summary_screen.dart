@@ -109,7 +109,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
 
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(border: Border.top(borderSide: BorderSide(color: Colors.grey.shade200))),
+                          decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade200))),
                           child: Row(
                             children: [
                               Expanded(flex: 3, child: Text(d['name'] ?? '', style: const TextStyle(fontSize: 12))),

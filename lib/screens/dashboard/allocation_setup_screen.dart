@@ -154,7 +154,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
         if (snap.docs.isNotEmpty) {
           batch.update(snap.docs.first.reference, {
             'allocated': amount,
-            'remaining': amount - (snap.docs.first.data()['utilized'] as num?)?.toDouble() ?? 0,
+            'remaining': amount - ((snap.docs.first.data()['utilized'] as num?)?.toDouble() ?? 0),
             'lastUpdated': FieldValue.serverTimestamp(),
           });
         } else {
