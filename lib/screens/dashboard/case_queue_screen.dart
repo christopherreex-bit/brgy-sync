@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import '../../utils/constants.dart';
+import '../../widgets/case_list_item.dart';
 
 class CaseQueueScreen extends StatefulWidget {
   const CaseQueueScreen({super.key});
@@ -13,7 +16,12 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
   final _searchCtrl = TextEditingController();
 
   static const _filters = [
-    'All', 'Pending', 'Processing', 'Awaiting Docs', 'Approved', 'Resolved',
+    {'key': 'all', 'label': 'All'},
+    {'key': 'pending_review', 'label': 'Pending'},
+    {'key': 'processing', 'label': 'Processing'},
+    {'key': 'awaiting_docs', 'label': 'Awaiting Docs'},
+    {'key': 'approved', 'label': 'Approved'},
+    {'key': 'released', 'label': 'Resolved'},
   ];
 
   @override
@@ -26,35 +34,40 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
           const Text('Case Queue',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
           const SizedBox(height: 4),
-          const Text('Active cases monitored against Citizens\' Charter deadlines',
+          const Text("Active cases monitored against Citizens' Charter deadlines",
               style: TextStyle(color: Colors.grey, fontSize: 13)),
           const SizedBox(height: 20),
+
           // Filter tabs
-          Row(
-            children: _filters.map((f) {
-              final isActive = _activeFilter == f.toLowerCase().replaceAll(' ', '_');
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: () => setState(() => _activeFilter = f.toLowerCase().replaceAll(' ', '_')),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isActive ? kNavy : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: isActive ? kNavy : Colors.grey.shade300),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _filters.map((f) {
+                final isActive = _activeFilter == f['key'];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _activeFilter = f['key']!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isActive ? kNavy : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isActive ? kNavy : Colors.grey.shade300),
+                      ),
+                      child: Text(f['label']!,
+                          style: TextStyle(
+                              color: isActive ? Colors.white : Colors.grey.shade700,
+                              fontSize: 12,
+                              fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
                     ),
-                    child: Text(f,
-                        style: TextStyle(
-                            color: isActive ? Colors.white : Colors.grey.shade700,
-                            fontSize: 12,
-                            fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ),
           ),
           const SizedBox(height: 16),
+
           // Search bar
           TextField(
             controller: _searchCtrl,
@@ -68,8 +81,10 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
               filled: true,
               fillColor: Colors.grey.shade50,
             ),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 16),
+
           // Case list header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -88,21 +103,82 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
               ],
             ),
           ),
-          // Case list (placeholder)
+
+          // Case list
           Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.inbox_outlined, size: 48, color: Colors.grey.shade300),
-                  const SizedBox(height: 12),
-                  Text('No cases yet',
-                      style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
-                  const SizedBox(height: 4),
-                  Text('Cases will appear here once residents submit requests.',
-                      style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-                ],
-              ),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _activeFilter == 'all'
+                  ? FirebaseFirestore.instance
+                      .collection('cases')
+                      .orderBy('submissionTimestamp', descending: true)
+                      .snapshots()
+                  : FirebaseFirestore.instance
+                      .collection('cases')
+                      .where('status', isEqualTo: _activeFilter)
+                      .orderBy('submissionTimestamp', descending: true)
+                      .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                var docs = snapshot.data?.docs ?? [];
+
+                // Client-side search filter
+                final query = _searchCtrl.text.trim().toLowerCase();
+                if (query.isNotEmpty) {
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final ref = (data['referenceNumber'] ?? '').toString().toLowerCase();
+                    final name = (data['residentName'] ?? '').toString().toLowerCase();
+                    final mobile = (data['residentMobile'] ?? '').toString().toLowerCase();
+                    return ref.contains(query) || name.contains(query) || mobile.contains(query);
+                  }).toList();
+                }
+
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.inbox_outlined, size: 48, color: Colors.grey.shade300),
+                        const SizedBox(height: 12),
+                        Text('No cases found',
+                            style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+                        const SizedBox(height: 4),
+                        Text('Cases will appear here once residents submit requests.',
+                            style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final ref = data['referenceNumber'] ?? '';
+                    final category = data['serviceCategory'] ?? '';
+                    final subType = data['serviceSubType'] ?? '';
+                    final status = data['status'] ?? 'pending_review';
+                    final isConfidential = data['isConfidential'] ?? false;
+                    final residentName = isConfidential ? 'Confidential' : (data['residentName'] ?? '');
+                    final ts = data['submissionTimestamp'];
+                    final date = ts is Timestamp ? ts.toDate() : DateTime.now();
+
+                    return CaseListItem(
+                      referenceNumber: ref,
+                      category: category,
+                      residentName: residentName,
+                      subType: subType,
+                      submittedAt: date,
+                      status: status,
+                      isConfidential: isConfidential,
+                      onTap: () => context.go('/dashboard/case/${docs[index].id}'),
+                    );
+                  },
+                );
+              },
             ),
           ),
         ],

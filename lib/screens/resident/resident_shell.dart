@@ -8,17 +8,21 @@ class ResidentShell extends StatefulWidget {
   const ResidentShell({super.key});
 
   @override
-  State<ResidentShell> createState() => _ResidentShellState();
+  State<ResidentShell> createState() => ResidentShellState();
 }
 
-class _ResidentShellState extends State<ResidentShell> {
+class ResidentShellState extends State<ResidentShell> {
   int _currentIndex = 0;
+  String? _pendingCategoryId;
+  String? _pendingSubType;
 
-  final _screens = const [
-    HomeScreen(),
-    SubmitRequestScreen(),
-    TrackRequestScreen(),
-  ];
+  void switchToSubmitTab({String? categoryId, String? subType}) {
+    setState(() {
+      _currentIndex = 1;
+      _pendingCategoryId = categoryId;
+      _pendingSubType = subType;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,10 +36,8 @@ class _ResidentShellState extends State<ResidentShell> {
             const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('BrgySync',
-                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                Text('Barangay Calzada-Tipas, Taguig City',
-                    style: TextStyle(color: Colors.white70, fontSize: 11)),
+                Text('BrgySync', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Barangay Calzada-Tipas, Taguig City', style: TextStyle(color: Colors.white70, fontSize: 11)),
               ],
             ),
           ],
@@ -44,12 +46,8 @@ class _ResidentShellState extends State<ResidentShell> {
           Container(
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white24,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text('Resident Portal',
-                style: TextStyle(color: Colors.white, fontSize: 13)),
+            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
+            child: const Text('Resident Portal', style: TextStyle(color: Colors.white, fontSize: 13)),
           ),
         ],
       ),
@@ -88,7 +86,21 @@ class _ResidentShellState extends State<ResidentShell> {
             ),
           ),
           // Content
-          Expanded(child: _screens[_currentIndex]),
+          Expanded(
+            child: _currentIndex == 0
+                ? HomeScreen(
+                    onCategorySelected: (catId, subType) {
+                      switchToSubmitTab(categoryId: catId, subType: subType);
+                    },
+                  )
+                : _currentIndex == 1
+                    ? SubmitRequestScreen(
+                        key: ValueKey('submit_$_pendingCategoryId$_pendingSubType'),
+                        initialCategoryId: _pendingCategoryId,
+                        initialSubType: _pendingSubType,
+                      )
+                    : const TrackRequestScreen(),
+          ),
         ],
       ),
     );
@@ -103,10 +115,7 @@ class _ResidentShellState extends State<ResidentShell> {
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(
-                color: isActive ? kNavy : Colors.transparent,
-                width: 3,
-              ),
+              bottom: BorderSide(color: isActive ? kNavy : Colors.transparent, width: 3),
             ),
           ),
           child: Text(
