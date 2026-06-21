@@ -1,0 +1,9 @@
+{
+  "name": "brgysync-cron",
+  "version": "1.0.0",
+  "description": "BrgySync scheduled cron scripts — run by Cron-job.org (not GitHub Actions)",
+  "private": true,
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

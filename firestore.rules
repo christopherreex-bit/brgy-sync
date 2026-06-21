@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ────────────────────────────────────────
+    function getRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isResident() { return getRole() == 'resident'; }
+    function isStaff()   { return getRole() in ['staff', 'officer', 'captain']; }
+    function isOfficer() { return getRole() in ['officer', 'captain']; }
+    function isCaptain() { return getRole() == 'captain'; }
+
+    // ─── Users ───────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId || isStaff();
+      allow write: if request.auth.uid == userId || isCaptain();
+    }
+
+    // ─── Cases ───────────────────────────────────────────────────
+    match /cases/{caseId} {
+      allow read: if request.auth.uid == resource.data.residentId || isStaff();
+      allow create: if request.auth != null;
+      allow update: if isStaff();
+
+      // ─── Action Log (subcollection) ────────────────────────────
+      match /actionLog/{logId} {
+        allow read: if isStaff();
+        allow write: if isStaff();
+      }
+    }
+
+    // ─── SLA Config ──────────────────────────────────────────────
+    match /slaConfig/{doc} {
+      allow read: if isStaff();
+      allow write: if isCaptain();
+    }
+
+    // ─── Budget Programs ─────────────────────────────────────────
+    match /budgetPrograms/{doc} {
+      allow read: if isStaff();
+      allow write: if isCaptain();
+    }
+
+    // ─── Budget Transactions ─────────────────────────────────────
+    match /budgetTransactions/{doc} {
+      allow read: if isOfficer();
+      allow write: if isStaff();
+    }
+
+    // ─── Distributions ───────────────────────────────────────────
+    match /distributions/{doc} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // ─── Reports ─────────────────────────────────────────────────
+    match /reports/{doc} {
+      allow read: if isCaptain();
+      allow write: if isCaptain();
+    }
+
+    // ─── Compliance Snapshots ────────────────────────────────────
+    // Written only by cron scripts (Firebase Admin SDK bypasses rules)
+    match /complianceSnapshots/{doc} {
+      allow read: if isOfficer();
+      allow write: if false;
+    }
+  }
+}
