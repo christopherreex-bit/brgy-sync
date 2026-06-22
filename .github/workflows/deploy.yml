@@ -1,11 +1,11 @@
-name: Deploy Flutter Web to Cloudflare Pages
+name: Build and Deploy to Cloudflare Pages
 
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,4 +27,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: pages deploy build/web --project-name=brgy-sync
+          command: pages deploy build/web --project-name=brgy-sync --commit-dirty=true
