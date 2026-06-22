@@ -1,4 +1,4 @@
-name: Deploy Flutter Web to Netlify
+name: Deploy Flutter Web to Heroku
 
 on:
   push:
@@ -22,11 +22,16 @@ jobs:
           --dart-define=TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }} \
           --dart-define=TWILIO_FROM=${{ secrets.TWILIO_FROM }}
 
-      - name: Deploy to Netlify
-        uses: nwtgck/actions-netlify@v3
+      - name: Copy Heroku server files into build output
+        run: |
+          cp heroku-server/server.js build/web/server.js
+          cp heroku-server/package.json build/web/package.json
+          cp heroku-server/Procfile build/web/Procfile
+
+      - name: Deploy to Heroku
+        uses: akhileshns/heroku-deploy@v3.13.15
         with:
-          publish-dir: build/web
-          production-deploy: true
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+          appdir: "build/web"

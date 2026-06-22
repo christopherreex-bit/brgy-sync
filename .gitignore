@@ -53,6 +53,7 @@ brgysync_app/
 # Environment & secrets
 .env
 .env.*
+!.env.example
 
 # Firebase service account
 **/service-account.json
