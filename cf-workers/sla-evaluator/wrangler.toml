@@ -1,0 +1,10 @@
+name = "brgy-sync-sla-evaluator"
+main = "src/index.js"
+compatibility_date = "2026-06-22"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+FIREBASE_PROJECT_ID = "brg-sync"

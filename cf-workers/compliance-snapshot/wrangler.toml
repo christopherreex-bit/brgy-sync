@@ -1,0 +1,10 @@
+name = "brgy-sync-compliance-snapshot"
+main = "src/index.js"
+compatibility_date = "2026-06-22"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 0 1 * *"]
+
+[vars]
+FIREBASE_PROJECT_ID = "brg-sync"
