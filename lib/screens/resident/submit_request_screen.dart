@@ -160,7 +160,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           'name': d.name,
           'required': d.required,
           'status': d.uploaded ? 'uploaded' : 'missing',
-          'storageRef': '',
         }).toList();
       }
 

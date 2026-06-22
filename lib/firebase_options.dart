@@ -11,6 +11,5 @@ class DefaultFirebaseOptions {
     appId: 'PLACEHOLDER_APP_ID',
     messagingSenderId: 'PLACEHOLDER_SENDER_ID',
     projectId: 'PLACEHOLDER_PROJECT_ID',
-    storageBucket: 'PLACEHOLDER_STORAGE_BUCKET',
   );
 }
