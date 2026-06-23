@@ -33,7 +33,7 @@ class TwilioService {
 
   /// Converts a Philippine mobile (09XXXXXXXXX) to +63 format.
   String formatPhoneNumber(String number) {
-    final cleaned = number.replaceAll(RegExp(r'[^\d]'));
+    final cleaned = number.replaceAll(RegExp(r'[^\d]'), '');
     if (cleaned.startsWith('09')) return '+63${cleaned.substring(1)}';
     if (cleaned.startsWith('639')) return '+$cleaned';
     if (cleaned.startsWith('+639')) return cleaned;
