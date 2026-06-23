@@ -84,7 +84,7 @@ class TwilioService {
   Future<String?> _sendMySMSGate(String to, String message) async {
     try {
       final response = await http.post(
-        Uri.parse('https://sms-proxy.brgy-sync.workers.dev/send'),
+        Uri.parse('https://brgy-sync.pages.dev/sms/send'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'to': to,
