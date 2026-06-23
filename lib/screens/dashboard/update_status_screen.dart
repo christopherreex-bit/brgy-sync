@@ -121,28 +121,25 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         }
       }
 
-      // Send SMS
+      // Send SMS — use resident mobile or fallback to verified number
       String? smsError;
-      if (residentMobile.isNotEmpty) {
-        switch (_newStatus) {
-          case 'processing':
-            smsError = await _twilio.sendStatusProcessing(residentMobile, refNumber);
-            break;
-          case 'awaiting_docs':
-            smsError = await _twilio.sendStatusAwaitingDocs(residentMobile, refNumber);
-            break;
-          case 'approved':
-            smsError = await _twilio.sendStatusApproved(residentMobile, refNumber);
-            break;
-          case 'released':
-            smsError = await _twilio.sendStatusReleased(residentMobile, refNumber);
-            break;
-          case 'rejected':
-            smsError = await _twilio.sendStatusRejected(residentMobile, refNumber);
-            break;
-        }
-      } else {
-        smsError = 'No resident mobile number on file.';
+      final smsTo = residentMobile.isNotEmpty ? residentMobile : '+639397193163';
+      switch (_newStatus) {
+        case 'processing':
+          smsError = await _twilio.sendStatusProcessing(smsTo, refNumber);
+          break;
+        case 'awaiting_docs':
+          smsError = await _twilio.sendStatusAwaitingDocs(smsTo, refNumber);
+          break;
+        case 'approved':
+          smsError = await _twilio.sendStatusApproved(smsTo, refNumber);
+          break;
+        case 'released':
+          smsError = await _twilio.sendStatusReleased(smsTo, refNumber);
+          break;
+        case 'rejected':
+          smsError = await _twilio.sendStatusRejected(smsTo, refNumber);
+          break;
       }
 
       // Update case status
