@@ -121,11 +121,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         }
       }
 
-      // Send SMS — always use fallback verified number for demo
-      // (seed data has fake mobile numbers)
+      // Send SMS — use resident mobile or fallback to verified number
       String? smsError;
-      const fallbackNumber = '+639397193163';
-      final smsTo = fallbackNumber;
+      final smsTo = residentMobile.isNotEmpty ? residentMobile : '+639397193163';
+      print('[SMS] residentMobile: "$residentMobile" → smsTo: "$smsTo"');
       switch (_newStatus) {
         case 'processing':
           smsError = await _twilio.sendStatusProcessing(smsTo, refNumber);

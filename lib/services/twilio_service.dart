@@ -44,6 +44,10 @@ class TwilioService {
   /// Returns null on success, error message on failure.
   Future<String?> sendSms(String toNumber, String message) async {
     final to = formatPhoneNumber(toNumber);
+    print('[SMS] sendSms called — to: $to, message: $message');
+    print('[SMS] _mySmsGateKey: ${_mySmsGateKey != null && _mySmsGateKey!.isNotEmpty ? "SET" : "EMPTY"}');
+    print('[SMS] _easySendKey: ${_easySendKey != null && _easySendKey!.isNotEmpty ? "SET" : "EMPTY"}');
+    print('[SMS] _twilioSid: ${_twilioSid != null && _twilioToken != null && _twilioFrom != null ? "SET" : "EMPTY"}');
 
     if (_mockMode) {
       print('[MOCK SMS] To: $to | Message: $message');
@@ -52,21 +56,27 @@ class TwilioService {
 
     // ── Primary: MySMSGate (Android SMS Gateway) ──
     if (_mySmsGateKey != null && _mySmsGateKey!.isNotEmpty) {
+      print('[SMS] Trying MySMSGate...');
       final result = await _sendMySMSGate(to, message);
+      print('[SMS] MySMSGate result: $result');
       if (result == null) return null;
     }
 
     // ── Fallback 1: EasySendSMS ──
     if (_easySendKey != null && _easySendKey!.isNotEmpty) {
+      print('[SMS] Trying EasySendSMS...');
       final result = await _sendEasySend(to, message);
+      print('[SMS] EasySendSMS result: $result');
       if (result == null) return null;
     }
 
     // ── Fallback 2: Twilio ──
     if (_twilioSid != null && _twilioToken != null && _twilioFrom != null) {
+      print('[SMS] Trying Twilio...');
       return _sendTwilio(to, message);
     }
 
+    print('[SMS] No provider configured');
     return 'No SMS provider configured.';
   }
 
