@@ -61,7 +61,10 @@ class TwilioService {
   }
 
   /// Send via EasySendSMS REST API.
+  /// Number must be digits only with country code, no + prefix (e.g. 639397193163).
   Future<String?> _sendEasySend(String to, String message) async {
+    // Strip + prefix — EasySendSMS wants raw digits like 639397193163
+    final digitsOnly = to.replaceAll(RegExp(r'[^\d]'), '');
     try {
       final response = await http.post(
         Uri.parse('https://restapi.easysendsms.app/v1/rest/sms/send'),
@@ -71,15 +74,16 @@ class TwilioService {
           'Accept': 'application/json',
         },
         body: jsonEncode({
-          'to': to,
-          'message': message,
+          'from': 'BrgySync',
+          'to': digitsOnly,
+          'text': message,
+          'type': '0',
         }),
       );
 
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
-        // EasySendSMS returns { "status": "success", ... } on success
-        if (body is Map && body['status'] == 'success') {
+        if (body is Map && body['status'] == 'OK') {
           return null;
         }
         return 'EasySendSMS error: ${response.body}';
