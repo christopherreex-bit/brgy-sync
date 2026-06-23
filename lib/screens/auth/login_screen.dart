@@ -19,12 +19,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     setState(() { _loading = true; _error = null; });
-    final result = await context.read<AuthService>().login(
+    final auth = context.read<AuthService>();
+    final result = await auth.login(
       email: _emailCtrl.text.trim(),
       password: _passCtrl.text,
     );
     if (mounted) {
       setState(() { _loading = false; _error = result; });
+      if (result == null) {
+        // Wait for Firestore user data to load, then route by role
+        await auth.userDataLoaded;
+        if (!mounted) return;
+        final user = auth.currentUserModel;
+        if (user != null && user.role == 'resident') {
+          context.go('/resident');
+        } else {
+          context.go('/dashboard');
+        }
+      }
     }
   }
 

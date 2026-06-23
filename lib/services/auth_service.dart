@@ -103,6 +103,10 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Completes when the current user's Firestore data has been loaded.
+  /// Useful for waiting after login before routing by role.
+  Future<void>? _userDataFuture;
+
   Future<String?> login({
     required String email,
     required String password,
@@ -113,7 +117,8 @@ class AuthService extends ChangeNotifier {
         password: password,
       );
       if (cred.user != null) {
-        await _loadUserData(cred.user!.uid);
+        _userDataFuture = _loadUserData(cred.user!.uid);
+        await _userDataFuture;
       }
       return null;
     } on FirebaseAuthException catch (e) {
@@ -122,6 +127,10 @@ class AuthService extends ChangeNotifier {
       return e.toString();
     }
   }
+
+  /// Returns a Future that completes when user data is loaded for the
+  /// currently authenticated user. Returns null if no user is logged in.
+  Future<void>? get userDataLoaded => _userDataFuture;
 
   Future<void> logout() async {
     if (_mockMode) {

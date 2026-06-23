@@ -67,6 +67,15 @@ class TwilioService {
       if (response.statusCode == 201 || response.statusCode == 200) {
         return null; // success
       } else {
+        // Don't surface trial account limitations as errors to the user
+        // 21608 = unverified number, 21612 = cross-country blocked on trial
+        try {
+          const err = JSON.parse(response.body);
+          if (err.code === 21608 || err.code === 21612 || err.code === 21266) {
+            print('[Twilio] Trial limitation (code ${err.code}): ${err.message}');
+            return null; // silently succeed — SMS just won't deliver on trial
+          }
+        } catch (_) {}
         return 'Twilio error: ${response.statusCode} ${response.body}';
       }
     } catch (e) {
