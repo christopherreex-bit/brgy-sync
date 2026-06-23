@@ -18,7 +18,7 @@ jobs:
       - run: flutter pub get
 
       - name: Build Flutter Web
-        run: flutter build web --release --dart-define=EASYSENDSMS_API_KEY=${{ secrets.EASYSENDSMS_API_KEY }} --dart-define=TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }} --dart-define=TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }} --dart-define=TWILIO_FROM=${{ secrets.TWILIO_FROM }}
+        run: flutter build web --release --dart-define=MYSMSGATE_API_KEY=${{ secrets.MYSMSGATE_API_KEY }} --dart-define=EASYSENDSMS_API_KEY=${{ secrets.EASYSENDSMS_API_KEY }} --dart-define=TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }} --dart-define=TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }} --dart-define=TWILIO_FROM=${{ secrets.TWILIO_FROM }}
 
       - name: Deploy to Cloudflare Pages
         env:

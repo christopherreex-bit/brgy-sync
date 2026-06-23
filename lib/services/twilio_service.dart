@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-/// SMS service using EasySendSMS as primary and Twilio as fallback.
+/// SMS service using MySMSGate as primary, EasySendSMS as fallback.
+///
+/// MySMSGate credentials injected at build time via --dart-define:
+///   MYSMSGATE_API_KEY
 ///
 /// EasySendSMS credentials injected at build time via --dart-define:
 ///   EASYSENDSMS_API_KEY
@@ -13,6 +16,7 @@ import 'package:http/http.dart' as http;
 /// and SMS will be printed to console instead of sending.
 
 class TwilioService {
+  final String? _mySmsGateKey;
   final String? _easySendKey;
   final String? _twilioSid;
   final String? _twilioToken;
@@ -20,7 +24,8 @@ class TwilioService {
   final bool _mockMode;
 
   TwilioService()
-      : _easySendKey = const String.fromEnvironment('EASYSENDSMS_API_KEY'),
+      : _mySmsGateKey = const String.fromEnvironment('MYSMSGATE_API_KEY'),
+        _easySendKey = const String.fromEnvironment('EASYSENDSMS_API_KEY'),
         _twilioSid = const String.fromEnvironment('TWILIO_ACCOUNT_SID'),
         _twilioToken = const String.fromEnvironment('TWILIO_AUTH_TOKEN'),
         _twilioFrom = const String.fromEnvironment('TWILIO_FROM'),
@@ -28,14 +33,14 @@ class TwilioService {
 
   /// Converts a Philippine mobile (09XXXXXXXXX) to +63 format.
   String formatPhoneNumber(String number) {
-    final cleaned = number.replaceAll(RegExp(r'[^\d]'), '');
+    final cleaned = number.replaceAll(RegExp(r'[^\d]'));
     if (cleaned.startsWith('09')) return '+63${cleaned.substring(1)}';
     if (cleaned.startsWith('639')) return '+$cleaned';
     if (cleaned.startsWith('+639')) return cleaned;
     return cleaned;
   }
 
-  /// Send an SMS. Tries EasySendSMS first, falls back to Twilio.
+  /// Send an SMS. Tries MySMSGate first, then EasySendSMS, then Twilio.
   /// Returns null on success, error message on failure.
   Future<String?> sendSms(String toNumber, String message) async {
     final to = formatPhoneNumber(toNumber);
@@ -45,14 +50,19 @@ class TwilioService {
       return null;
     }
 
-    // ── Primary: EasySendSMS ──
+    // ── Primary: MySMSGate (Android SMS Gateway) ──
+    if (_mySmsGateKey != null && _mySmsGateKey!.isNotEmpty) {
+      final result = await _sendMySMSGate(to, message);
+      if (result == null) return null;
+    }
+
+    // ── Fallback 1: EasySendSMS ──
     if (_easySendKey != null && _easySendKey!.isNotEmpty) {
       final result = await _sendEasySend(to, message);
       if (result == null) return null;
-      print('[SMS] EasySendSMS failed: $result. Trying Twilio fallback...');
     }
 
-    // ── Fallback: Twilio ──
+    // ── Fallback 2: Twilio ──
     if (_twilioSid != null && _twilioToken != null && _twilioFrom != null) {
       return _sendTwilio(to, message);
     }
@@ -60,10 +70,54 @@ class TwilioService {
     return 'No SMS provider configured.';
   }
 
+  /// Send via MySMSGate API. Automatically picks the first available device.
+  Future<String?> _sendMySMSGate(String to, String message) async {
+    try {
+      // Get devices and pick the first online one
+      String? deviceId;
+      if (_mySmsGateKey != null) {
+        final devResp = await http.get(
+          Uri.parse('https://mysmsgate.net/api/v1/devices'),
+          headers: {'Authorization': 'Bearer $_mySmsGateKey'},
+        );
+        if (devResp.statusCode == 200) {
+          final devBody = jsonDecode(devResp.body);
+          final devices = devBody['devices'] as List?;
+          if (devices != null && devices.isNotEmpty) {
+            // Pick first online device, or first device if none are online
+            final online = devices.where((d) => d['status'] == 'online').toList();
+            deviceId = (online.isNotEmpty ? online.first : devices.first)['id'];
+          }
+        }
+      }
+
+      final response = await http.post(
+        Uri.parse('https://mysmsgate.net/api/v1/send'),
+        headers: {
+          'Authorization': 'Bearer $_mySmsGateKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'to': to,
+          'message': message,
+          if (deviceId != null) 'device_id': deviceId,
+        }),
+      );
+
+      if (response.statusCode == 202) {
+        return null; // accepted and queued
+      } else if (response.statusCode == 402) {
+        return 'MySMSGate: Insufficient SMS balance.';
+      } else {
+        return 'MySMSGate HTTP ${response.statusCode}: ${response.body}';
+      }
+    } catch (e) {
+      return 'MySMSGate network error: $e';
+    }
+  }
+
   /// Send via EasySendSMS REST API.
-  /// Number must be digits only with country code, no + prefix (e.g. 639397193163).
   Future<String?> _sendEasySend(String to, String message) async {
-    // Strip + prefix — EasySendSMS wants raw digits like 639397193163
     final digitsOnly = to.replaceAll(RegExp(r'[^\d]'), '');
     try {
       final response = await http.post(
@@ -74,7 +128,7 @@ class TwilioService {
           'Accept': 'application/json',
         },
         body: jsonEncode({
-          'from': 'BrgySync',
+          'from': 'BRGYSYNC',
           'to': digitsOnly,
           'text': message,
           'type': '0',
@@ -83,9 +137,7 @@ class TwilioService {
 
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
-        if (body is Map && body['status'] == 'OK') {
-          return null;
-        }
+        if (body is Map && body['status'] == 'OK') return null;
         return 'EasySendSMS error: ${response.body}';
       } else {
         return 'EasySendSMS HTTP ${response.statusCode}: ${response.body}';
@@ -116,15 +168,13 @@ class TwilioService {
       if (response.statusCode == 201 || response.statusCode == 200) {
         return null;
       } else {
-        // Silently handle trial account limitations
         try {
           final err = jsonDecode(response.body);
           if (err is Map &&
               (err['code'] == 21608 ||
                   err['code'] == 21612 ||
                   err['code'] == 21266)) {
-            print('[Twilio] Trial limitation (code ${err['code']}): ${err['message']}');
-            return null;
+            return null; // silently handle trial limitations
           }
         } catch (_) {}
         return 'Twilio error: ${response.statusCode} ${response.body}';
