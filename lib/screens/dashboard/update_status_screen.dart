@@ -124,7 +124,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       // Send SMS — always use verified fallback number for demo
       String? smsError;
       const smsTo = '+639397193163';
-      print('[SMS] residentMobile: "$residentMobile" → smsTo: "$smsTo" (fallback)');
       switch (_newStatus) {
         case 'processing':
           smsError = await _twilio.sendStatusProcessing(smsTo, refNumber);
