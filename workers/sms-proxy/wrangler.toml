@@ -1,0 +1,5 @@
+name = "sms-proxy"
+main = "index.js"
+compatibility_date = "2026-06-23"
+
+# MYSMSGATE_API_KEY is set as a secret via: wrangler secret put MYSMSGATE_API_KEY

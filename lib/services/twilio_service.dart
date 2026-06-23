@@ -70,42 +70,22 @@ class TwilioService {
     return 'No SMS provider configured.';
   }
 
-  /// Send via MySMSGate API. Automatically picks the first available device.
+  /// Send via MySMSGate through Cloudflare Worker proxy (avoids CORS).
   Future<String?> _sendMySMSGate(String to, String message) async {
     try {
-      // Get devices and pick the first online one
-      String? deviceId;
-      if (_mySmsGateKey != null) {
-        final devResp = await http.get(
-          Uri.parse('https://mysmsgate.net/api/v1/devices'),
-          headers: {'Authorization': 'Bearer $_mySmsGateKey'},
-        );
-        if (devResp.statusCode == 200) {
-          final devBody = jsonDecode(devResp.body);
-          final devices = devBody['devices'] as List?;
-          if (devices != null && devices.isNotEmpty) {
-            // Pick first online device, or first device if none are online
-            final online = devices.where((d) => d['status'] == 'online').toList();
-            deviceId = (online.isNotEmpty ? online.first : devices.first)['id'];
-          }
-        }
-      }
-
       final response = await http.post(
-        Uri.parse('https://mysmsgate.net/api/v1/send'),
-        headers: {
-          'Authorization': 'Bearer $_mySmsGateKey',
-          'Content-Type': 'application/json',
-        },
+        Uri.parse('https://sms-proxy.brgy-sync.workers.dev/send'),
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'to': to,
           'message': message,
-          if (deviceId != null) 'device_id': deviceId,
         }),
       );
 
-      if (response.statusCode == 202) {
-        return null; // accepted and queued
+      if (response.statusCode == 200 || response.statusCode == 202) {
+        final body = jsonDecode(response.body);
+        if (body['success'] != false) return null;
+        return 'MySMSGate error: ${response.body}';
       } else if (response.statusCode == 402) {
         return 'MySMSGate: Insufficient SMS balance.';
       } else {
