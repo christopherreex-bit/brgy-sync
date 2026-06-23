@@ -385,7 +385,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('An automated SMS will be sent to $residentMobile upon saving this update.',
+                      Text('An automated SMS will be sent to +639397193163 upon saving this update.',
                           style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                       const SizedBox(height: 8),
                       Container(

@@ -25,13 +25,6 @@
       ]
     },
     {
-      "collectionGroup": "actionLog",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "budgetTransactions",
       "queryScope": "COLLECTION",
       "fields": [
@@ -61,13 +54,6 @@
       "fields": [
         { "fieldPath": "type", "order": "ASCENDING" },
         { "fieldPath": "generatedAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "complianceSnapshots",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "period", "order": "DESCENDING" }
       ]
     }
   ],
