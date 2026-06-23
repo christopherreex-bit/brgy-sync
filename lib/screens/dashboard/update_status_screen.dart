@@ -123,22 +123,26 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
 
       // Send SMS
       String? smsError;
-      switch (_newStatus) {
-        case 'processing':
-          smsError = await _twilio.sendStatusProcessing(residentMobile, refNumber);
-          break;
-        case 'awaiting_docs':
-          smsError = await _twilio.sendStatusAwaitingDocs(residentMobile, refNumber);
-          break;
-        case 'approved':
-          smsError = await _twilio.sendStatusApproved(residentMobile, refNumber);
-          break;
-        case 'released':
-          smsError = await _twilio.sendStatusReleased(residentMobile, refNumber);
-          break;
-        case 'rejected':
-          smsError = await _twilio.sendStatusRejected(residentMobile, refNumber);
-          break;
+      if (residentMobile.isNotEmpty) {
+        switch (_newStatus) {
+          case 'processing':
+            smsError = await _twilio.sendStatusProcessing(residentMobile, refNumber);
+            break;
+          case 'awaiting_docs':
+            smsError = await _twilio.sendStatusAwaitingDocs(residentMobile, refNumber);
+            break;
+          case 'approved':
+            smsError = await _twilio.sendStatusApproved(residentMobile, refNumber);
+            break;
+          case 'released':
+            smsError = await _twilio.sendStatusReleased(residentMobile, refNumber);
+            break;
+          case 'rejected':
+            smsError = await _twilio.sendStatusRejected(residentMobile, refNumber);
+            break;
+        }
+      } else {
+        smsError = 'No resident mobile number on file.';
       }
 
       // Update case status
@@ -157,6 +161,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         'newStatus': _newStatus,
         'notes': _actionNotesCtrl.text.trim(),
         'smsSent': smsError == null,
+        'smsError': smsError,
         'smsBody': _buildSmsPreview(currentStatus, _newStatus, refNumber, residentMobile),
       });
 
@@ -198,8 +203,15 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       }
 
       if (mounted) {
+        final smsSuccess = smsError == null;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Status updated successfully.'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text(smsSuccess
+                ? 'Status updated and SMS sent successfully.'
+                : 'Status updated. SMS not sent: $smsError'),
+            backgroundColor: smsSuccess ? Colors.green : Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
         );
         context.go('/dashboard/case/${widget.caseId}');
       }

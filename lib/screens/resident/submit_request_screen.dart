@@ -195,6 +195,15 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           _submitted = true;
           _refNumber = refNumber;
         });
+        if (smsResult != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Case submitted. SMS notification could not be sent: $smsResult'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

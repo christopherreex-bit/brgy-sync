@@ -30,7 +30,13 @@ class TwilioService {
     return cleaned;
   }
 
+  /// Fallback verified number for trial accounts (Philippines).
+  /// When the resident's number is unverified, SMS is sent to this number instead.
+  static const String _fallbackNumber = '+639397193163';
+
   /// Send an SMS to [toNumber] (09XXXXXXXXX Philippine format).
+  /// On trial accounts, if the number is unverified, falls back to the
+  /// verified fallback number so the message still goes through.
   /// Returns null on success, error message on failure.
   Future<String?> sendSms(String toNumber, String message) async {
     final to = formatPhoneNumber(toNumber);
@@ -45,27 +51,41 @@ class TwilioService {
       'https://api.twilio.com/2010-04-01/Accounts/$_accountSid/Messages.json',
     );
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Authorization': 'Basic ${base64Encode(utf8.encode('$_accountSid:$_authToken'))}',
-        },
-        body: {
-          'From': _fromNumber,
-          'To': to,
-          'Body': message,
-        },
-      );
+    Future<String?> _send(String recipient) async {
+      try {
+        final response = await http.post(
+          url,
+          headers: {
+            'Authorization': 'Basic ${base64Encode(utf8.encode('$_accountSid:$_authToken'))}',
+          },
+          body: {
+            'From': _fromNumber,
+            'To': recipient,
+            'Body': message,
+          },
+        );
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return null; // success
-      } else {
-        return 'Twilio error: ${response.statusCode} ${response.body}';
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          return null; // success
+        } else {
+          return 'Twilio error: ${response.statusCode} ${response.body}';
+        }
+      } catch (e) {
+        return 'Network error: $e';
       }
-    } catch (e) {
-      return 'Network error: $e';
     }
+
+    // Try sending to the resident's number first
+    final result = await _send(to);
+    if (result == null) return null;
+
+    // If failed (e.g. unverified number on trial), try fallback verified number
+    if (to != _fallbackNumber) {
+      print('[Twilio] Failed to send to $to: $result. Falling back to $_fallbackNumber');
+      return _send(_fallbackNumber);
+    }
+
+    return result;
   }
 
   // ─── SMS Templates (6 types) ─────────────────────────────────────

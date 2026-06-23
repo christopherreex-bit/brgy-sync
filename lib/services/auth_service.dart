@@ -29,9 +29,15 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> _loadUserData(String uid) async {
-    final doc = await _firestore.collection('users').doc(uid).get();
-    if (doc.exists && doc.data() != null) {
-      _currentUserModel = UserModel.fromMap(doc.data()!, uid);
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists && doc.data() != null) {
+        _currentUserModel = UserModel.fromMap(doc.data()!, uid);
+      }
+    } catch (e) {
+      // Firestore read failed (e.g. permission-denied, network error).
+      // Don't crash — the auth state is still valid, just without role data.
+      debugPrint('AuthService: failed to load user data for $uid: $e');
     }
   }
 
