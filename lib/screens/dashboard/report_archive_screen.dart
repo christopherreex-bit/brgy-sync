@@ -145,27 +145,42 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
     final dateStr = ts is Timestamp
         ? '${ts.toDate().month}/${ts.toDate().day}/${ts.toDate().year}'
         : '';
-    final storedBytes = data['fileBytes'];
     final fileName = (data['fileName'] ?? '${type}_$dateStr').toString();
+    final breakdown = data['breakdown'] as List<dynamic>?;
 
-    if (storedBytes != null && storedBytes is List && storedBytes.isNotEmpty) {
-      // Download the stored file bytes directly
-      ExportService.downloadBytes(
-        bytes: List<int>.from(storedBytes),
-        filename: fileName,
-      );
-    } else {
-      // Fallback: generate CSV from metadata
-      final headers = <String>['Report Type', 'Period', 'Generated', 'Format', 'Total Cases', 'Resolved', 'Pending'];
-      final rows = <List<String>>[
-        [name, period, dateStr, format.toUpperCase(), '$totalCases', '$resolved', '$pending'],
-      ];
-      ExportService.downloadCsv(
-        headers: headers,
-        rows: rows,
-        filename: '${type}_$dateStr.csv',
-      );
+    // Regenerate file from stored metadata
+    final buffer = StringBuffer();
+    buffer.writeln('BrgySync - $name');
+    buffer.writeln('Barangay Calzada-Tipas, Taguig City');
+    buffer.writeln('Period: $period');
+    buffer.writeln();
+    buffer.writeln('Summary');
+    buffer.writeln('Total Cases,$totalCases');
+    buffer.writeln('Resolved,$resolved');
+    buffer.writeln('Pending,$pending');
+    buffer.writeln('Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}');
+    buffer.writeln();
+
+    if (breakdown != null && breakdown.isNotEmpty) {
+      buffer.writeln('Breakdown by Category');
+      buffer.writeln('Category,Total,Resolved,On Time,Overdue');
+      for (final item in breakdown) {
+        final cat = (item['category'] ?? '').toString();
+        final total = item['total'] ?? 0;
+        final res = item['resolved'] ?? 0;
+        final onTime = item['onTime'] ?? 0;
+        final overdue = item['overdue'] ?? 0;
+        buffer.writeln('${cat.toUpperCase()},$total,$res,$onTime,$overdue');
+      }
     }
+
+    final csvContent = buffer.toString();
+    ExportService.downloadCsv(
+      headers: <String>[],
+      rows: <List<String>>[],
+      filename: fileName.endsWith('.csv') ? fileName : '$fileName.csv',
+      rawContent: csvContent,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Downloaded: $name ($format)'), backgroundColor: Colors.green),
     );

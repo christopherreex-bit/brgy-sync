@@ -13,14 +13,22 @@ class ExportService {
     required List<String> headers,
     required List<List<String>> rows,
     required String filename,
+    String? rawContent,
   }) {
+    final content = rawContent ?? _buildCsv(headers, rows);
+    final bytes = utf8.encode(content);
+    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
+  }
+
+  static String _buildCsv(List<String> headers, List<List<String>> rows) {
     final buffer = StringBuffer();
-    buffer.writeln(headers.map(_escapeCsv).join(','));
+    if (headers.isNotEmpty) {
+      buffer.writeln(headers.map(_escapeCsv).join(','));
+    }
     for (final row in rows) {
       buffer.writeln(row.map(_escapeCsv).join(','));
     }
-    final bytes = utf8.encode(buffer.toString());
-    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
+    return buffer.toString();
   }
 
   /// Downloads raw bytes as a file.
