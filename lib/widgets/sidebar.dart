@@ -119,6 +119,10 @@ class _SidebarState extends State<Sidebar> {
                         _navItem(context, Icons.description, 'Report Builder', '/dashboard/report-builder', currentLocation),
                         _navItem(context, Icons.archive, 'Report Archive', '/dashboard/report-archive', currentLocation),
                       ],
+                      if (user.isCaptain) ...[
+                        _sectionHeader('ADMINISTRATION'),
+                        _navItem(context, Icons.manage_accounts, 'Account Management', '/dashboard/account-management', currentLocation),
+                      ],
                       // Bottom padding so last item isn't hidden behind logout
                       const SizedBox(height: 8),
                     ],

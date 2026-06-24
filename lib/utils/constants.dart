@@ -58,6 +58,11 @@ const Map<String, Color> statusBadgeBg = {
   budgetCritical: Color(0xFFF8D7DA),
   budgetLow: Color(0xFFFFE0CC),
   budgetHealthy: Color(0xFFD4EDDA),
+  'active': Color(0xFFD4EDDA),
+  'inactive': Color(0xFFF8D7DA),
+  'captain': Color(0xFFD1ECF1),
+  'officer': Color(0xFFD4EDDA),
+  'staff': Color(0xFFFFF3CD),
 };
 
 const Map<String, Color> statusBadgeText = {
@@ -77,4 +82,9 @@ const Map<String, Color> statusBadgeText = {
   budgetCritical: Color(0xFF721C24),
   budgetLow: Color(0xFF854A00),
   budgetHealthy: Color(0xFF155724),
+  'active': Color(0xFF155724),
+  'inactive': Color(0xFF721C24),
+  'captain': Color(0xFF0C5460),
+  'officer': Color(0xFF155724),
+  'staff': Color(0xFF856404),
 };

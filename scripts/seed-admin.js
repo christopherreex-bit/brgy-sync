@@ -45,6 +45,7 @@ async function main() {
       mobile: MOBILE,
       email: EMAIL,
       role: 'captain',
+      isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
     console.log('✓ Captain account updated.');
@@ -68,6 +69,7 @@ async function main() {
     mobile: MOBILE,
     email: EMAIL,
     role: 'captain',
+    isActive: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 

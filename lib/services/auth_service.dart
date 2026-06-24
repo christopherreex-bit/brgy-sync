@@ -142,4 +142,94 @@ class AuthService extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  // ─── Staff Account Management (Phase 12) ───────────────────────
+
+  /// Creates a new staff/officer/captain account (NOT resident).
+  /// Creates Firebase Auth user + Firestore user doc.
+  Future<String?> createStaffAccount({
+    required String name,
+    required String email,
+    required String mobile,
+    required String password,
+    required String role,
+  }) async {
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      if (cred.user != null) {
+        final user = UserModel(
+          uid: cred.user!.uid,
+          name: name,
+          mobile: mobile,
+          email: email,
+          role: role,
+          isActive: true,
+          createdAt: DateTime.now(),
+        );
+        await _firestore
+            .collection('users')
+            .doc(cred.user!.uid)
+            .set(user.toMap());
+        return null;
+      }
+      return 'Failed to create user.';
+    } on FirebaseAuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  /// Updates a user's role in Firestore.
+  Future<String?> updateUserRole(String userId, String newRole) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({'role': newRole});
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  /// Deactivates a user account (soft delete).
+  Future<String?> deactivateAccount(String userId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({'isActive': false});
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  /// Reactivates a user account.
+  Future<String?> activateAccount(String userId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({'isActive': true});
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  /// Sends a password reset email.
+  Future<String?> sendPasswordReset(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  /// Queries all staff/officer/captain accounts.
+  Stream<QuerySnapshot> getStaffAccounts() {
+    return _firestore
+        .collection('users')
+        .where('role', whereIn: ['staff', 'officer', 'captain'])
+        .snapshots();
+  }
 }
