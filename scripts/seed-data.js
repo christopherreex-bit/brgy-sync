@@ -145,28 +145,65 @@ async function main() {
   console.log('BrgySync — Seed Data Script');
   console.log('='.repeat(60));
 
-  // 0. Clean up existing seed data (overwrite, not duplicate)
+  // 0. Clean up existing seed data only (preserve real user documents)
   console.log('\n[0/7] Cleaning up existing seed data...');
-  const collections = ['users', 'cases', 'slaConfig', 'budgetPrograms', 'budgetTransactions', 'distributions', 'reports', 'complianceSnapshots'];
+  const collections = ['cases', 'slaConfig', 'budgetPrograms', 'budgetTransactions', 'distributions', 'reports', 'complianceSnapshots'];
   for (const col of collections) {
-    const snapshot = await db.collection(col).get();
+    const snapshot = await db.collection(col).where('isSeedData', '==', true).get();
     if (snapshot.empty) continue;
     const batch = db.batch();
     snapshot.docs.forEach(doc => batch.delete(doc.ref));
     await batch.commit();
-    console.log(`  ✓ Cleared ${snapshot.size} documents from ${col}`);
+    console.log(`  ✓ Cleared ${snapshot.size} seed documents from ${col}`);
+  }
+  // Only delete seed user documents (preserve real app-registered users)
+  const seedUsers = await db.collection('users').where('isSeedData', '==', true).get();
+  if (!seedUsers.empty) {
+    const batch = db.batch();
+    seedUsers.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    console.log(`  ✓ Cleared ${seedUsers.size} seed users`);
   }
 
   // 1. Create test users in Firestore
+  // Look up real Auth UIDs by email (seed-admin.js creates real Auth users).
+  // If no real Auth user exists, use the hardcoded test UID.
   console.log('\n[1/7] Creating test user documents...');
+  const auth = admin.auth();
+  // Known real Auth emails (created by seed-admin.js / check-captain.js)
+  const REAL_AUTH_EMAILS = ['captain@barangay.test'];
   for (const user of TEST_USERS) {
     const { password, ...userData } = user;
-    await db.collection('users').doc(user.uid).set({
-      ...userData,
-      isSeedData: true,
-      createdAt: ts('2026-01-15'),
-    });
-    console.log(`  ✓ ${user.role}: ${user.name} (${user.email} / ${password})`);
+    let uid = user.uid;
+    // Try the seed email first, then check known real Auth emails for this role
+    const emailsToTry = [user.email, ...REAL_AUTH_EMAILS.filter(e => !userData.email.includes(e.split('@')[0]) || true)];
+    for (const email of emailsToTry) {
+      try {
+        const authUser = await auth.getUserByEmail(email);
+        uid = authUser.uid;
+        console.log(`  ✓ Found real Auth user for ${email} (uid: ${uid})`);
+        break;
+      } catch (_) {}
+    }
+    if (uid === user.uid) {
+      console.log(`  ⚠ No Auth user for ${user.email} — using test UID ${uid}`);
+    }
+    const existing = await db.collection('users').doc(uid).get();
+    if (existing.exists) {
+      if (!existing.data().isSeedData) {
+        await db.collection('users').doc(uid).set({ isSeedData: true }, { merge: true });
+        console.log(`  ✓ ${user.role}: ${user.name} — updated with isSeedData flag`);
+      } else {
+        console.log(`  ✓ ${user.role}: ${user.name} — already seeded`);
+      }
+    } else {
+      await db.collection('users').doc(uid).set({
+        ...userData,
+        isSeedData: true,
+        createdAt: ts('2026-01-15'),
+      });
+      console.log(`  ✓ ${user.role}: ${user.name} (${user.email} / ${password}) — created`);
+    }
   }
 
   // 2. Seed SLA config
