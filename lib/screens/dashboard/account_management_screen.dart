@@ -27,7 +27,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     final emailCtrl = TextEditingController();
     final mobileCtrl = TextEditingController();
     final passCtrl = TextEditingController();
-    final confirmPassCtrl = TextEditingController();
     String selectedRole = 'staff';
     bool loading = false;
 
@@ -36,10 +35,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Create New Account'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 500),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 TextField(
                   controller: nameCtrl,
                   decoration: const InputDecoration(
@@ -80,7 +81,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedRole,
+                  initialValue: selectedRole,
                   decoration: const InputDecoration(
                     labelText: 'Role',
                     border: OutlineInputBorder(),
@@ -93,18 +94,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   ],
                   onChanged: (v) => setDialogState(() => selectedRole = v!),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmPassCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm Your Password',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock_outline),
-                    helperText: 'Enter your password to confirm',
-                  ),
-                  obscureText: true,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -125,23 +116,96 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                         );
                         return;
                       }
-                      setDialogState(() => loading = true);
-                      final auth = context.read<AuthService>();
-                      final captainEmail = auth.currentUserModel?.email ?? '';
-                      final confirmPassword = confirmPassCtrl.text;
-                      final err = await auth.createStaffAccount(
+                      Navigator.pop(ctx);
+                      // Show password confirmation dialog
+                      _showConfirmPasswordDialog(
                         name: nameCtrl.text.trim(),
                         email: emailCtrl.text.trim(),
                         mobile: mobileCtrl.text.trim(),
                         password: passCtrl.text,
                         role: selectedRole,
                       );
-                      if (err == null && captainEmail.isNotEmpty && confirmPassword.isNotEmpty) {
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kNavy,
+                foregroundColor: Colors.white,
+              ),
+              child: loading
+                  ? const SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Create Account'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showConfirmPasswordDialog({
+    required String name,
+    required String email,
+    required String mobile,
+    required String password,
+    required String role,
+  }) {
+    final confirmPassCtrl = TextEditingController();
+    bool loading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Confirm Your Identity'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Enter your password to confirm account creation',
+                  style: TextStyle(fontSize: 13, color: Colors.grey)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: confirmPassCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Captain Password',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.lock),
+                ),
+                obscureText: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      if (confirmPassCtrl.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please enter your password')),
+                        );
+                        return;
+                      }
+                      setDialogState(() => loading = true);
+                      final auth = context.read<AuthService>();
+                      final captainEmail = auth.currentUserModel?.email ?? '';
+                      final captainPassword = confirmPassCtrl.text;
+                      final err = await auth.createStaffAccount(
+                        name: name,
+                        email: email,
+                        mobile: mobile,
+                        password: password,
+                        role: role,
+                      );
+                      if (err == null && captainEmail.isNotEmpty) {
                         // createUserWithEmailAndPassword signs in as the new user.
                         // Re-login as the captain so the session switches back.
                         await auth.login(
                           email: captainEmail,
-                          password: confirmPassword,
+                          password: captainPassword,
                         );
                       }
                       if (ctx.mounted) Navigator.pop(ctx);
@@ -162,7 +226,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   ? const SizedBox(
                       width: 16, height: 16,
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Create Account'),
+                  : const Text('Confirm & Create'),
             ),
           ],
         ),
