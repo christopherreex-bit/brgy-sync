@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../utils/constants.dart';
 import '../../widgets/kpi_card.dart';
 
@@ -93,16 +94,121 @@ class AnalyticsDashboardScreen extends StatelessWidget {
                 }),
 
               const SizedBox(height: 24),
-              // Beneficiary distribution placeholder
+              // Beneficiary distribution donut chart
               const Text('Beneficiary Distribution',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kNavy)),
               const SizedBox(height: 12),
-              const Text('Data will appear as cases are submitted and processed.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+              _buildDonutChart(docs),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildDonutChart(List<QueryDocumentSnapshot> docs) {
+    // Count beneficiaries by category from released cases
+    final counts = <String, int>{
+      'BASS Assistance': 0,
+      'Birthday Distribution': 0,
+      'Education Incentive': 0,
+      'Documents': 0,
+      'Other': 0,
+    };
+
+    for (final doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final status = data['status'] ?? '';
+      if (status != 'released') continue;
+      final cat = (data['serviceCategory'] ?? '').toString();
+      final subType = (data['serviceSubType'] ?? '').toString();
+      switch (cat) {
+        case 'bass':
+          counts['BASS Assistance'] = counts['BASS Assistance']! + 1;
+          break;
+        case 'beneficiary':
+          if (subType.toLowerCase().contains('senior') || subType.toLowerCase().contains('pwd')) {
+            counts['Birthday Distribution'] = counts['Birthday Distribution']! + 1;
+          } else {
+            counts['Other'] = counts['Other']! + 1;
+          }
+          break;
+        case 'education':
+          counts['Education Incentive'] = counts['Education Incentive']! + 1;
+          break;
+        case 'documents':
+          counts['Documents'] = counts['Documents']! + 1;
+          break;
+        default:
+          counts['Other'] = counts['Other']! + 1;
+      }
+    }
+
+    final total = counts.values.fold(0, (a, b) => a + b);
+    if (total == 0) {
+      return const Text('No resolved cases yet. Data will appear as cases are processed.',
+          style: TextStyle(color: Colors.grey, fontSize: 13));
+    }
+
+    final colors = [
+      const Color(0xFF0F2044), // navy — BASS
+      const Color(0xFF4A90D9), // blue — Birthday
+      const Color(0xFF27AE60), // green — Education
+      const Color(0xFFF39C12), // orange — Documents
+      const Color(0xFF95A5A6), // gray — Other
+    ];
+
+    final sections = <PieChartSectionData>[];
+    var colorIdx = 0;
+    for (final entry in counts.entries) {
+      if (entry.value == 0) continue;
+      final pct = entry.value / total * 100;
+      sections.add(PieChartSectionData(
+        value: entry.value.toDouble(),
+        title: '${pct.toStringAsFixed(0)}%',
+        radius: 50,
+        titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+        color: colors[colorIdx % colors.length],
+      ));
+      colorIdx++;
+    }
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 160,
+          height: 160,
+          child: PieChart(PieChartData(
+            sections: sections,
+            centerSpaceRadius: 35,
+            sectionsSpace: 2,
+          )),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...counts.entries.where((e) => e.value > 0).map((entry) {
+                final idx = counts.keys.toList().indexOf(entry.key);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Container(width: 12, height: 12, decoration: BoxDecoration(color: colors[idx], borderRadius: BorderRadius.circular(2))),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(entry.key, style: const TextStyle(fontSize: 12))),
+                      Text('${entry.value}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 4),
+              Text('Total: $total beneficiaries', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

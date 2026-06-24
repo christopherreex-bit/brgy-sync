@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/constants.dart';
 import '../../widgets/kpi_card.dart';
+import '../../services/export_service.dart';
 
 class ComplianceReportScreen extends StatefulWidget {
   const ComplianceReportScreen({super.key});
@@ -13,6 +15,10 @@ class ComplianceReportScreen extends StatefulWidget {
 class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
   String? _selectedMonth;
   String? _selectedCategory;
+  List<Map<String, dynamic>> _breakdownData = [];
+  int _totalReceived = 0;
+  int _completedOnTime = 0;
+  int _overdueCases = 0;
 
   final _months = const [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -87,9 +93,9 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                 .snapshots(),
             builder: (context, snapshot) {
               final docs = snapshot.data?.docs ?? [];
-              int totalReceived = 0;
-              int completedOnTime = 0;
-              int overdueCases = 0;
+              _totalReceived = 0;
+              _completedOnTime = 0;
+              _overdueCases = 0;
 
               final categoryBreakdown = <String, Map<String, int>>{};
 
@@ -98,9 +104,9 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                 final cat = data['serviceCategory'] ?? 'unknown';
                 final slaStatus = data['slaStatus'] ?? 'on_time';
 
-                totalReceived++;
-                if (slaStatus == 'on_time') completedOnTime++;
-                if (slaStatus == 'overdue') overdueCases++;
+                _totalReceived++;
+                if (slaStatus == 'on_time') _completedOnTime++;
+                if (slaStatus == 'overdue') _overdueCases++;
 
                 categoryBreakdown.putIfAbsent(cat, () => {'total': 0, 'onTime': 0, 'overdue': 0});
                 categoryBreakdown[cat]!['total'] = categoryBreakdown[cat]!['total']! + 1;
@@ -112,17 +118,25 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                 }
               }
 
-              final avgTime = completedOnTime > 0 ? '~${(completedOnTime / totalReceived * 100).toStringAsFixed(0)}% on-time' : 'N/A';
+              // Store breakdown data for export
+              _breakdownData = categoryBreakdown.entries.map((e) => {
+                'category': e.key,
+                'total': e.value['total']!,
+                'onTime': e.value['onTime']!,
+                'overdue': e.value['overdue']!,
+              }).toList();
+
+              final avgTime = _totalReceived > 0 ? '~${(_completedOnTime / _totalReceived * 100).toStringAsFixed(0)}% on-time' : 'N/A';
 
               return Column(
                 children: [
                   Row(
                     children: [
-                      Expanded(child: KpiCard(label: 'Total Received', value: '$totalReceived', icon: Icons.inbox)),
+                      Expanded(child: KpiCard(label: 'Total Received', value: '$_totalReceived', icon: Icons.inbox)),
                       const SizedBox(width: 12),
-                      Expanded(child: KpiCard(label: 'Completed On Time', value: '$completedOnTime', accentColor: Colors.green, icon: Icons.check_circle)),
+                      Expanded(child: KpiCard(label: 'Completed On Time', value: '$_completedOnTime', accentColor: Colors.green, icon: Icons.check_circle)),
                       const SizedBox(width: 12),
-                      Expanded(child: KpiCard(label: 'Overdue Cases', value: '$overdueCases', accentColor: Colors.red, icon: Icons.error)),
+                      Expanded(child: KpiCard(label: 'Overdue Cases', value: '$_overdueCases', accentColor: Colors.red, icon: Icons.error)),
                       const SizedBox(width: 12),
                       Expanded(child: KpiCard(label: 'Avg Processing', value: avgTime, icon: Icons.timer)),
                     ],
@@ -196,21 +210,13 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
           Row(
             children: [
               OutlinedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Export to Excel — coming soon')),
-                  );
-                },
+                onPressed: () => _exportCsv(),
                 icon: const Icon(Icons.download),
                 label: const Text('Export (.xlsx)'),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Print PDF — coming soon')),
-                  );
-                },
+                onPressed: () => _exportPdf(),
                 icon: const Icon(Icons.print),
                 label: const Text('Print PDF'),
               ),
@@ -218,6 +224,50 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _exportCsv() {
+    if (_breakdownData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No data available to export.')),
+      );
+      return;
+    }
+    ExportService.downloadCsv(
+      headers: ['Category', 'Received', 'On Time', 'Overdue', 'Rate %'],
+      rows: _breakdownData.map((d) {
+        final total = d['total'] as int;
+        final onTime = d['onTime'] as int;
+        final rate = total > 0 ? (onTime / total * 100).toStringAsFixed(1) : '0.0';
+        return [
+          (d['category'] as String).toUpperCase(),
+          '$total',
+          '$onTime',
+          '${d['overdue']}',
+          '$rate%',
+        ];
+      }).toList(),
+      filename: 'compliance_report_${DateTime.now().millisecondsSinceEpoch}.csv',
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Compliance report exported as CSV.'), backgroundColor: Colors.green),
+    );
+  }
+
+  void _exportPdf() {
+    if (_breakdownData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No data available to export.')),
+      );
+      return;
+    }
+    ExportService.generateCompliancePdf(
+      month: _selectedMonth ?? 'Current',
+      breakdown: _breakdownData,
+      totalReceived: _totalReceived,
+      completedOnTime: _completedOnTime,
+      overdueCases: _overdueCases,
     );
   }
 }

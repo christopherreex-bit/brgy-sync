@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/constants.dart';
+import '../../services/export_service.dart';
 
 class ExpenditureSummaryScreen extends StatefulWidget {
   const ExpenditureSummaryScreen({super.key});
@@ -12,6 +13,10 @@ class ExpenditureSummaryScreen extends StatefulWidget {
 class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
   String _selectedPeriod = 'All Periods';
   String _selectedCategory = 'All Categories';
+  List<Map<String, dynamic>> _programData = [];
+  double _totalAllocated = 0;
+  double _totalUtilized = 0;
+  double _totalRemaining = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +73,26 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
             stream: FirebaseFirestore.instance.collection('budgetPrograms').snapshots(),
             builder: (context, snapshot) {
               final docs = snapshot.data?.docs ?? [];
-              double totalAllocated = 0, totalUtilized = 0, totalRemaining = 0;
+              _totalAllocated = 0;
+              _totalUtilized = 0;
+              _totalRemaining = 0;
+              _programData = [];
+
+              for (final doc in docs) {
+                final d = doc.data() as Map<String, dynamic>;
+                final allocated = (d['allocated'] as num?)?.toDouble() ?? 0;
+                final utilized = (d['utilized'] as num?)?.toDouble() ?? 0;
+                final remaining = allocated - utilized;
+                _totalAllocated += allocated;
+                _totalUtilized += utilized;
+                _totalRemaining += remaining;
+                _programData.add({
+                  'name': d['name'] ?? '',
+                  'allocated': allocated,
+                  'utilized': utilized,
+                  'remaining': remaining,
+                });
+              }
 
               return Container(
                 decoration: BoxDecoration(
@@ -98,24 +122,17 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                         child: Text('No data available.', style: TextStyle(color: Colors.grey)),
                       )
                     else
-                      ...docs.map((doc) {
-                        final d = doc.data() as Map<String, dynamic>;
-                        final allocated = (d['allocated'] as num?)?.toDouble() ?? 0;
-                        final utilized = (d['utilized'] as num?)?.toDouble() ?? 0;
-                        final remaining = allocated - utilized;
-                        totalAllocated += allocated;
-                        totalUtilized += utilized;
-                        totalRemaining += remaining;
-
+                      ..._programData.map((p) {
+                        final currency = '₱';
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade200))),
                           child: Row(
                             children: [
-                              Expanded(flex: 3, child: Text(d['name'] ?? '', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('₱${allocated.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('₱${utilized.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('₱${remaining.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
+                              Expanded(flex: 3, child: Text(p['name'] ?? '', style: const TextStyle(fontSize: 12))),
+                              Expanded(child: Text('$currency${(p['allocated'] as double).toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
+                              Expanded(child: Text('$currency${(p['utilized'] as double).toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
+                              Expanded(child: Text('$currency${(p['remaining'] as double).toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
                             ],
                           ),
                         );
@@ -130,9 +147,9 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                       child: Row(
                         children: [
                           const Expanded(flex: 3, child: Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('₱${totalAllocated.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('₱${totalUtilized.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('₱${totalRemaining.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          Expanded(child: Text('₱${_totalAllocated.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          Expanded(child: Text('₱${_totalUtilized.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          Expanded(child: Text('₱${_totalRemaining.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
                         ],
                       ),
                     ),
@@ -146,13 +163,13 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
           Row(
             children: [
               OutlinedButton.icon(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Export to Excel — coming soon'))),
+                onPressed: () => _exportCsv(),
                 icon: const Icon(Icons.download),
                 label: const Text('Export (.xlsx)'),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Print PDF — coming soon'))),
+                onPressed: () => _exportPdf(),
                 icon: const Icon(Icons.print),
                 label: const Text('Print PDF'),
               ),
@@ -160,6 +177,43 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _exportCsv() {
+    if (_programData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No data available to export.')),
+      );
+      return;
+    }
+    ExportService.downloadCsv(
+      headers: ['Program', 'Allocated', 'Utilized', 'Remaining'],
+      rows: _programData.map((p) => [
+        p['name'] ?? '',
+        '₱${(p['allocated'] as double).toStringAsFixed(0)}',
+        '₱${(p['utilized'] as double).toStringAsFixed(0)}',
+        '₱${(p['remaining'] as double).toStringAsFixed(0)}',
+      ]).toList(),
+      filename: 'expenditure_summary_${DateTime.now().millisecondsSinceEpoch}.csv',
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Expenditure summary exported as CSV.'), backgroundColor: Colors.green),
+    );
+  }
+
+  void _exportPdf() {
+    if (_programData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No data available to export.')),
+      );
+      return;
+    }
+    ExportService.generateExpenditurePdf(
+      programData: _programData,
+      totalAllocated: _totalAllocated,
+      totalUtilized: _totalUtilized,
+      totalRemaining: _totalRemaining,
     );
   }
 }
