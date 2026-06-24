@@ -189,12 +189,15 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
     }
     ExportService.downloadCsv(
       headers: ['Program', 'Allocated', 'Utilized', 'Remaining'],
-      rows: _programData.map((p) => [
-        p['name'] ?? '',
-        '₱${(p['allocated'] as double).toStringAsFixed(0)}',
-        '₱${(p['utilized'] as double).toStringAsFixed(0)}',
-        '₱${(p['remaining'] as double).toStringAsFixed(0)}',
-      ]).toList(),
+      rows: _programData.map<List<String>>((p) {
+        final currency = '₱';
+        return <String>[
+          p['name'] ?? '',
+          '$currency${(p['allocated'] as double).toStringAsFixed(0)}',
+          '$currency${(p['utilized'] as double).toStringAsFixed(0)}',
+          '$currency${(p['remaining'] as double).toStringAsFixed(0)}',
+        ];
+      }).toList(),
       filename: 'expenditure_summary_${DateTime.now().millisecondsSinceEpoch}.csv',
     );
     ScaffoldMessenger.of(context).showSnackBar(

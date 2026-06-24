@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/pdf.dart';
@@ -18,7 +19,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
   DateTime? _periodFrom;
   DateTime? _periodTo;
   String _outputFormat = 'PDF';
-  bool _generating = false;
+  bool _isGenerating = false;
 
   String get _reportTypeKey {
     if (_reportType.startsWith('DSWD')) return 'dswd_summary';
@@ -146,9 +147,9 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: _genering ? null : _generateReport,
+              onPressed: _isGenerating ? null : _generateReport,
               style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
-              child: _genering
+              child: _isGenerating
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Text('Generate Report', style: TextStyle(fontSize: 16)),
             ),
@@ -439,7 +440,8 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     final bytes = excel.save();
     if (bytes != null) {
       final fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-      await Printing.sharePdf(bytes: bytes, filename: fileName);
+      final uint8 = Uint8List.fromList(bytes);
+      await Printing.sharePdf(bytes: uint8, filename: fileName);
     }
   }
 }

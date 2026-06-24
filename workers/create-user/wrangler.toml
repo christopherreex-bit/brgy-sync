@@ -1,6 +1,7 @@
 name = "brgy-sync-create-user"
 main = "index.js"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# FIREBASE_SERVICE_ACCOUNT is set via `wrangler pages secret put` or GitHub Actions secret
+# FIREBASE_SERVICE_ACCOUNT is set via `wrangler secret put`

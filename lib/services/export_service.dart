@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -19,7 +20,7 @@ class ExportService {
       buffer.writeln(row.map(_escapeCsv).join(','));
     }
     final bytes = utf8.encode(buffer.toString());
-    Printing.sharePdf(bytes: bytes, filename: filename);
+    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
   }
 
   static String _escapeCsv(String value) {

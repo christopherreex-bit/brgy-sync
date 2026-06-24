@@ -236,11 +236,11 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
     }
     ExportService.downloadCsv(
       headers: ['Category', 'Received', 'On Time', 'Overdue', 'Rate %'],
-      rows: _breakdownData.map((d) {
+      rows: _breakdownData.map<List<String>>((d) {
         final total = d['total'] as int;
         final onTime = d['onTime'] as int;
         final rate = total > 0 ? (onTime / total * 100).toStringAsFixed(1) : '0.0';
-        return [
+        return <String>[
           (d['category'] as String).toUpperCase(),
           '$total',
           '$onTime',
