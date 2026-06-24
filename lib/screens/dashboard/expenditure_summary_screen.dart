@@ -78,8 +78,26 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
               _totalRemaining = 0;
               _programData = [];
 
+              // Category filter mapping
+              final categoryFieldMap = {
+                'BASS': 'bass',
+                'Senior Citizen': 'senior',
+                'PWD': 'pwd',
+                'Education': 'education',
+              };
+              final categoryFilter = _selectedCategory != 'All Categories'
+                  ? categoryFieldMap[_selectedCategory]
+                  : null;
+
               for (final doc in docs) {
                 final d = doc.data() as Map<String, dynamic>;
+                final name = (d['name'] ?? '').toString();
+
+                // Apply category filter
+                if (categoryFilter != null && !name.toLowerCase().contains(categoryFilter)) {
+                  continue;
+                }
+
                 final allocated = (d['allocated'] as num?)?.toDouble() ?? 0;
                 final utilized = (d['utilized'] as num?)?.toDouble() ?? 0;
                 final remaining = allocated - utilized;
@@ -87,7 +105,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                 _totalUtilized += utilized;
                 _totalRemaining += remaining;
                 _programData.add({
-                  'name': d['name'] ?? '',
+                  'name': name,
                   'allocated': allocated,
                   'utilized': utilized,
                   'remaining': remaining,

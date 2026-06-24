@@ -188,6 +188,17 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     );
   }
 
+  List<String> get _reportCategories {
+    if (_reportType.startsWith('DSWD')) {
+      return ['bass', 'documents', 'community', 'beneficiary', 'education', 'adhoc'];
+    }
+    if (_reportType.startsWith('DILG')) {
+      return ['documents', 'bass', 'vaw', 'community'];
+    }
+    // Charter: all categories
+    return ['bass', 'documents', 'community', 'beneficiary', 'vaw', 'education', 'adhoc'];
+  }
+
   Future<void> _generateReport() async {
     setState(() => _isGenerating = true);
     try {
@@ -199,7 +210,13 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         query = query.where('submissionTimestamp', isLessThanOrEqualTo: Timestamp.fromDate(_periodTo!.add(const Duration(days: 1))));
       }
       final snapshot = await query.get();
-      final cases = snapshot.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+      final allCases = snapshot.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+
+      // Filter cases by report type categories
+      final cases = allCases.where((c) {
+        final cat = (c['serviceCategory'] ?? '').toString();
+        return _reportCategories.contains(cat);
+      }).toList();
 
       final totalCases = cases.length;
       final resolved = cases.where((c) => c['status'] == 'released' || c['status'] == 'rejected').length;
