@@ -252,7 +252,11 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
     );
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Compliance report exported as CSV.'), backgroundColor: Colors.green),
+      const SnackBar(
+        content: Text('Compliance report exported as CSV.'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 3),
+      ),
     );
   }
 

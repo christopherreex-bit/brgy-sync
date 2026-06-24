@@ -300,6 +300,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           SnackBar(
             content: Text('$_reportTypeLabel generated. View in Report Archive.'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
             action: SnackBarAction(
               label: 'View Archive',
               onPressed: () => context.go('/dashboard/report-archive'),
@@ -311,7 +312,11 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error generating report: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error generating report: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
         );
       }
     } finally {

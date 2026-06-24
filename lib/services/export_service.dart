@@ -17,9 +17,8 @@ class ExportService {
   }) {
     final content = rawContent ?? _buildCsv(headers, rows);
     final bytes = utf8.encode(content);
-    // Use layoutPdf which works on web — opens print dialog, user can save as PDF or print to file
-    // For CSV content, the filename should end with .csv so the OS opens it with Excel
-    Printing.layoutPdf(onLayout: (format) async => bytes, name: filename);
+    // sharePdf triggers a file download on web (not a print dialog)
+    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
   }
 
   static String _buildCsv(List<String> headers, List<List<String>> rows) {
