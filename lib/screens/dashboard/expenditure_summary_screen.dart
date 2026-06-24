@@ -218,6 +218,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
       }).toList(),
       filename: 'expenditure_summary_${DateTime.now().millisecondsSinceEpoch}.csv',
     );
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Expenditure summary exported as CSV.'), backgroundColor: Colors.green),
     );

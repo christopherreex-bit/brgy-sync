@@ -295,6 +295,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       });
 
       if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('$_reportTypeLabel generated. View in Report Archive.'),
@@ -308,6 +309,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error generating report: $e'), backgroundColor: Colors.red),
         );

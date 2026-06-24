@@ -17,7 +17,9 @@ class ExportService {
   }) {
     final content = rawContent ?? _buildCsv(headers, rows);
     final bytes = utf8.encode(content);
-    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
+    // Use layoutPdf which works on web — opens print dialog, user can save as PDF or print to file
+    // For CSV content, the filename should end with .csv so the OS opens it with Excel
+    Printing.layoutPdf(onLayout: (format) async => bytes, name: filename);
   }
 
   static String _buildCsv(List<String> headers, List<List<String>> rows) {
@@ -154,7 +156,7 @@ class ExportService {
     );
 
     final bytes = await pdf.save();
-    await Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: 'report.pdf');
+    await Printing.layoutPdf(onLayout: (format) async => bytes);
   }
 
   // Expenditure Summary PDF
@@ -257,7 +259,7 @@ class ExportService {
     );
 
     final bytes = await pdf.save();
-    await Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: 'report.pdf');
+    await Printing.layoutPdf(onLayout: (format) async => bytes);
   }
 
   static pw.Widget _pdfCell(String text, {bool bold = false}) {

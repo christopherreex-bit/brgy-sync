@@ -250,6 +250,7 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
       }).toList(),
       filename: 'compliance_report_${DateTime.now().millisecondsSinceEpoch}.csv',
     );
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Compliance report exported as CSV.'), backgroundColor: Colors.green),
     );
