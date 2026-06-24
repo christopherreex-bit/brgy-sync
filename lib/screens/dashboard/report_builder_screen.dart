@@ -266,17 +266,16 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.pdf';
       }
 
-      // Build category breakdown data for storage (Firestore can't store large byte arrays)
-      final breakdownData = categoryCounts.entries.map((entry) {
-        final cat = entry.key;
-        return {
-          'category': cat,
-          'total': entry.value,
-          'resolved': categoryResolved[cat] ?? 0,
-          'onTime': categoryOnTime[cat] ?? 0,
-          'overdue': categoryOverdue[cat] ?? 0,
-        };
-      }).toList();
+      // Build CSV content for storage (Firestore stores strings reliably)
+      final csvContent = _buildCsvContent(
+        totalCases: totalCases,
+        resolved: resolved,
+        pending: pending,
+        categoryCounts: categoryCounts,
+        categoryResolved: categoryResolved,
+        categoryOnTime: categoryOnTime,
+        categoryOverdue: categoryOverdue,
+      );
 
       // Save report record to Firestore archive
       await FirebaseFirestore.instance.collection('reports').add({
@@ -285,12 +284,12 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         'period': '${_periodFrom?.toIso8601String() ?? 'all'} - ${_periodTo?.toIso8601String() ?? 'present'}',
         'format': _outputFormat.toLowerCase(),
         'fileName': fileName,
+        'csvContent': csvContent,
         'generatedAt': FieldValue.serverTimestamp(),
         'generatedBy': 'system',
         'totalCases': totalCases,
         'resolved': resolved,
         'pending': pending,
-        'breakdown': breakdownData,
       });
 
       if (mounted) {

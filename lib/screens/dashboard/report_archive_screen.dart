@@ -137,50 +137,42 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
     final name = (data['typeName'] ?? data['type'] ?? 'Report').toString();
     final type = (data['type'] ?? '').toString();
     final format = (data['format'] ?? 'pdf').toString();
-    final period = (data['period'] ?? '').toString();
-    final totalCases = data['totalCases'] ?? 0;
-    final resolved = data['resolved'] ?? 0;
-    final pending = data['pending'] ?? 0;
-    final ts = data['generatedAt'];
-    final dateStr = ts is Timestamp
-        ? '${ts.toDate().month}/${ts.toDate().day}/${ts.toDate().year}'
-        : '';
-    final fileName = (data['fileName'] ?? '${type}_$dateStr').toString();
-    final breakdown = data['breakdown'] as List<dynamic>?;
+    final fileName = (data['fileName'] ?? '${type}_report').toString();
+    final csvContent = (data['csvContent'] ?? '').toString();
 
-    // Regenerate file from stored metadata
-    final buffer = StringBuffer();
-    buffer.writeln('BrgySync - $name');
-    buffer.writeln('Barangay Calzada-Tipas, Taguig City');
-    buffer.writeln('Period: $period');
-    buffer.writeln();
-    buffer.writeln('Summary');
-    buffer.writeln('Total Cases,$totalCases');
-    buffer.writeln('Resolved,$resolved');
-    buffer.writeln('Pending,$pending');
-    buffer.writeln('Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}');
-    buffer.writeln();
+    if (csvContent.isNotEmpty) {
+      // Download the stored CSV content directly
+      ExportService.downloadCsv(
+        headers: <String>[],
+        rows: <List<String>>[],
+        filename: fileName.endsWith('.csv') ? fileName : '$fileName.csv',
+        rawContent: csvContent,
+      );
+    } else {
+      // Fallback: generate minimal CSV from metadata
+      final period = (data['period'] ?? '').toString();
+      final totalCases = data['totalCases'] ?? 0;
+      final resolved = data['resolved'] ?? 0;
+      final pending = data['pending'] ?? 0;
 
-    if (breakdown != null && breakdown.isNotEmpty) {
-      buffer.writeln('Breakdown by Category');
-      buffer.writeln('Category,Total,Resolved,On Time,Overdue');
-      for (final item in breakdown) {
-        final cat = (item['category'] ?? '').toString();
-        final total = item['total'] ?? 0;
-        final res = item['resolved'] ?? 0;
-        final onTime = item['onTime'] ?? 0;
-        final overdue = item['overdue'] ?? 0;
-        buffer.writeln('${cat.toUpperCase()},$total,$res,$onTime,$overdue');
-      }
+      final buffer = StringBuffer();
+      buffer.writeln('BrgySync - $name');
+      buffer.writeln('Barangay Calzada-Tipas, Taguig City');
+      buffer.writeln('Period: $period');
+      buffer.writeln();
+      buffer.writeln('Summary');
+      buffer.writeln('Total Cases,$totalCases');
+      buffer.writeln('Resolved,$resolved');
+      buffer.writeln('Pending,$pending');
+      buffer.writeln('Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}');
+
+      ExportService.downloadCsv(
+        headers: <String>[],
+        rows: <List<String>>[],
+        filename: '$type\_report.csv',
+        rawContent: buffer.toString(),
+      );
     }
-
-    final csvContent = buffer.toString();
-    ExportService.downloadCsv(
-      headers: <String>[],
-      rows: <List<String>>[],
-      filename: fileName.endsWith('.csv') ? fileName : '$fileName.csv',
-      rawContent: csvContent,
-    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Downloaded: $name ($format)'), backgroundColor: Colors.green),
     );
