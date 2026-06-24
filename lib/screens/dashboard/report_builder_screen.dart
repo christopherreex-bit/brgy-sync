@@ -220,8 +220,11 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         if (sla == 'overdue') categoryOverdue[cat] = (categoryOverdue[cat] ?? 0) + 1;
       }
 
+      // Generate file bytes
+      List<int> fileBytes;
+      String fileName;
       if (_outputFormat == 'PDF') {
-        await _generatePdf(
+        fileBytes = await _buildPdfBytes(
           totalCases: totalCases,
           resolved: resolved,
           pending: pending,
@@ -230,8 +233,9 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           categoryOnTime: categoryOnTime,
           categoryOverdue: categoryOverdue,
         );
+        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.pdf';
       } else {
-        await _generateExcel(
+        fileBytes = await _buildExcelBytes(
           totalCases: totalCases,
           resolved: resolved,
           pending: pending,
@@ -240,13 +244,17 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           categoryOnTime: categoryOnTime,
           categoryOverdue: categoryOverdue,
         );
+        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       }
 
+      // Save report record to Firestore archive
       await FirebaseFirestore.instance.collection('reports').add({
         'type': _reportTypeKey,
         'typeName': _reportTypeLabel,
         'period': '${_periodFrom?.toIso8601String() ?? 'all'} - ${_periodTo?.toIso8601String() ?? 'present'}',
         'format': _outputFormat.toLowerCase(),
+        'fileName': fileName,
+        'fileBytes': fileBytes,
         'generatedAt': FieldValue.serverTimestamp(),
         'generatedBy': 'system',
         'totalCases': totalCases,
@@ -256,7 +264,14 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$_reportTypeLabel generated successfully.'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text('$_reportTypeLabel generated. View in Report Archive.'),
+            backgroundColor: Colors.green,
+            action: SnackBarAction(
+              label: 'View Archive',
+              onPressed: () => context.go('/dashboard/report-archive'),
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -270,7 +285,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     }
   }
 
-  Future<void> _generatePdf({
+  Future<List<int>> _buildPdfBytes({
     required int totalCases,
     required int resolved,
     required int pending,
@@ -379,7 +394,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    return await pdf.save();
   }
 
   pw.Widget _pdfCell(String text, {bool bold = false}) {
@@ -392,7 +407,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     );
   }
 
-  Future<void> _generateExcel({
+  Future<List<int>> _buildExcelBytes({
     required int totalCases,
     required int resolved,
     required int pending,
@@ -438,10 +453,6 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     }
 
     final bytes = excel.save();
-    if (bytes != null) {
-      final fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-      final uint8 = Uint8List.fromList(bytes);
-      await Printing.sharePdf(bytes: uint8, filename: fileName);
-    }
+    return bytes ?? <int>[];
   }
 }

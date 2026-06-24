@@ -170,8 +170,8 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
               const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: () => _exportPdf(),
-                icon: const Icon(Icons.print),
-                label: const Text('Print PDF'),
+                icon: const Icon(Icons.download),
+                label: const Text('Download PDF'),
               ),
             ],
           ),

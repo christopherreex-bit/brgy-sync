@@ -137,7 +137,8 @@ class ExportService {
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    final bytes = await pdf.save();
+    await Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: 'report.pdf');
   }
 
   // Expenditure Summary PDF
@@ -239,7 +240,8 @@ class ExportService {
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    final bytes = await pdf.save();
+    await Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: 'report.pdf');
   }
 
   static pw.Widget _pdfCell(String text, {bool bold = false}) {

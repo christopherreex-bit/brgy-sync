@@ -134,29 +134,29 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
   }
 
   void _downloadReport(Map<String, dynamic> data) {
-    final name = (data['type'] ?? 'Report').toString();
+    final name = (data['typeName'] ?? data['type'] ?? 'Report').toString();
+    final type = (data['type'] ?? '').toString();
     final format = (data['format'] ?? 'pdf').toString();
     final period = (data['period'] ?? '').toString();
+    final totalCases = data['totalCases'] ?? 0;
+    final resolved = data['resolved'] ?? 0;
+    final pending = data['pending'] ?? 0;
     final ts = data['generatedAt'];
     final dateStr = ts is Timestamp
         ? '${ts.toDate().month}/${ts.toDate().day}/${ts.toDate().year}'
         : '';
 
-    if (format == 'xlsx') {
-      // For Excel reports, export as CSV (data is in Firestore doc)
-      ExportService.downloadCsv(
-        headers: ['Report Type', 'Period', 'Generated', 'Format'],
-        rows: [[name, period, dateStr, format.toUpperCase()]],
-        filename: '${name.replaceAll(' ', '_')}_$dateStr.csv',
-      );
-    } else {
-      // For PDF reports, generate a simple summary PDF
-      ExportService.downloadCsv(
-        headers: ['Report Type', 'Period', 'Generated', 'Format'],
-        rows: [[name, period, dateStr, format.toUpperCase()]],
-        filename: '${name.replaceAll(' ', '_')}_$dateStr.csv',
-      );
-    }
+    // Build CSV with actual report data
+    final headers = <String>['Report Type', 'Period', 'Generated', 'Format', 'Total Cases', 'Resolved', 'Pending'];
+    final rows = <List<String>>[
+      [name, period, dateStr, format.toUpperCase(), '$totalCases', '$resolved', '$pending'],
+    ];
+
+    ExportService.downloadCsv(
+      headers: headers,
+      rows: rows,
+      filename: '${type}_$dateStr.$format',
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Downloaded: $name ($format)'), backgroundColor: Colors.green),
     );
