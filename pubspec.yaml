@@ -24,7 +24,6 @@ dependencies:
   dropdown_search: ^6.0.2
   pdf: ^3.13.0
   printing: ^5.15.0
-  excel_plus: ^2.2.0
 
 dev_dependencies:
   flutter_test:

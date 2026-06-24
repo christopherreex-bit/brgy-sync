@@ -145,18 +145,27 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
     final dateStr = ts is Timestamp
         ? '${ts.toDate().month}/${ts.toDate().day}/${ts.toDate().year}'
         : '';
+    final storedBytes = data['fileBytes'];
+    final fileName = (data['fileName'] ?? '${type}_$dateStr').toString();
 
-    // Build CSV with actual report data
-    final headers = <String>['Report Type', 'Period', 'Generated', 'Format', 'Total Cases', 'Resolved', 'Pending'];
-    final rows = <List<String>>[
-      [name, period, dateStr, format.toUpperCase(), '$totalCases', '$resolved', '$pending'],
-    ];
-
-    ExportService.downloadCsv(
-      headers: headers,
-      rows: rows,
-      filename: '${type}_$dateStr.$format',
-    );
+    if (storedBytes != null && storedBytes is List && storedBytes.isNotEmpty) {
+      // Download the stored file bytes directly
+      ExportService.downloadBytes(
+        bytes: List<int>.from(storedBytes),
+        filename: fileName,
+      );
+    } else {
+      // Fallback: generate CSV from metadata
+      final headers = <String>['Report Type', 'Period', 'Generated', 'Format', 'Total Cases', 'Resolved', 'Pending'];
+      final rows = <List<String>>[
+        [name, period, dateStr, format.toUpperCase(), '$totalCases', '$resolved', '$pending'],
+      ];
+      ExportService.downloadCsv(
+        headers: headers,
+        rows: rows,
+        filename: '${type}_$dateStr.csv',
+      );
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Downloaded: $name ($format)'), backgroundColor: Colors.green),
     );

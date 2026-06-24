@@ -23,6 +23,14 @@ class ExportService {
     Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
   }
 
+  /// Downloads raw bytes as a file.
+  static void downloadBytes({
+    required List<int> bytes,
+    required String filename,
+  }) {
+    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
+  }
+
   static String _escapeCsv(String value) {
     if (value.contains(',') || value.contains('"') || value.contains('\n')) {
       return '"${value.replaceAll('"', '""')}"';

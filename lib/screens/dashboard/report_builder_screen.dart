@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -5,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:excel_plus/excel_plus.dart' hide Border, BorderStyle, BorderSide, TableBorder;
 import '../../utils/constants.dart';
 
 class ReportBuilderScreen extends StatefulWidget {
@@ -221,10 +221,22 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         if (sla == 'overdue') categoryOverdue[cat] = (categoryOverdue[cat] ?? 0) + 1;
       }
 
-      // Generate file bytes
+      // Generate file bytes based on selected format
       List<int> fileBytes;
       String fileName;
-      if (_outputFormat == 'PDF') {
+      if (_outputFormat == 'Excel') {
+        final csv = _buildCsvContent(
+          totalCases: totalCases,
+          resolved: resolved,
+          pending: pending,
+          categoryCounts: categoryCounts,
+          categoryResolved: categoryResolved,
+          categoryOnTime: categoryOnTime,
+          categoryOverdue: categoryOverdue,
+        );
+        fileBytes = utf8.encode(csv);
+        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+      } else {
         fileBytes = await _buildPdfBytes(
           totalCases: totalCases,
           resolved: resolved,
@@ -235,17 +247,6 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           categoryOverdue: categoryOverdue,
         );
         fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-      } else {
-        fileBytes = await _buildExcelBytes(
-          totalCases: totalCases,
-          resolved: resolved,
-          pending: pending,
-          categoryCounts: categoryCounts,
-          categoryResolved: categoryResolved,
-          categoryOnTime: categoryOnTime,
-          categoryOverdue: categoryOverdue,
-        );
-        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       }
 
       // Save report record to Firestore archive
@@ -408,7 +409,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     );
   }
 
-  Future<List<int>> _buildExcelBytes({
+  String _buildCsvContent({
     required int totalCases,
     required int resolved,
     required int pending,
@@ -416,44 +417,31 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     required Map<String, int> categoryResolved,
     required Map<String, int> categoryOnTime,
     required Map<String, int> categoryOverdue,
-  }) async {
-    final excel = Excel.createExcel();
-    final sheet = excel['Sheet1'];
-
-    sheet.updateCell(CellIndex.indexByString('A1'), TextCellValue('BrgySync - $_reportTypeLabel'));
-    sheet.updateCell(CellIndex.indexByString('A2'), TextCellValue('Barangay Calzada-Tipas, Taguig City'));
+  }) {
+    final buffer = StringBuffer();
     final periodLabel = '${_periodFrom != null ? '${_periodFrom!.month}/${_periodFrom!.day}/${_periodFrom!.year}' : 'All'} - ${_periodTo != null ? '${_periodTo!.month}/${_periodTo!.day}/${_periodTo!.year}' : 'Present'}';
-    sheet.updateCell(CellIndex.indexByString('A3'), TextCellValue('Period: $periodLabel'));
 
-    sheet.updateCell(CellIndex.indexByString('A5'), TextCellValue('Summary'));
-    sheet.updateCell(CellIndex.indexByString('A6'), TextCellValue('Total Cases'));
-    sheet.updateCell(CellIndex.indexByString('B6'), IntCellValue(totalCases));
-    sheet.updateCell(CellIndex.indexByString('A7'), TextCellValue('Resolved'));
-    sheet.updateCell(CellIndex.indexByString('B7'), IntCellValue(resolved));
-    sheet.updateCell(CellIndex.indexByString('A8'), TextCellValue('Pending'));
-    sheet.updateCell(CellIndex.indexByString('B8'), IntCellValue(pending));
-    sheet.updateCell(CellIndex.indexByString('A9'), TextCellValue('Resolution Rate'));
-    sheet.updateCell(CellIndex.indexByString('B9'), TextCellValue(totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'));
+    buffer.writeln('BrgySync - $_reportTypeLabel');
+    buffer.writeln('Barangay Calzada-Tipas, Taguig City');
+    buffer.writeln('Period: $periodLabel');
+    buffer.writeln();
+    buffer.writeln('Summary');
+    buffer.writeln('Total Cases,$totalCases');
+    buffer.writeln('Resolved,$resolved');
+    buffer.writeln('Pending,$pending');
+    buffer.writeln('Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}');
+    buffer.writeln();
+    buffer.writeln('Breakdown by Category');
+    buffer.writeln('Category,Total,Resolved,On Time,Overdue');
 
-    sheet.updateCell(CellIndex.indexByString('A11'), TextCellValue('Breakdown by Category'));
-    sheet.updateCell(CellIndex.indexByString('A12'), TextCellValue('Category'));
-    sheet.updateCell(CellIndex.indexByString('B12'), TextCellValue('Total'));
-    sheet.updateCell(CellIndex.indexByString('C12'), TextCellValue('Resolved'));
-    sheet.updateCell(CellIndex.indexByString('D12'), TextCellValue('On Time'));
-    sheet.updateCell(CellIndex.indexByString('E12'), TextCellValue('Overdue'));
-
-    var row = 13;
     for (final entry in categoryCounts.entries) {
       final cat = entry.key;
-      sheet.updateCell(CellIndex.indexByString('A$row'), TextCellValue(cat.toUpperCase()));
-      sheet.updateCell(CellIndex.indexByString('B$row'), IntCellValue(entry.value));
-      sheet.updateCell(CellIndex.indexByString('C$row'), IntCellValue(categoryResolved[cat] ?? 0));
-      sheet.updateCell(CellIndex.indexByString('D$row'), IntCellValue(categoryOnTime[cat] ?? 0));
-      sheet.updateCell(CellIndex.indexByString('E$row'), IntCellValue(categoryOverdue[cat] ?? 0));
-      row++;
+      final total = entry.value;
+      final onTime = categoryOnTime[cat] ?? 0;
+      final overdue = categoryOverdue[cat] ?? 0;
+      buffer.writeln('${cat.toUpperCase()},$total,${categoryResolved[cat] ?? 0},$onTime,$overdue');
     }
 
-    final bytes = excel.save();
-    return bytes ?? <int>[];
+    return buffer.toString();
   }
 }
