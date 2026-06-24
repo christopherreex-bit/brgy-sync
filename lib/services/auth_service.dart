@@ -14,12 +14,18 @@ class AuthService extends ChangeNotifier {
   UserModel? get currentUserModel => _currentUserModel;
 
   bool _mockMode = false;
+  bool _ignoreNextAuthState = false;
 
   AuthService() {
     _auth.authStateChanges().listen(_onAuthStateChanged);
   }
 
   Future<void> _onAuthStateChanged(User? user) async {
+    if (_ignoreNextAuthState) {
+      _ignoreNextAuthState = false;
+      notifyListeners();
+      return;
+    }
     if (user != null && !_mockMode) {
       await _loadUserData(user.uid);
     } else if (user == null && !_mockMode) {
@@ -157,6 +163,9 @@ class AuthService extends ChangeNotifier {
     required String role,
   }) async {
     try {
+      // createUserWithEmailAndPassword signs in as the new user.
+      // Ignore the auth state change so _currentUserModel stays as the captain.
+      _ignoreNextAuthState = true;
       final cred = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
