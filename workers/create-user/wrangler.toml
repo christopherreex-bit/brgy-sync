@@ -1,0 +1,6 @@
+name = "brgy-sync-create-user"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# FIREBASE_SERVICE_ACCOUNT is set via `wrangler pages secret put` or GitHub Actions secret

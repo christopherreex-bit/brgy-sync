@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 
 class AuthService extends ChangeNotifier {
@@ -146,7 +148,8 @@ class AuthService extends ChangeNotifier {
   // ─── Staff Account Management (Phase 12) ───────────────────────
 
   /// Creates a new staff/officer/captain account (NOT resident).
-  /// Creates Firebase Auth user + Firestore user doc.
+  /// Calls a Cloudflare Worker that uses the Admin SDK so the client
+  /// session is NOT switched to the new user.
   Future<String?> createStaffAccount({
     required String name,
     required String email,
@@ -155,31 +158,29 @@ class AuthService extends ChangeNotifier {
     required String role,
   }) async {
     try {
-      final cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+      final idToken = await _auth.currentUser?.getIdToken();
+      final response = await http.post(
+        Uri.parse('https://brgy-sync-create-user.workers.dev/create-user'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (idToken != null) 'Authorization': 'Bearer $idToken',
+        },
+        body: jsonEncode({
+          'name': name,
+          'email': email,
+          'mobile': mobile,
+          'password': password,
+          'role': role,
+        }),
       );
-      if (cred.user != null) {
-        final user = UserModel(
-          uid: cred.user!.uid,
-          name: name,
-          mobile: mobile,
-          email: email,
-          role: role,
-          isActive: true,
-          createdAt: DateTime.now(),
-        );
-        await _firestore
-            .collection('users')
-            .doc(cred.user!.uid)
-            .set(user.toMap());
+
+      if (response.statusCode === 201) {
         return null;
       }
-      return 'Failed to create user.';
-    } on FirebaseAuthException catch (e) {
-      return e.message;
+      final body = jsonDecode(response.body);
+      return body['error'] ?? 'Failed to create user.';
     } catch (e) {
-      return e.toString();
+      return 'Network error: $e';
     }
   }
 

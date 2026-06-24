@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
@@ -28,7 +27,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     final emailCtrl = TextEditingController();
     final mobileCtrl = TextEditingController();
     final passCtrl = TextEditingController();
-    final confirmPassCtrl = TextEditingController();
     String selectedRole = 'staff';
     bool loading = false;
 
@@ -94,17 +92,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   ],
                   onChanged: (v) => setDialogState(() => selectedRole = v!),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmPassCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm Your Password',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock_outline),
-                    helperText: 'Enter your password to confirm',
-                  ),
-                  obscureText: true,
-                ),
               ],
             ),
           ),
@@ -128,8 +115,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                       }
                       setDialogState(() => loading = true);
                       final auth = context.read<AuthService>();
-                      final captainEmail = auth.currentUserModel?.email ?? '';
-                      final confirmPassword = confirmPassCtrl.text;
                       final err = await auth.createStaffAccount(
                         name: nameCtrl.text.trim(),
                         email: emailCtrl.text.trim(),
@@ -137,13 +122,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                         password: passCtrl.text,
                         role: selectedRole,
                       );
-                      if (err == null && captainEmail.isNotEmpty) {
-                        // Re-login as captain so the session doesn't switch to the new user
-                        await auth.login(
-                          email: captainEmail,
-                          password: confirmPassword,
-                        );
-                      }
                       if (ctx.mounted) Navigator.pop(ctx);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
