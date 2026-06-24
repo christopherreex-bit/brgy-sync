@@ -4,6 +4,7 @@ class UserModel {
   final String mobile;
   final String email;
   final String role;
+  final bool isSeedData;
   final DateTime createdAt;
 
   UserModel({
@@ -12,6 +13,7 @@ class UserModel {
     required this.mobile,
     required this.email,
     required this.role,
+    this.isSeedData = false,
     required this.createdAt,
   });
 
@@ -22,6 +24,7 @@ class UserModel {
       mobile: map['mobile'] ?? '',
       email: map['email'] ?? '',
       role: map['role'] ?? 'resident',
+      isSeedData: map['isSeedData'] == true,
       createdAt: map['createdAt'] is DateTime
           ? map['createdAt']
           : DateTime.now(),
@@ -34,6 +37,7 @@ class UserModel {
       'mobile': mobile,
       'email': email,
       'role': role,
+      'isSeedData': isSeedData,
       'createdAt': createdAt,
     };
   }

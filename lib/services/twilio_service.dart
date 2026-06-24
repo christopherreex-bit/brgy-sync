@@ -16,6 +16,8 @@ import 'package:http/http.dart' as http;
 /// and SMS will be printed to console instead of sending.
 
 class TwilioService {
+  /// Fallback number where all seed-data SMS is routed.
+  static const String fallbackNumber = '+639397193163';
   final String? _mySmsGateKey;
   final String? _easySendKey;
   final String? _twilioSid;

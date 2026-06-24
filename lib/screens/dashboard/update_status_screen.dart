@@ -121,9 +121,11 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         }
       }
 
-      // Send SMS — always use verified fallback number for demo
+      // Send SMS — seed data goes to fallback, real residents get actual number
       String? smsError;
-      const smsTo = '+639397193163';
+      final smsTo = (caseData['isSeedData'] == true)
+          ? TwilioService.fallbackNumber
+          : (residentMobile.isNotEmpty ? residentMobile : TwilioService.fallbackNumber);
       switch (_newStatus) {
         case 'processing':
           smsError = await _twilio.sendStatusProcessing(smsTo, refNumber);

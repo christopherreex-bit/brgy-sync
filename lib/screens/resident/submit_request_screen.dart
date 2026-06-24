@@ -187,7 +187,8 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       );
 
       final refNumber = await _firestore.createCase(caseData);
-      final smsResult = await _twilio.sendSubmissionAck(user.mobile, refNumber);
+      final smsTo = user.isSeedData == true ? TwilioService.fallbackNumber : user.mobile;
+      final smsResult = await _twilio.sendSubmissionAck(smsTo, refNumber);
 
       if (mounted) {
         setState(() {
