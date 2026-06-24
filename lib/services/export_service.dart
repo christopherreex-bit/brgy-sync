@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:universal_html/html.dart' as html;
 
 /// Shared export utilities for CSV downloads and PDF generation.
 class ExportService {
-  // CSV Download
+  // ─── CSV Download ────────────────────────────────────────────────
 
   static void downloadCsv({
     required List<String> headers,
@@ -17,8 +18,26 @@ class ExportService {
   }) {
     final content = rawContent ?? _buildCsv(headers, rows);
     final bytes = utf8.encode(content);
-    // sharePdf triggers a file download on web (not a print dialog)
-    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
+    _downloadBytes(bytes, filename, 'text/csv');
+  }
+
+  /// Downloads raw bytes as a file.
+  static void downloadBytes({
+    required List<int> bytes,
+    required String filename,
+  }) {
+    _downloadBytes(bytes, filename, 'application/octet-stream');
+  }
+
+  /// Platform-aware download: uses blob URL on web, sharePdf on mobile/desktop.
+  static void _downloadBytes(List<int> bytes, String filename, String mimeType) {
+    // Create a blob and trigger download via anchor element
+    final blob = html.Blob([Uint8List.fromList(bytes)], mimeType);
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    final anchor = html.AnchorElement(href: url)
+      ..setAttribute('download', filename)
+      ..click();
+    html.Url.revokeObjectUrl(url);
   }
 
   static String _buildCsv(List<String> headers, List<List<String>> rows) {
@@ -32,14 +51,6 @@ class ExportService {
     return buffer.toString();
   }
 
-  /// Downloads raw bytes as a file.
-  static void downloadBytes({
-    required List<int> bytes,
-    required String filename,
-  }) {
-    Printing.sharePdf(bytes: Uint8List.fromList(bytes), filename: filename);
-  }
-
   static String _escapeCsv(String value) {
     if (value.contains(',') || value.contains('"') || value.contains('\n')) {
       return '"${value.replaceAll('"', '""')}"';
@@ -47,7 +58,7 @@ class ExportService {
     return value;
   }
 
-  // Compliance Report PDF
+  // ─── Compliance Report PDF ───────────────────────────────────────
 
   static Future<void> generateCompliancePdf({
     required String month,
@@ -155,10 +166,11 @@ class ExportService {
     );
 
     final bytes = await pdf.save();
+    // For PDF: use layoutPdf (opens print dialog, user can save as PDF)
     await Printing.layoutPdf(onLayout: (format) async => bytes);
   }
 
-  // Expenditure Summary PDF
+  // ─── Expenditure Summary PDF ─────────────────────────────────────
 
   static Future<void> generateExpenditurePdf({
     required List<Map<String, dynamic>> programData,
@@ -204,9 +216,9 @@ class ExportService {
                   _pdfCell('Total Remaining', bold: true),
                 ]),
                 pw.TableRow(children: [
-                  _pdfCell('PHP ${totalAllocated.toStringAsFixed(0)}'),
-                  _pdfCell('PHP ${totalUtilized.toStringAsFixed(0)}'),
-                  _pdfCell('PHP ${totalRemaining.toStringAsFixed(0)}'),
+                  _php(totalAllocated),
+                  _php(totalUtilized),
+                  _php(totalRemaining),
                 ]),
               ],
             ),
@@ -236,17 +248,17 @@ class ExportService {
                 ),
                 ...programData.map((p) => pw.TableRow(children: [
                   _pdfCell(p['name'] ?? ''),
-                  _pdfCell('PHP ${(p['allocated'] as double).toStringAsFixed(0)}'),
-                  _pdfCell('PHP ${(p['utilized'] as double).toStringAsFixed(0)}'),
-                  _pdfCell('PHP ${(p['remaining'] as double).toStringAsFixed(0)}'),
+                  _php(p['allocated'] as double),
+                  _php(p['utilized'] as double),
+                  _php(p['remaining'] as double),
                 ])),
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                   children: [
                     _pdfCell('TOTAL', bold: true),
-                    _pdfCell('PHP ${totalAllocated.toStringAsFixed(0)}', bold: true),
-                    _pdfCell('PHP ${totalUtilized.toStringAsFixed(0)}', bold: true),
-                    _pdfCell('PHP ${totalRemaining.toStringAsFixed(0)}', bold: true),
+                    _php(totalAllocated, bold: true),
+                    _php(totalUtilized, bold: true),
+                    _php(totalRemaining, bold: true),
                   ],
                 ),
               ],
@@ -259,6 +271,10 @@ class ExportService {
 
     final bytes = await pdf.save();
     await Printing.layoutPdf(onLayout: (format) async => bytes);
+  }
+
+  static pw.Widget _php(double value, {bool bold = false}) {
+    return _pdfCell('PHP ${value.toStringAsFixed(0)}', bold: bold);
   }
 
   static pw.Widget _pdfCell(String text, {bool bold = false}) {
