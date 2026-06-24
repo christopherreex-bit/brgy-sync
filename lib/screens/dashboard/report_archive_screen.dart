@@ -139,22 +139,29 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
     final format = (data['format'] ?? 'pdf').toString();
     final fileName = (data['fileName'] ?? '${type}_report').toString();
     final csvContent = (data['csvContent'] ?? '').toString();
+    final storedBytes = data['fileBytes'];
+    final totalCases = data['totalCases'] ?? 0;
+    final resolved = data['resolved'] ?? 0;
+    final pending = data['pending'] ?? 0;
+    final period = (data['period'] ?? '').toString();
 
-    if (csvContent.isNotEmpty) {
-      // Download the stored CSV content directly
+    // For PDF reports: download stored PDF bytes
+    if (format == 'pdf' && storedBytes != null && storedBytes is List && storedBytes.isNotEmpty) {
+      ExportService.downloadBytes(
+        bytes: List<int>.from(storedBytes),
+        filename: fileName.endsWith('.pdf') ? fileName : '$fileName.pdf',
+      );
+    } else if (csvContent.isNotEmpty) {
+      // For Excel reports or fallback: download CSV content
+      final csvFileName = fileName.endsWith('.csv') ? fileName : '$fileName.csv';
       ExportService.downloadCsv(
         headers: <String>[],
         rows: <List<String>>[],
-        filename: fileName.endsWith('.csv') ? fileName : '$fileName.csv',
+        filename: csvFileName,
         rawContent: csvContent,
       );
     } else {
-      // Fallback: generate minimal CSV from metadata
-      final period = (data['period'] ?? '').toString();
-      final totalCases = data['totalCases'] ?? 0;
-      final resolved = data['resolved'] ?? 0;
-      final pending = data['pending'] ?? 0;
-
+      // Final fallback: generate minimal CSV from metadata
       final buffer = StringBuffer();
       buffer.writeln('BrgySync - $name');
       buffer.writeln('Barangay Calzada-Tipas, Taguig City');
@@ -169,7 +176,7 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
       ExportService.downloadCsv(
         headers: <String>[],
         rows: <List<String>>[],
-        filename: '$type\_report.csv',
+        filename: '${type}_report.csv',
         rawContent: buffer.toString(),
       );
     }

@@ -266,7 +266,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.pdf';
       }
 
-      // Build CSV content for storage (Firestore stores strings reliably)
+      // Build CSV content for storage (works for both PDF and Excel reports)
       final csvContent = _buildCsvContent(
         totalCases: totalCases,
         resolved: resolved,
@@ -278,12 +278,14 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       );
 
       // Save report record to Firestore archive
+      // Store both PDF bytes (for download) and CSV content (for viewing)
       await FirebaseFirestore.instance.collection('reports').add({
         'type': _reportTypeKey,
         'typeName': _reportTypeLabel,
         'period': '${_periodFrom?.toIso8601String() ?? 'all'} - ${_periodTo?.toIso8601String() ?? 'present'}',
         'format': _outputFormat.toLowerCase(),
         'fileName': fileName,
+        'fileBytes': fileBytes,
         'csvContent': csvContent,
         'generatedAt': FieldValue.serverTimestamp(),
         'generatedBy': 'system',
