@@ -235,7 +235,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           categoryOverdue: categoryOverdue,
         );
         fileBytes = utf8.encode(csv);
-        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.csv';
       } else {
         fileBytes = await _buildPdfBytes(
           totalCases: totalCases,
