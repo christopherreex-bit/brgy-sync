@@ -188,7 +188,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
   }
 
   Future<void> _generateReport() async {
-    setState(() => _generating = true);
+    setState(() => _isGenerating = true);
     try {
       Query query = FirebaseFirestore.instance.collection('cases');
       if (_periodFrom != null) {
@@ -266,7 +266,7 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _generating = false);
+      if (mounted) setState(() => _isGenerating = false);
     }
   }
 
