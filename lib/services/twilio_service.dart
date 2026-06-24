@@ -12,9 +12,6 @@ import 'package:http/http.dart' as http;
 /// Twilio credentials injected at build time via --dart-define:
 ///   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM
 ///
-/// For demo/mock mode, set USE_MOCK_SMS=true via --dart-define
-/// and SMS will be printed to console instead of sending.
-
 class TwilioService {
   /// Fallback number where all seed-data SMS is routed.
   static const String fallbackNumber = '+639397193163';
@@ -23,15 +20,13 @@ class TwilioService {
   final String? _twilioSid;
   final String? _twilioToken;
   final String? _twilioFrom;
-  final bool _mockMode;
 
   TwilioService()
       : _mySmsGateKey = const String.fromEnvironment('MYSMSGATE_API_KEY'),
         _easySendKey = const String.fromEnvironment('EASYSENDSMS_API_KEY'),
         _twilioSid = const String.fromEnvironment('TWILIO_ACCOUNT_SID'),
         _twilioToken = const String.fromEnvironment('TWILIO_AUTH_TOKEN'),
-        _twilioFrom = const String.fromEnvironment('TWILIO_FROM'),
-        _mockMode = const String.fromEnvironment('USE_MOCK_SMS') == 'true';
+        _twilioFrom = const String.fromEnvironment('TWILIO_FROM');
 
   /// Converts a Philippine mobile (09XXXXXXXXX) to +63 format.
   String formatPhoneNumber(String number) {
@@ -46,10 +41,6 @@ class TwilioService {
   /// Returns null on success, error message on failure.
   Future<String?> sendSms(String toNumber, String message) async {
     final to = formatPhoneNumber(toNumber);
-    if (_mockMode) {
-      print('[MOCK SMS] To: $to | Message: $message');
-      return null;
-    }
 
     // ── Primary: MySMSGate (Android SMS Gateway) ──
     if (_mySmsGateKey != null && _mySmsGateKey!.isNotEmpty) {

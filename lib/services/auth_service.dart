@@ -13,7 +13,6 @@ class AuthService extends ChangeNotifier {
   UserModel? _currentUserModel;
   UserModel? get currentUserModel => _currentUserModel;
 
-  bool _mockMode = false;
   bool _ignoreNextAuthState = false;
 
   AuthService() {
@@ -26,9 +25,9 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (user != null && !_mockMode) {
+    if (user != null) {
       await _loadUserData(user.uid);
-    } else if (user == null && !_mockMode) {
+    } else {
       _currentUserModel = null;
     }
     notifyListeners();
@@ -44,33 +43,6 @@ class AuthService extends ChangeNotifier {
       // Firestore read failed (e.g. permission-denied, network error).
       // Don't crash — the auth state is still valid, just without role data.
       debugPrint('AuthService: failed to load user data for $uid: $e');
-    }
-  }
-
-  // ─── Mock login for demo (no Firebase needed) ─────────────────
-  void mockLogin(String role) {
-    _mockMode = true;
-    _currentUserModel = UserModel(
-      uid: 'mock_${role}_001',
-      name: _mockName(role),
-      mobile: '09123456789',
-      email: '$role@brgysync.demo',
-      role: role,
-      createdAt: DateTime.now(),
-    );
-    notifyListeners();
-  }
-
-  String _mockName(String role) {
-    switch (role) {
-      case 'captain':
-        return 'Juan Dela Cruz';
-      case 'officer':
-        return 'Maria Santos';
-      case 'staff':
-        return 'Pedro Reyes';
-      default:
-        return 'Ana Garcia';
     }
   }
 
@@ -139,13 +111,8 @@ class AuthService extends ChangeNotifier {
   Future<void>? get userDataLoaded => _userDataFuture;
 
   Future<void> logout() async {
-    if (_mockMode) {
-      _mockMode = false;
-      _currentUserModel = null;
-    } else {
-      await _auth.signOut();
-      _currentUserModel = null;
-    }
+    await _auth.signOut();
+    _currentUserModel = null;
     notifyListeners();
   }
 

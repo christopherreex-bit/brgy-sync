@@ -40,14 +40,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _mockLogin(String role) {
-    context.read<AuthService>().mockLogin(role);
-    if (mounted) {
-      final target = role == 'resident' ? '/resident' : '/dashboard';
-      context.go(target);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,23 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(color: Colors.grey)),
                 const SizedBox(height: 32),
 
-                // ─── Demo Login Buttons ─────────────────────────
-                const Text('Demo Login (No Firebase required)',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kNavy)),
-                const SizedBox(height: 12),
-                _demoButton('Login as Barangay Captain', 'captain', Icons.admin_panel_settings),
-                const SizedBox(height: 8),
-                _demoButton('Login as Committee Officer', 'officer', Icons.person_outline),
-                const SizedBox(height: 8),
-                _demoButton('Login as Barangay Staff', 'staff', Icons.badge),
-                const SizedBox(height: 8),
-                _demoButton('Login as Resident', 'resident', Icons.home),
-
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 16),
-
-                // ─── Real Login Form ───────────────────────────
+                // ─── Login Form ─────────────────────────────────
                 if (_error != null)
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -140,22 +116,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _demoButton(String label, String role, IconData icon) {
-    return SizedBox(
-      width: double.infinity,
-      height: 44,
-      child: OutlinedButton.icon(
-        onPressed: () => _mockLogin(role),
-        icon: Icon(icon, size: 18, color: kNavy),
-        label: Text(label, style: const TextStyle(color: kNavy, fontSize: 13)),
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: kNavy),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );
