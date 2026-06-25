@@ -100,7 +100,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             .where('submissionTimestamp', isGreaterThan: Timestamp.fromDate(oneHourAgo))
             .count()
             .get();
-        if (recentCases.count >= 5) {
+        if ((recentCases.count ?? 0) >= 5) {
           _showError('Rate limit exceeded. You can submit up to 5 cases per hour.');
           return;
         }
