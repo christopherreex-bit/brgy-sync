@@ -47,6 +47,9 @@ app.*.map.json
 # Project docs (not part of Flutter source)
 plan/
 
+# Testing artifacts (reports, screenshots, etc.)
+testing/
+
 # Nested git repos from flutter create
 brgysync_app/
 
