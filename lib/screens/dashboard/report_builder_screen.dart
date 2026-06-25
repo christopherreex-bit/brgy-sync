@@ -301,10 +301,6 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
             content: Text('$_reportTypeLabel generated. View in Report Archive.'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'View Archive',
-              onPressed: () => context.go('/dashboard/report-archive'),
-            ),
           ),
         );
       }
