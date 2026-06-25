@@ -86,6 +86,28 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   }
 
   Future<void> _submit() async {
+    // Issue #3 fix: rate limiting — max 5 cases per resident per hour
+    final auth = context.read<AuthService>();
+    final user = auth.currentUserModel;
+    if (user != null) {
+      try {
+        final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
+        final recentCases = await FirebaseFirestore.instance
+            .collection('cases')
+            .where('residentId', isEqualTo: user.uid)
+            .where('submissionTimestamp', isGreaterThan: Timestamp.fromDate(oneHourAgo))
+            .count()
+            .get();
+        if (recentCases.count >= 5) {
+          _showError('Rate limit exceeded. You can submit up to 5 cases per hour.');
+          return;
+        }
+      } catch (e) {
+        // If rate limit check fails, allow submission (fail-open)
+        debugPrint('Rate limit check failed: $e');
+      }
+    }
+
     // Validate required fields
     for (final f in _fields) {
       if (!f.required) continue;

@@ -1,24 +1,55 @@
 import '../models/service_category.dart';
 
-/// Philippine public holidays 2026 (fixed dates only — excludes movable like Easter).
-/// For production, use a proper holiday API or a full list.
-const Set<String> kPhilippineHolidays2026 = {
-  '2026-01-01', // New Year's Day
-  '2026-02-25', // EDSA People Power Revolution
-  '2026-04-09', // Araw ng Kagitingan
-  '2026-04-16', // Maundy Thursday
-  '2026-04-17', // Good Friday
-  '2026-05-01', // Labor Day
-  '2026-06-12', // Independence Day
-  '2026-08-21', // Ninoy Aquino Day
-  '2026-08-31', // National Heroes Day (last Mon of Aug)
-  '2026-11-01', // All Saints' Day
-  '2026-11-30', // Bonifacio Day
-  '2026-12-08', // Immaculate Conception
-  '2026-12-25', // Christmas Day
-  '2026-12-30', // Rizal Day
-  '2026-12-31', // Last Day of the Year
-};
+/// Philippine public holidays for a given year.
+/// Covers fixed-date national holidays. Movable holidays (Easter, Eid) are not included.
+/// For production, consider using a proper holiday API.
+Set<String> _philippineHolidaysForYear(int year) {
+  return {
+    '$year-01-01', // New Year's Day
+    '$year-02-25', // EDSA People Power Revolution
+    '$year-04-09', // Araw ng Kagitingan
+    '$year-05-01', // Labor Day
+    '$year-06-12', // Independence Day
+    '$year-08-21', // Ninoy Aquino Day
+    '$year-11-01', // All Saints' Day
+    '$year-11-30', // Bonifacio Day
+    '$year-12-08', // Immaculate Conception
+    '$year-12-25', // Christmas Day
+    '$year-12-30', // Rizal Day
+    '$year-12-31', // Last Day of the Year
+    // Movable: Maundy Thursday & Good Friday (Easter-based) — approximate for year
+    ..._easterHolidays(year),
+  };
+}
+
+/// Compute Maundy Thursday and Good Friday for a given year.
+/// Uses the Anonymous Gregorian algorithm for Easter calculation.
+List<String> _easterHolidays(int year) {
+  final a = year % 19;
+  final b = year ~/ 100;
+  final c = year % 100;
+  final d = b ~/ 4;
+  final e = b % 4;
+  final f = (b + 8) ~/ 25;
+  final g = (b - f + 1) ~/ 3;
+  final h = (19 * a + b - d - g + 15) % 30;
+  final i = c ~/ 4;
+  final k = c % 4;
+  final l = (32 + 2 * e + 2 * i - h - k) % 7;
+  final m = (a + 11 * h + 22 * l) ~/ 451;
+  final month = (h + l - 7 * m + 114) ~/ 31; // 3=March, 4=April
+  final day = ((h + l - 7 * m + 114) % 31) + 1;
+  final easter = DateTime(year, month, day);
+  final maundyThursday = easter.subtract(const Duration(days: 3));
+  final goodFriday = easter.subtract(const Duration(days: 2));
+  return [
+    '${maundyThursday.year}-${maundyThursday.month.toString().padLeft(2, '0')}-${maundyThursday.day.toString().padLeft(2, '0')}',
+    '${goodFriday.year}-${goodFriday.month.toString().padLeft(2, '0')}-${goodFriday.day.toString().padLeft(2, '0')}',
+  ];
+}
+
+/// Returns the set of holiday date strings for the current year.
+Set<String> get currentHolidays => _philippineHolidaysForYear(DateTime.now().year);
 
 /// Compute the SLA deadline from a submission timestamp.
 DateTime computeDeadline(DateTime submitted, String category, String subType) {
@@ -32,6 +63,7 @@ DateTime computeDeadline(DateTime submitted, String category, String subType) {
   }
 
   // Working days: Mon–Fri, skip holidays
+  final holidays = _philippineHolidaysForYear(submitted.year);
   DateTime current = submitted;
   int daysAdded = 0;
   while (daysAdded < value) {
@@ -39,7 +71,7 @@ DateTime computeDeadline(DateTime submitted, String category, String subType) {
     final dow = current.weekday;
     if (dow == DateTime.saturday || dow == DateTime.sunday) continue;
     final key = '${current.year}-${current.month.toString().padLeft(2, '0')}-${current.day.toString().padLeft(2, '0')}';
-    if (kPhilippineHolidays2026.contains(key)) continue;
+    if (holidays.contains(key)) continue;
     daysAdded++;
   }
   return current;

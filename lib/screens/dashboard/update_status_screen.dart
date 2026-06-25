@@ -164,14 +164,16 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         'smsBody': _buildSmsPreview(currentStatus, _newStatus, refNumber, residentMobile),
       });
 
-      // If released with assistance amount, deduct from budget
+      // If released with assistance amount, deduct from budget (atomic transaction)
       if (_newStatus == 'released' && caseData['assistanceAmount'] != null && caseData['budgetProgramId'] != null) {
         final programRef = db.collection('budgetPrograms').doc(caseData['budgetProgramId']);
-        final programDoc = await programRef.get();
-        if (programDoc.exists) {
+        final amount = (caseData['assistanceAmount'] as num).toDouble();
+
+        await db.runTransaction((transaction) async {
+          final programDoc = await transaction.get(programRef);
+          if (!programDoc.exists) return;
           final pData = programDoc.data()!;
           final utilized = (pData['utilized'] as num?)?.toDouble() ?? 0;
-          final amount = (caseData['assistanceAmount'] as num).toDouble();
           final allocated = (pData['allocated'] as num?)?.toDouble() ?? 0;
           final newUtilized = utilized + amount;
           final threshold = (pData['thresholdPercent'] as num?)?.toDouble() ?? 10;
@@ -182,15 +184,16 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           } else if (allocated - newUtilized <= thresholdAmount) {
             budgetStatus = 'low';
           }
-          await programRef.update({
+          transaction.update(programRef, {
             'utilized': newUtilized,
             'remaining': allocated - newUtilized,
             'status': budgetStatus,
             'lastUpdated': FieldValue.serverTimestamp(),
           });
 
-          // Record transaction
-          await db.collection('budgetTransactions').add({
+          // Record transaction inside same transaction for atomicity
+          final txRef = db.collection('budgetTransactions').doc();
+          transaction.set(txRef, {
             'programId': caseData['budgetProgramId'],
             'caseId': widget.caseId,
             'amount': amount,
@@ -198,7 +201,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
             'approvedBy': user?.uid ?? '',
             'timestamp': FieldValue.serverTimestamp(),
           });
-        }
+        });
       }
 
       if (mounted) {

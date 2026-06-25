@@ -20,7 +20,9 @@ service cloud.firestore {
     // ─── Cases ───────────────────────────────────────────────────
     match /cases/{caseId} {
       allow read: if request.auth.uid == resource.data.residentId || isStaff();
-      allow create: if request.auth != null;
+      // Issue #1 fix: residents can only create cases for themselves
+      allow create: if request.auth != null
+                    && request.resource.data.residentId == request.auth.uid;
       allow update: if isStaff();
 
       // ─── Action Log (subcollection) ────────────────────────────
