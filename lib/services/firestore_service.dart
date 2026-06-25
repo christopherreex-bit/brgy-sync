@@ -28,10 +28,13 @@ class FirestoreService {
 
     int nextNum = 1;
     if (snapshot != null && snapshot.docs.isNotEmpty) {
-      final lastRef = snapshot.docs.first.data()['referenceNumber'] as String;
-      final parts = lastRef.split('-');
-      final lastPart = parts.last;
-      nextNum = (int.tryParse(lastPart) ?? 0) + 1;
+      final data = snapshot.docs.first.data() as Map<String, dynamic>?;
+      final lastRef = data?['referenceNumber'] as String? ?? '';
+      if (lastRef.isNotEmpty) {
+        final parts = lastRef.split('-');
+        final lastPart = parts.last;
+        nextNum = (int.tryParse(lastPart) ?? 0) + 1;
+      }
     }
 
     final refNumber = 'BRGY-$year-${nextNum.toString().padLeft(5, '0')}';
