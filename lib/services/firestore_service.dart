@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/case_model.dart';
 
 class FirestoreService {
@@ -7,16 +8,26 @@ class FirestoreService {
   // ─── Cases ────────────────────────────────────────────────────
   Future<String> createCase(CaseModel caseData) async {
     final year = DateTime.now().year;
-    final snapshot = await _db
-        .collection('cases')
-        .where('referenceNumber', isGreaterThanOrEqualTo: 'BRGY-$year-')
-        .where('referenceNumber', isLessThan: 'BRGY-${year + 1}-')
-        .orderBy('referenceNumber', descending: true)
-        .limit(1)
-        .get();
+    // Query only the resident's own cases for ref# sequencing.
+    // Residents cannot read other residents' cases (Firestore read rule),
+    // so we filter by residentId to satisfy the rule.
+    QuerySnapshot? snapshot;
+    try {
+      snapshot = await _db
+          .collection('cases')
+          .where('residentId', isEqualTo: caseData.residentId)
+          .where('referenceNumber', isGreaterThanOrEqualTo: 'BRGY-$year-')
+          .where('referenceNumber', isLessThan: 'BRGY-${year + 1}-')
+          .orderBy('referenceNumber', descending: true)
+          .limit(1)
+          .get();
+    } catch (e) {
+      // Resident may not have any prior cases yet — fall back to #1.
+      debugPrint('FirestoreService: ref# query failed: $e');
+    }
 
     int nextNum = 1;
-    if (snapshot.docs.isNotEmpty) {
+    if (snapshot != null && snapshot.docs.isNotEmpty) {
       final lastRef = snapshot.docs.first.data()['referenceNumber'] as String;
       final parts = lastRef.split('-');
       final lastPart = parts.last;

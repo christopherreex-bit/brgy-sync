@@ -17,7 +17,9 @@ class ExportService {
     String? rawContent,
   }) {
     final content = rawContent ?? _buildCsv(headers, rows);
-    final bytes = utf8.encode(content);
+    // Prepend UTF-8 BOM so Excel recognizes encoding (fixes mojibake for —, ₱, etc.)
+    const bom = [0xEF, 0xBB, 0xBF];
+    final bytes = [...bom, ...utf8.encode(content)];
     _downloadBytes(bytes, filename, 'text/csv');
   }
 
