@@ -17,15 +17,56 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String? _error;
 
+  /// Maps raw Firebase/auth error strings to friendly, user-facing messages.
+  /// Falls back to the original string when nothing specific matches.
+  String _friendlyError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('user-not-found') ||
+        lower.contains('wrong-password') ||
+        lower.contains('invalid-credential') ||
+        lower.contains('invalid login')) {
+      return 'Wrong email or password. Please try again.';
+    }
+    if (lower.contains('email is badly formatted') ||
+        lower.contains('invalid email') ||
+        lower.contains('badly formatted')) {
+      return 'Please enter a valid email address.';
+    }
+    if (lower.contains('too-many-requests')) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
+    if (lower.contains('network') || lower.contains('request-failed')) {
+      return 'Network error. Check your connection and try again.';
+    }
+    if (lower.contains('user-disabled')) {
+      return 'This account has been disabled. Contact the barangay office.';
+    }
+    return raw;
+  }
+
   Future<void> _login() async {
+    final email = _emailCtrl.text.trim();
+    final password = _passCtrl.text;
+
+    // Client-side validation before hitting Firebase.
+    if (email.isEmpty && password.isEmpty) {
+      setState(() { _error = 'Please enter your email and password.'; });
+      return;
+    }
+    if (email.isEmpty) {
+      setState(() { _error = 'Please enter your email.'; });
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() { _error = 'Please enter your password.'; });
+      return;
+    }
+
     setState(() { _loading = true; _error = null; });
     final auth = context.read<AuthService>();
-    final result = await auth.login(
-      email: _emailCtrl.text.trim(),
-      password: _passCtrl.text,
-    );
+    final result = await auth.login(email: email, password: password);
     if (mounted) {
-      setState(() { _loading = false; _error = result; });
+      setState(() { _loading = false; _error = result == null ? null : _friendlyError(result); });
       if (result == null) {
         // Wait for Firestore user data to load, then route by role
         await auth.userDataLoaded;

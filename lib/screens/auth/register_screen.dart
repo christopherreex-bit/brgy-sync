@@ -34,6 +34,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
     if (mounted) {
       setState(() { _loading = false; _error = result; });
+      if (result == null) {
+        // Account created and the new resident is signed in. Confirm success,
+        // then route to the resident portal. (Do NOT navigate to /login — the
+        // router redirect would bounce an authenticated resident straight back
+        // here, so we go directly to /resident instead.)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully! Welcome.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        context.go('/resident');
+      }
     }
   }
 
