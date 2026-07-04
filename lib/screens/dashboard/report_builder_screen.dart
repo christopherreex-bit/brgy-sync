@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../../services/export_service.dart';
 import '../../utils/constants.dart';
 
 class ReportBuilderScreen extends StatefulWidget {
@@ -41,10 +42,10 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Report Builder',
+          const Text('Report Generator',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
           const SizedBox(height: 4),
-          const Text('Auto-generate operational reports for DSWD, DILG, and Charter compliance.',
+          const Text('Generate operational reports for DSWD, DILG, and Charter compliance.',
               style: TextStyle(color: Colors.grey, fontSize: 13)),
           const SizedBox(height: 16),
 
@@ -294,11 +295,14 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
         'pending': pending,
       });
 
+      // Auto-download the generated file
+      ExportService.downloadBytes(bytes: fileBytes, filename: fileName);
+
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('$_reportTypeLabel generated. View in Report Archive.'),
+            content: Text('$_reportTypeLabel generated and downloaded.'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
           ),

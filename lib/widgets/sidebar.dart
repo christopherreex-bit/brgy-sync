@@ -116,8 +116,7 @@ class _SidebarState extends State<Sidebar> {
                         _sectionHeader('ANALYTICS & REPORTING'),
                         _navItem(context, Icons.dashboard, 'Analytics Dashboard', '/dashboard/analytics', currentLocation),
                         _navItem(context, Icons.trending_up, 'Service Demand', '/dashboard/service-demand', currentLocation),
-                        _navItem(context, Icons.description, 'Report Builder', '/dashboard/report-builder', currentLocation),
-                        _navItem(context, Icons.archive, 'Report Archive', '/dashboard/report-archive', currentLocation),
+                        _navItem(context, Icons.description, 'Report Generator', '/dashboard/report-builder', currentLocation),
                       ],
                       if (user.isCaptain) ...[
                         _sectionHeader('ADMINISTRATION'),

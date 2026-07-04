@@ -125,7 +125,7 @@ class ProgramDetailScreen extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Case: ${t['caseId'] ?? 'N/A'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                  Text('Case Number: ${t['caseId'] ?? 'N/A'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                   Text(dateStr, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
                                 ],
                               ),
