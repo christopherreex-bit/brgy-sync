@@ -43,10 +43,14 @@ class _TrackRequestScreenState extends State<TrackRequestScreen> {
       final db = FirebaseFirestore.instance;
       List<QueryDocumentSnapshot> results;
 
-      // Try reference number first (exact match)
+      // Try reference number first (exact match) + filter by residentId for security
       if (query.toUpperCase().startsWith('BRGY-')) {
+        if (currentUserId == null) {
+          throw Exception('Not logged in');
+        }
         final snap = await db
             .collection('cases')
+            .where('residentId', isEqualTo: currentUserId)
             .where('referenceNumber', isEqualTo: query.toUpperCase())
             .get();
         results = snap.docs;

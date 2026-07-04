@@ -187,7 +187,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
       initialDateRange: _selectedPeriod != null && _selectedPeriod!.startsWith('FY')
           ? null
           : DateTimeRange(
@@ -197,8 +197,19 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     );
     if (picked != null && mounted) {
       final customPeriod = '${picked.start.year}-${picked.start.month.toString().padLeft(2, '0')} to ${picked.end.year}-${picked.end.month.toString().padLeft(2, '0')}';
-      setState(() => _selectedPeriod = customPeriod);
+      setState(() {
+        _selectedPeriod = customPeriod;
+      });
       _loadAllocationForPeriod(customPeriod);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Custom period set: $customPeriod'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
