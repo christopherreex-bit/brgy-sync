@@ -36,6 +36,18 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
     'Ad Hoc / Special Program',
   ];
 
+  DateTimeRange? _getMonthRange() {
+    if (_selectedMonth == null) return null;
+    final monthIndex = _months.indexOf(_selectedMonth!);
+    if (monthIndex == -1) return null;
+    final now = DateTime.now();
+    final year = now.year;
+    return DateTimeRange(
+      start: DateTime(year, monthIndex + 1, 1),
+      end: DateTime(year, monthIndex + 2, 0, 23, 59, 59),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentMonth = _months[DateTime.now().month - 1];
@@ -87,10 +99,18 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
 
           // Summary KPIs (from SLA data)
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('cases')
-                .where('status', whereIn: ['released', 'rejected'])
-                .snapshots(),
+            stream: () {
+              Query query = FirebaseFirestore.instance
+                  .collection('cases')
+                  .where('status', whereIn: ['released', 'rejected']);
+              final range = _getMonthRange();
+              if (range != null) {
+                query = query
+                    .where('submissionTimestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
+                    .where('submissionTimestamp', isLessThanOrEqualTo: Timestamp.fromDate(range.end));
+              }
+              return query.snapshots();
+            }(),
             builder: (context, snapshot) {
               final docs = snapshot.data?.docs ?? [];
               _totalReceived = 0;
@@ -103,6 +123,11 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                 final data = doc.data() as Map<String, dynamic>;
                 final cat = data['serviceCategory'] ?? 'unknown';
                 final slaStatus = data['slaStatus'] ?? 'on_time';
+
+                // Apply category filter
+                if (_selectedCategory != null && _selectedCategory! != 'All Categories' && cat != _selectedCategory) {
+                  continue;
+                }
 
                 _totalReceived++;
                 if (slaStatus == 'on_time') _completedOnTime++;

@@ -13,10 +13,41 @@ class ExpenditureSummaryScreen extends StatefulWidget {
 class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
   String _selectedPeriod = 'All Periods';
   String _selectedCategory = 'All Categories';
+  List<String> _availablePeriods = ['All Periods'];
+  bool _loadingPeriods = true;
   List<Map<String, dynamic>> _programData = [];
   double _totalAllocated = 0;
   double _totalUtilized = 0;
   double _totalRemaining = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvailablePeriods();
+  }
+
+  Future<void> _loadAvailablePeriods() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('budgetPrograms')
+          .get();
+      final periods = snap.docs
+          .map((d) => d.data()['fiscalPeriod'] as String?)
+          .where((p) => p != null && p.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList()
+        ..sort((a, b) => b.compareTo(a)); // newest first
+      if (mounted) {
+        setState(() {
+          _availablePeriods = ['All Periods', ...periods];
+          _loadingPeriods = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingPeriods = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,9 +74,16 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                     border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   ),
-                  items: ['All Periods', 'FY 2026', 'FY 2025']
-                      .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                      .toList(),
+                  items: _loadingPeriods
+                      ? [
+                          const DropdownMenuItem(
+                            value: 'All Periods',
+                            child: Text('Loading...'),
+                          ),
+                        ]
+                      : _availablePeriods
+                          .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                          .toList(),
                   onChanged: (v) => setState(() => _selectedPeriod = v!),
                 ),
               ),
@@ -70,7 +108,12 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
 
           // Breakdown table
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('budgetPrograms').snapshots(),
+            stream: _selectedPeriod == 'All Periods'
+                ? FirebaseFirestore.instance.collection('budgetPrograms').snapshots()
+                : FirebaseFirestore.instance
+                    .collection('budgetPrograms')
+                    .where('fiscalPeriod', isEqualTo: _selectedPeriod)
+                    .snapshots(),
             builder: (context, snapshot) {
               final docs = snapshot.data?.docs ?? [];
               _totalAllocated = 0;

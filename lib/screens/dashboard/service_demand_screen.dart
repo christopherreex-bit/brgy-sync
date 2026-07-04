@@ -12,6 +12,29 @@ class ServiceDemandScreen extends StatefulWidget {
 class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
   String _filter = 'all';
 
+  DateTimeRange? _getDateRange() {
+    final now = DateTime.now();
+    switch (_filter) {
+      case 'month':
+        return DateTimeRange(
+          start: DateTime(now.year, now.month, 1),
+          end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
+        );
+      case '3months':
+        return DateTimeRange(
+          start: DateTime(now.year, now.month - 2, 1),
+          end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
+        );
+      case 'ytd':
+        return DateTimeRange(
+          start: DateTime(now.year, 1, 1),
+          end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
+        );
+      default:
+        return null; // All time
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -41,7 +64,15 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
           const SizedBox(height: 20),
 
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('cases').snapshots(),
+            stream: _getDateRange() == null
+                ? FirebaseFirestore.instance.collection('cases').snapshots()
+                : FirebaseFirestore.instance
+                    .collection('cases')
+                    .where('submissionTimestamp',
+                        isGreaterThanOrEqualTo: Timestamp.fromDate(_getDateRange()!.start))
+                    .where('submissionTimestamp',
+                        isLessThanOrEqualTo: Timestamp.fromDate(_getDateRange()!.end))
+                    .snapshots(),
             builder: (context, snapshot) {
               final docs = snapshot.data?.docs ?? [];
               final categoryStats = <String, Map<String, int>>{};

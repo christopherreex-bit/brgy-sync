@@ -42,6 +42,15 @@
       ]
     },
     {
+      "collectionGroup": "cases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "submissionTimestamp", "order": "DESCENDING" },
+        { "fieldPath": "serviceCategory", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "budgetTransactions",
       "queryScope": "COLLECTION",
       "fields": [
