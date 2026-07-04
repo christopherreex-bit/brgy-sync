@@ -39,6 +39,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   // BASS documents
   List<BassDocument>? _bassDocs;
 
+  // Field validation errors
+  final Map<String, String?> _fieldErrors = {};
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +64,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     _dropdownValues.clear();
     _radioValues.clear();
     _dateValues.clear();
+    _fieldErrors.clear();
     for (final f in _fields) {
       _controllers[f.key] = TextEditingController();
       if (f.type == FormFieldType.dropdown) _dropdownValues[f.key] = null;
@@ -68,14 +72,68 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       if (f.type == FormFieldType.date) _dateValues[f.key] = null;
     }
     // BASS doc checklist
-    if (_selectedCategoryId == 'bass') {
-      _bassDocs = kBassDocuments();
-    } else {
-      _bassDocs = null;
+      if (_selectedCategoryId == 'bass') {
+        _bassDocs = kBassDocuments();
+      } else {
+        _bassDocs = null;
+      }
     }
-  }
 
-  /// Called externally (from HomeScreen) to set the category.
+    /// Validate a single field and update error state
+    String? _validateField(FormFieldConfig f) {
+      String? textValue;
+      DateTime? dateValue;
+      String? dropdownValue;
+      String? radioValue;
+
+      switch (f.type) {
+        case FormFieldType.text:
+          case FormFieldType.email:
+        case FormFieldType.number:
+        case FormFieldType.phone:
+        case FormFieldType.textarea:
+        case FormFieldType.email:
+          textValue = _controllers[f.key]?.text;
+          break;
+        case FormFieldType.dropdown:
+          dropdownValue = _dropdownValues[f.key];
+          break;
+        case FormFieldType.radio:
+          radioValue = _radioValues[f.key];
+          break;
+        case FormFieldType.date:
+          dateValue = _dateValues[f.key];
+          break;
+      }
+
+      final error = validateField(f, textValue, dateValue, dropdownValue, radioValue);
+      setState(() {
+        _fieldErrors[f.key] = error;
+      });
+      return error;
+    }
+
+    /// Validate all fields
+    bool _validateAllFields() {
+      bool isValid = true;
+      for (final f in _fields) {
+        if (f.required) {
+          final error = _validateField(f);
+          if (error != null) isValid = false;
+        }
+      }
+      // Validate BASS documents
+      if (_bassDocs != null) {
+        final missingRequired = _bassDocs!.where((d) => d.required && !d.uploaded).toList();
+        if (missingRequired.isNotEmpty) {
+          _showError('Please upload all required documents: ${missingRequired.map((d) => d.name).join(', ')}');
+          return false;
+        }
+      }
+      return isValid;
+    }
+
+    /// Called externally (from HomeScreen) to set the category.
   void setCategory(String categoryId, {String? subType}) {
     setState(() {
       _selectedCategoryId = categoryId;
@@ -88,63 +146,34 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   }
 
   Future<void> _submit() async {
-    // Issue #3 fix: rate limiting — max 5 cases per resident per hour
-    final auth = context.read<AuthService>();
-    final user = auth.currentUserModel;
-    if (user != null) {
-      try {
-        final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
-        final recentCases = await FirebaseFirestore.instance
-            .collection('cases')
-            .where('residentId', isEqualTo: user.uid)
-            .where('submissionTimestamp', isGreaterThan: Timestamp.fromDate(oneHourAgo))
-            .count()
-            .get();
-        if ((recentCases.count ?? 0) >= 5) {
-          _showError('Rate limit exceeded. You can submit up to 5 cases per hour.');
-          return;
+      // Issue #3 fix: rate limiting — max 5 cases per resident per hour
+      final auth = context.read<AuthService>();
+      final user = auth.currentUserModel;
+      if (user != null) {
+        try {
+          final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
+          final recentCases = await FirebaseFirestore.instance
+              .collection('cases')
+              .where('residentId', isEqualTo: user.uid)
+              .where('submissionTimestamp', isGreaterThan: Timestamp.fromDate(oneHourAgo))
+              .count()
+              .get();
+          if ((recentCases.count ?? 0) >= 5) {
+            _showError('Rate limit exceeded. You can submit up to 5 cases per hour.');
+            return;
+          }
+        } catch (e) {
+          // If rate limit check fails, allow submission (fail-open)
+          debugPrint('Rate limit check failed: $e');
         }
-      } catch (e) {
-        // If rate limit check fails, allow submission (fail-open)
-        debugPrint('Rate limit check failed: $e');
       }
-    }
 
-    // Validate required fields
-    for (final f in _fields) {
-      if (!f.required) continue;
-      switch (f.type) {
-        case FormFieldType.text:
-        case FormFieldType.number:
-        case FormFieldType.phone:
-        case FormFieldType.textarea:
-          if (_controllers[f.key]?.text.trim().isEmpty ?? true) {
-            _showError('${f.label} is required.');
-            return;
-          }
-          break;
-        case FormFieldType.dropdown:
-          if (_dropdownValues[f.key] == null) {
-            _showError('${f.label} is required.');
-            return;
-          }
-          break;
-        case FormFieldType.radio:
-          if (_radioValues[f.key] == null) {
-            _showError('${f.label} is required.');
-            return;
-          }
-          break;
-        case FormFieldType.date:
-          if (_dateValues[f.key] == null) {
-            _showError('${f.label} is required.');
-            return;
-          }
-          break;
+      // Validate all fields using new validation
+      if (!_validateAllFields()) {
+        return;
       }
-    }
 
-    setState(() => _loading = true);
+      setState(() => _loading = true);
 
     try {
       final auth = context.read<AuthService>();
@@ -160,6 +189,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       for (final f in _fields) {
         switch (f.type) {
           case FormFieldType.text:
+          case FormFieldType.email:
           case FormFieldType.number:
           case FormFieldType.phone:
           case FormFieldType.textarea:
@@ -324,11 +354,20 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   Widget _catCard(ServiceCategory cat, {bool isWide = false}) {
     return InkWell(
       onTap: () {
-        setState(() {
-          _selectedCategoryId = cat.id;
-          _selectedSubType = cat.subTypes.isNotEmpty ? cat.subTypes.first : null;
-          _loadForm();
-        });
+        if (cat.subTypes.length == 1) {
+          // Only one sub-type, go directly to form
+          setState(() {
+            _selectedCategoryId = cat.id;
+            _selectedSubType = cat.subTypes.first;
+            _loadForm();
+          });
+        } else {
+          // Multiple sub-types, show sub-type picker
+          setState(() {
+            _selectedCategoryId = cat.id;
+            _selectedSubType = null;
+          });
+        }
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -535,19 +574,25 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     Widget field;
     switch (f.type) {
       case FormFieldType.text:
+          case FormFieldType.email:
       case FormFieldType.number:
       case FormFieldType.phone:
+      case FormFieldType.email:
         field = TextField(
           controller: _controllers[f.key],
           keyboardType: f.type == FormFieldType.number
               ? TextInputType.number
               : f.type == FormFieldType.phone
                   ? TextInputType.phone
-                  : TextInputType.text,
+                  : f.type == FormFieldType.email
+                      ? TextInputType.emailAddress
+                      : TextInputType.text,
+          onChanged: (_) => _validateField(f),
           decoration: InputDecoration(
             labelText: f.label + (f.required ? ' *' : ''),
             hintText: f.hint,
             border: const OutlineInputBorder(),
+            errorText: _fieldErrors[f.key],
           ),
         );
         break;
@@ -555,10 +600,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         field = TextField(
           controller: _controllers[f.key],
           maxLines: 3,
+          onChanged: (_) => _validateField(f),
           decoration: InputDecoration(
             labelText: f.label + (f.required ? ' *' : ''),
             hintText: f.hint,
             border: const OutlineInputBorder(),
+            errorText: _fieldErrors[f.key],
           ),
         );
         break;
@@ -568,9 +615,13 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           decoration: InputDecoration(
             labelText: f.label + (f.required ? ' *' : ''),
             border: const OutlineInputBorder(),
+            errorText: _fieldErrors[f.key],
           ),
           items: (f.options ?? []).map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 14)))).toList(),
-          onChanged: (v) => setState(() => _dropdownValues[f.key] = v),
+          onChanged: (v) {
+            setState(() => _dropdownValues[f.key] = v);
+            _validateField(f);
+          },
         );
         break;
       case FormFieldType.radio:
@@ -587,12 +638,20 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                   Radio<String>(
                     value: o,
                     groupValue: _radioValues[f.key],
-                    onChanged: (v) => setState(() => _radioValues[f.key] = v),
+                    onChanged: (v) {
+                      setState(() => _radioValues[f.key] = v);
+                      _validateField(f);
+                    },
                   ),
                   Text(o, style: const TextStyle(fontSize: 13)),
                 ],
               )).toList(),
             ),
+            if (_fieldErrors[f.key] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(_fieldErrors[f.key]!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+              ),
           ],
         );
         break;
@@ -605,12 +664,16 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               firstDate: DateTime(1900),
               lastDate: DateTime.now(),
             );
-            if (picked != null) setState(() => _dateValues[f.key] = picked);
+            if (picked != null) {
+              setState(() => _dateValues[f.key] = picked);
+              _validateField(f);
+            }
           },
           child: InputDecorator(
             decoration: InputDecoration(
               labelText: f.label + (f.required ? ' *' : ''),
               border: const OutlineInputBorder(),
+              errorText: _fieldErrors[f.key],
             ),
             child: Text(
               _dateValues[f.key] != null

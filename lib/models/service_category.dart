@@ -131,7 +131,7 @@ const List<ServiceCategory> kServiceCategories = [
 ];
 
 // ─── Form Field Config ─────────────────────────────────────────────
-enum FormFieldType { text, number, date, dropdown, radio, textarea, phone }
+enum FormFieldType { text, number, date, dropdown, radio, textarea, phone, email }
 
 class FormFieldConfig {
   final String key;
@@ -140,6 +140,9 @@ class FormFieldConfig {
   final bool required;
   final List<String>? options; // for dropdown / radio
   final String? hint;
+  final String? validationPattern; // regex pattern for validation
+  final String? validationMessage; // custom error message
+  final int? minAge; // for date fields: minimum age in years
 
   const FormFieldConfig({
     required this.key,
@@ -148,6 +151,9 @@ class FormFieldConfig {
     this.required = false,
     this.options,
     this.hint,
+    this.validationPattern,
+    this.validationMessage,
+    this.minAge,
   });
 }
 
@@ -190,7 +196,7 @@ List<FormFieldConfig> _documentFields(String subType) {
         FormFieldConfig(key: 'middleInitial', label: 'Middle Initial', type: FormFieldType.text),
         FormFieldConfig(key: 'address', label: 'Address', type: FormFieldType.text, required: true),
         FormFieldConfig(key: 'birthplace', label: 'Birthplace', type: FormFieldType.text, required: true),
-        FormFieldConfig(key: 'birthday', label: 'Birthday', type: FormFieldType.date, required: true),
+        FormFieldConfig(key: 'birthday', label: 'Birthday', type: FormFieldType.date, required: true, minAge: 15),
         FormFieldConfig(key: 'gender', label: 'Gender', type: FormFieldType.radio, required: true, options: ['Male', 'Female']),
         FormFieldConfig(key: 'precinct', label: "Voter's Precinct No.", type: FormFieldType.text),
         FormFieldConfig(key: 'contact', label: 'Contact No.', type: FormFieldType.phone, required: true, hint: '09XXXXXXXXX'),
@@ -206,7 +212,7 @@ List<FormFieldConfig> _documentFields(String subType) {
         FormFieldConfig(key: 'nickname', label: 'Nickname', type: FormFieldType.text),
         FormFieldConfig(key: 'address', label: 'Address / Tirahan', type: FormFieldType.text, required: true),
         FormFieldConfig(key: 'gender', label: 'Gender / Babae o Lalaki', type: FormFieldType.radio, required: true, options: ['Male', 'Female']),
-        FormFieldConfig(key: 'birthday', label: 'Birthday / Kaarawan', type: FormFieldType.date, required: true),
+        FormFieldConfig(key: 'birthday', label: 'Birthday / Kaarawan', type: FormFieldType.date, required: true, minAge: 18),
         FormFieldConfig(key: 'civilStatus', label: 'Civil Status', type: FormFieldType.dropdown, required: true, options: ['Single', 'Married', 'Widowed', 'Separated']),
         FormFieldConfig(key: 'yearsResidency', label: 'Years of Residency in Calzada', type: FormFieldType.number, required: true),
         FormFieldConfig(key: 'purpose', label: 'Purpose of Clearance / Saan Gagamitin ang Brgy. Clearance', type: FormFieldType.textarea, required: true),
@@ -242,7 +248,7 @@ List<FormFieldConfig> _beneficiaryFields(String subType) {
     FormFieldConfig(key: 'fullName', label: 'Full Name', type: FormFieldType.text, required: true),
     FormFieldConfig(key: 'address', label: 'Address', type: FormFieldType.text, required: true),
     FormFieldConfig(key: 'contact', label: 'Contact No.', type: FormFieldType.phone, required: true, hint: '09XXXXXXXXX'),
-    FormFieldConfig(key: 'birthday', label: 'Birthday', type: FormFieldType.date, required: true),
+    FormFieldConfig(key: 'birthday', label: 'Birthday', type: FormFieldType.date, required: true, minAge: 60),
     FormFieldConfig(key: 'gender', label: 'Gender', type: FormFieldType.radio, required: true, options: ['Male', 'Female']),
   ];
 }
@@ -307,3 +313,86 @@ List<BassDocument> kBassDocuments() => [
   BassDocument(name: "Picture of patient (Whole Body)", required: true),
   BassDocument(name: "House sketch (for medical cases)", required: false),
 ];
+
+// ─── Validation Helpers ───────────────────────────────────────────────
+/// Philippine mobile number pattern: 09XXXXXXXXX (11 digits starting with 09)
+const String kPhonePattern = r'^09\d{9}$';
+
+/// Email pattern
+const String kEmailPattern = r'^[^@\s]+@[^@\s]+\.[^@\s]+$';
+
+/// Validates a phone number against Philippine format
+bool validatePhone(String? value) {
+  if (value == null || value.trim().isEmpty) return false;
+  return RegExp(kPhonePattern).hasMatch(value.trim());
+}
+
+/// Validates an email address
+bool validateEmail(String? value) {
+  if (value == null || value.trim().isEmpty) return false;
+  return RegExp(kEmailPattern).hasMatch(value.trim());
+}
+
+/// Validates a numeric string
+bool validateNumber(String? value) {
+  if (value == null || value.trim().isEmpty) return false;
+  return double.tryParse(value.trim()) != null;
+}
+
+/// Validates a date meets minimum age requirement
+bool validateMinAge(DateTime? date, int minAge) {
+  if (date == null) return false;
+  final now = DateTime.now();
+  int age = now.year - date.year;
+  if (now.month < date.month || (now.month == date.month && now.day < date.day)) {
+    age--;
+  }
+  return age >= minAge;
+}
+
+/// Validates a field based on its config
+String? validateField(FormFieldConfig f, String? textValue, DateTime? dateValue, String? dropdownValue, String? radioValue) {
+  if (!f.required && (textValue?.trim().isEmpty ?? true) && dateValue == null && dropdownValue == null && radioValue == null) {
+    return null; // Optional field, empty is OK
+  }
+  if (f.required && (textValue?.trim().isEmpty ?? true) && dateValue == null && dropdownValue == null && radioValue == null) {
+    return '${f.label} is required.';
+  }
+
+  switch (f.type) {
+    case FormFieldType.phone:
+      if (!validatePhone(textValue)) {
+        return f.validationMessage ?? 'Invalid phone number. Use format: 09XXXXXXXXX';
+      }
+      break;
+    case FormFieldType.email:
+      if (!validateEmail(textValue)) {
+        return f.validationMessage ?? 'Invalid email address.';
+      }
+      break;
+    case FormFieldType.number:
+      if (!validateNumber(textValue)) {
+        return f.validationMessage ?? 'Must be a valid number.';
+      }
+      break;
+    case FormFieldType.date:
+      if (f.minAge != null && dateValue != null) {
+        if (!validateMinAge(dateValue, f.minAge!)) {
+          return f.validationMessage ?? 'Must be at least ${f.minAge} years old.';
+        }
+      }
+      break;
+    default:
+      // For text, textarea, dropdown, radio - just check required
+      break;
+  }
+
+  // Custom regex pattern validation
+  if (f.validationPattern != null && textValue != null && textValue.trim().isNotEmpty) {
+    if (!RegExp(f.validationPattern!).hasMatch(textValue.trim())) {
+      return f.validationMessage ?? 'Invalid format.';
+    }
+  }
+
+  return null;
+}
