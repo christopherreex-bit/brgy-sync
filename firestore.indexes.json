@@ -33,6 +33,15 @@
       ]
     },
     {
+      "collectionGroup": "cases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "residentId", "order": "ASCENDING" },
+        { "fieldPath": "residentMobile", "order": "ASCENDING" },
+        { "fieldPath": "submissionTimestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "budgetTransactions",
       "queryScope": "COLLECTION",
       "fields": [

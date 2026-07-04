@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
+import '../../services/auth_service.dart';
 
 class TrackRequestScreen extends StatefulWidget {
   const TrackRequestScreen({super.key});
@@ -26,6 +28,10 @@ class _TrackRequestScreenState extends State<TrackRequestScreen> {
       return;
     }
 
+    final auth = context.read<AuthService>();
+    final currentUser = auth.currentUserModel;
+    final currentUserId = currentUser?.uid;
+
     setState(() {
       _loading = true;
       _searched = true;
@@ -45,9 +51,13 @@ class _TrackRequestScreenState extends State<TrackRequestScreen> {
             .get();
         results = snap.docs;
       } else {
-        // Search by mobile number
+        // Search by mobile number + filter by current user's residentId for security
+        if (currentUserId == null) {
+          throw Exception('Not logged in');
+        }
         final snap = await db
             .collection('cases')
+            .where('residentId', isEqualTo: currentUserId)
             .where('residentMobile', isEqualTo: query)
             .orderBy('submissionTimestamp', descending: true)
             .limit(10)

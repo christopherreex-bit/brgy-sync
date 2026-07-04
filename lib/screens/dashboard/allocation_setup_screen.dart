@@ -13,6 +13,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
   final _periodCtrl = TextEditingController(text: 'FY ${DateTime.now().year}');
   final Map<String, TextEditingController> _amountControllers = {};
   bool _loading = false;
+  String? _selectedPeriod;
 
   final _defaultPrograms = const [
     'BASS – Medical Assistance',
@@ -27,9 +28,21 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedPeriod = 'FY ${DateTime.now().year}';
     for (final p in _defaultPrograms) {
       _amountControllers[p] = TextEditingController(text: '0');
     }
+    _loadAllocationForPeriod(_selectedPeriod!);
+  }
+
+  List<String> get _periodOptions {
+    final currentYear = DateTime.now().year;
+    return [
+      'FY ${currentYear - 1}',
+      'FY $currentYear',
+      'FY ${currentYear + 1}',
+      'Custom Range...',
+    ];
   }
 
   @override
@@ -64,13 +77,27 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
           ),
           const SizedBox(height: 20),
 
-          TextField(
-            controller: _periodCtrl,
+          DropdownButtonFormField<String>(
+            value: _selectedPeriod,
             decoration: const InputDecoration(
               labelText: 'Fiscal Period',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.calendar_today),
             ),
+            items: _periodOptions.map((p) => DropdownMenuItem(
+              value: p,
+              child: Text(p),
+            )).toList(),
+            onChanged: (v) {
+              if (v != null) {
+                if (v == 'Custom Range...') {
+                  _pickCustomDateRange();
+                } else {
+                  setState(() => _selectedPeriod = v);
+                  _loadAllocationForPeriod(v);
+                }
+              }
+            },
           ),
           const SizedBox(height: 20),
 
@@ -128,6 +155,53 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     );
   }
 
+  Future<void> _loadAllocationForPeriod(String period) async {
+    setState(() => _loading = true);
+    try {
+      final db = FirebaseFirestore.instance;
+      final snap = await db
+          .collection('budgetPrograms')
+          .where('fiscalPeriod', isEqualTo: period)
+          .get();
+
+      for (final p in _defaultPrograms) {
+        _amountControllers[p]?.text = '0';
+      }
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final name = data['name'] as String?;
+        final allocated = (data['allocated'] as num?)?.toDouble() ?? 0;
+        if (name != null && _amountControllers.containsKey(name)) {
+          _amountControllers[name]!.text = allocated.toStringAsFixed(0);
+        }
+      }
+    } catch (e) {
+      debugPrint('Load allocation failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _pickCustomDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      initialDateRange: _selectedPeriod != null && _selectedPeriod!.startsWith('FY')
+          ? null
+          : DateTimeRange(
+              start: DateTime.now(),
+              end: DateTime.now().add(const Duration(days: 365)),
+            ),
+    );
+    if (picked != null && mounted) {
+      final customPeriod = '${picked.start.year}-${picked.start.month.toString().padLeft(2, '0')} to ${picked.end.year}-${picked.end.month.toString().padLeft(2, '0')}';
+      setState(() => _selectedPeriod = customPeriod);
+      _loadAllocationForPeriod(customPeriod);
+    }
+  }
+
   double _computeTotal() {
     double total = 0;
     for (final c in _amountControllers.values) {
@@ -140,7 +214,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     setState(() => _loading = true);
     try {
       final db = FirebaseFirestore.instance;
-      final period = _periodCtrl.text.trim();
+      final period = _selectedPeriod!;
       final batch = db.batch();
 
       for (final entry in _amountControllers.entries) {
@@ -192,7 +266,6 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
 
   @override
   void dispose() {
-    _periodCtrl.dispose();
     for (final c in _amountControllers.values) {
       c.dispose();
     }

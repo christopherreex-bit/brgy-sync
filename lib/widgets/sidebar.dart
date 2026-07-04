@@ -157,7 +157,9 @@ class _SidebarState extends State<Sidebar> {
   }
 
   Widget _navItem(BuildContext context, IconData icon, String label, String route, String currentLocation) {
-    final isActive = currentLocation == route || currentLocation.startsWith('$route/');
+    final isActive = route == '/dashboard'
+        ? currentLocation == route
+        : currentLocation == route || currentLocation.startsWith('$route/');
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: BoxDecoration(
