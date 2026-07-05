@@ -52,6 +52,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
               'category': data['serviceCategory'] ?? '',
               'name': data['isConfidential'] == true ? 'Confidential' : (data['residentName'] ?? ''),
               'deadline': deadline,
+              'caseStatus': data['status'] ?? '',
             });
           }
         }
@@ -116,7 +117,27 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(c['ref'], style: const TextStyle(fontWeight: FontWeight.bold, color: kNavy, fontSize: 13)),
+                                    Row(
+                                      children: [
+                                        Text(c['ref'], style: const TextStyle(fontWeight: FontWeight.bold, color: kNavy, fontSize: 13)),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: (c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange).withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            (c['caseStatus'] as String).replaceAll('_', ' '),
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              color: c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                     const SizedBox(height: 2),
                                     Text('${c['name']} · Deadline: ${deadline.month}/${deadline.day}/${deadline.year}',
                                         style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),

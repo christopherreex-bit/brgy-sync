@@ -147,14 +147,15 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
           else overdue++;
 
           caseRows.add({
-            'id': doc.id,
-            'ref': data['referenceNumber'] ?? '',
-            'category': data['serviceCategory'] ?? '',
-            'name': data['isConfidential'] == true ? 'Confidential' : (data['residentName'] ?? ''),
-            'subType': data['serviceSubType'] ?? '',
-            'submitted': data['submissionTimestamp'],
-            'deadline': deadline,
-            'slaStatus': status,
+              'id': doc.id,
+              'ref': data['referenceNumber'] ?? '',
+              'category': data['serviceCategory'] ?? '',
+              'name': data['isConfidential'] == true ? 'Confidential' : (data['residentName'] ?? ''),
+              'subType': data['serviceSubType'] ?? '',
+              'submitted': data['submissionTimestamp'],
+              'deadline': deadline,
+              'slaStatus': status,
+              'caseStatus': data['status'] ?? '',
           });
         }
 
@@ -187,7 +188,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Alert banner
+                  // Alert banner
               if (overdue > 0)
                 Container(
                   width: double.infinity,
@@ -248,6 +249,22 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                                 decoration: BoxDecoration(color: kNavy.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                                 child: Text((c['category'] as String).toUpperCase(),
                                     style: const TextStyle(fontSize: 9, color: kNavy, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: (c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  (c['caseStatus'] as String).replaceAll('_', ' '),
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                               const Spacer(),
                               StatusBadge(status: c['slaStatus']),
