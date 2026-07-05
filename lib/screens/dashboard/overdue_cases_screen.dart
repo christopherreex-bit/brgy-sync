@@ -23,6 +23,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
     'Other',
   ];
   String? _selectedReason;
+  String? _selectedCaseRef;
 
   @override
   Widget build(BuildContext context) {
@@ -183,7 +184,16 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   value: c['id'] as String,
                   child: Text('${c['ref']} - ${c['name']}'),
                 )).toList(),
-                onChanged: (v) => setState(() => _selectedCaseId = v),
+                onChanged: (v) {
+                  final found = overdueCases.cast<Map<String, dynamic>>().firstWhere(
+                    (c) => c['id'] == v,
+                    orElse: () => <String, dynamic>{'ref': ''},
+                  );
+                  setState(() {
+                    _selectedCaseId = v;
+                    _selectedCaseRef = found['ref'] as String?;
+                  });
+                },
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -277,11 +287,11 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   onPressed: newStatus == null
                       ? null
                       : () async {
-                          Navigator.pop(dialogCtx);
-                          await _updateCaseStatus(c['id'], newStatus!, notes, currentUser);
-                        },
-                  style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
-                  child: const Text('Save'),
+                                                Navigator.pop(dialogCtx);
+                                                await _updateCaseStatus(c['id'], newStatus!, notes, currentUser, referenceNumber: c['ref']);
+                                              },
+                                        style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
+                                        child: const Text('Save'),
                 ),
               ],
             );
@@ -291,7 +301,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
     );
   }
 
-  Future<void> _updateCaseStatus(String caseId, String newStatus, String? notes, user) async {
+  Future<void> _updateCaseStatus(String caseId, String newStatus, String? notes, user, {String? referenceNumber}) async {
     try {
       final db = FirebaseFirestore.instance;
       final now = FieldValue.serverTimestamp();
@@ -302,6 +312,8 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
       });
 
       await db.collection('cases').doc(caseId).collection('actionLog').add({
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? '',
         'timestamp': now,
         'staffId': user?.uid ?? '',
         'staffName': user?.name ?? 'Unknown',
@@ -335,6 +347,8 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
           .doc(_selectedCaseId)
           .collection('actionLog')
           .add({
+        'caseId': _selectedCaseId,
+        'referenceNumber': _selectedCaseRef ?? '',
         'timestamp': FieldValue.serverTimestamp(),
         'staffId': '',
         'staffName': 'System',
@@ -350,7 +364,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
           const SnackBar(content: Text('Resolution note saved.'), backgroundColor: Colors.green),
         );
         _notesCtrl.clear();
-        setState(() { _selectedCaseId = null; _selectedReason = null; });
+        setState(() { _selectedCaseId = null; _selectedCaseRef = null; _selectedReason = null; });
       }
     } catch (e) {
       if (mounted) {

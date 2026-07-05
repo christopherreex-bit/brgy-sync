@@ -204,20 +204,14 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
     final db = FirebaseFirestore.instance;
     Query query = db.collectionGroup('actionLog').orderBy('timestamp', descending: true).limit(500);
 
-    // Note: Firestore collection group queries don't support multiple where clauses with different fields easily
-    // We'll fetch recent logs and filter in memory for search/date
     final snap = await query.get();
 
     final List<Map<String, dynamic>> allLogs = [];
     for (final logDoc in snap.docs) {
       final log = logDoc.data() as Map<String, dynamic>;
 
-      // Get case reference from parent document
-      final caseRef = logDoc.reference.parent.parent;
-      if (caseRef == null) continue;
-      final caseSnap = await caseRef.get();
-      final caseData = caseSnap.data() as Map<String, dynamic>?;
-      final caseRefNum = caseData?['referenceNumber'] ?? caseRef.id;
+      // Use stored case reference instead of fetching parent document
+      final caseRefNum = (log['referenceNumber'] as String?) ?? (log['caseId'] as String?) ?? '';
       log['caseRef'] = caseRefNum;
 
       // Date filter
@@ -242,13 +236,6 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
 
       allLogs.add(log);
     }
-
-    // Sort by timestamp descending
-    allLogs.sort((a, b) {
-      final ta = a['timestamp'] is Timestamp ? (a['timestamp'] as Timestamp).toDate() : DateTime(2000);
-      final tb = b['timestamp'] is Timestamp ? (b['timestamp'] as Timestamp).toDate() : DateTime(2000);
-      return tb.compareTo(ta);
-    });
 
     return allLogs;
   }

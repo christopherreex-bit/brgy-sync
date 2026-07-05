@@ -152,6 +152,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
 
       // Add action log
       await db.collection('cases').doc(widget.caseId).collection('actionLog').add({
+        'caseId': widget.caseId,
+        'referenceNumber': refNumber,
         'timestamp': FieldValue.serverTimestamp(),
         'staffId': user?.uid ?? '',
         'staffName': user?.name ?? 'Staff',

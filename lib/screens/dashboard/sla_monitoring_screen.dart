@@ -68,11 +68,11 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                   onPressed: newStatus == null
                       ? null
                       : () async {
-                          Navigator.pop(dialogCtx);
-                          await _updateCaseStatus(c['id'], newStatus!, notes, currentUser);
-                        },
-                  style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
-                  child: const Text('Save'),
+                                                Navigator.pop(dialogCtx);
+                                                await _updateCaseStatus(c['id'], newStatus!, notes, currentUser, referenceNumber: c['ref']);
+                                              },
+                                        style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
+                                        child: const Text('Save'),
                 ),
               ],
             );
@@ -82,7 +82,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     );
   }
 
-  Future<void> _updateCaseStatus(String caseId, String newStatus, String? notes, user) async {
+  Future<void> _updateCaseStatus(String caseId, String newStatus, String? notes, user, {String? referenceNumber}) async {
     try {
       final db = FirebaseFirestore.instance;
       final now = FieldValue.serverTimestamp();
@@ -93,6 +93,8 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
       });
 
       await db.collection('cases').doc(caseId).collection('actionLog').add({
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? '',
         'timestamp': now,
         'staffId': user?.uid ?? '',
         'staffName': user?.name ?? 'Unknown',
