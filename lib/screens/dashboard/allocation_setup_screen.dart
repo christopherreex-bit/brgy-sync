@@ -14,6 +14,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
   final Map<String, TextEditingController> _amountControllers = {};
   bool _loading = false;
   String? _selectedPeriod;
+  List<String> _savedPeriods = [];
 
   final _defaultPrograms = const [
     'BASS – Medical Assistance',
@@ -32,15 +33,34 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     for (final p in _defaultPrograms) {
       _amountControllers[p] = TextEditingController(text: '0');
     }
+    _loadSavedPeriods();
     _loadAllocationForPeriod(_selectedPeriod!);
+  }
+
+  Future<void> _loadSavedPeriods() async {
+    try {
+      final snap = await FirebaseFirestore.instance.collection('budgetPrograms').get();
+      final periods = <String>{};
+      for (final doc in snap.docs) {
+        final fp = doc.data()['fiscalPeriod'] as String?;
+        if (fp != null && !fp.startsWith('FY ')) periods.add(fp);
+      }
+      if (mounted) {
+        setState(() => _savedPeriods = periods.toList()..sort());
+      }
+    } catch (_) {}
   }
 
   List<String> get _periodOptions {
     final currentYear = DateTime.now().year;
-    return [
+    final fyOptions = [
       'FY ${currentYear - 1}',
       'FY $currentYear',
       'FY ${currentYear + 1}',
+    ];
+    return [
+      ...fyOptions,
+      ..._savedPeriods,
       'Custom Range...',
     ];
   }
@@ -257,6 +277,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
       }
 
       await batch.commit();
+      await _loadSavedPeriods();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Allocation saved.'), backgroundColor: Colors.green),
