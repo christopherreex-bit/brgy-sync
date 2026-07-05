@@ -83,13 +83,16 @@
       ]
     }
   ],
+  "fieldOverrides": [
     {
       "collectionGroup": "actionLog",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      "fieldPath": "timestamp",
+      "indexes": [
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
       ]
     }
-  ],
-  "fieldOverrides": []
+  ]
 }
