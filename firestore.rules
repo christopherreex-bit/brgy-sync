@@ -25,11 +25,13 @@ service cloud.firestore {
                     && request.resource.data.residentId == request.auth.uid;
       allow update: if isStaff();
 
-      // ─── Action Log (subcollection) ────────────────────────────
-      match /actionLog/{logId} {
-        allow read: if isStaff();
-        allow write: if isStaff();
-      }
+    }
+
+    // ─── Action Log — collection group access ───────────────────
+    // Top-level match required for collectionGroup('actionLog') queries
+    match /{path=**}/actionLog/{logId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     // ─── SLA Config ──────────────────────────────────────────────
