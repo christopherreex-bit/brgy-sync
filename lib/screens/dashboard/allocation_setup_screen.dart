@@ -236,26 +236,24 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
             .where('fiscalPeriod', isEqualTo: period)
             .get();
 
-        if (snap.docs.isNotEmpty) {
-          batch.update(snap.docs.first.reference, {
-            'allocated': amount,
-            'remaining': amount - ((snap.docs.first.data()['utilized'] as num?)?.toDouble() ?? 0),
-            'lastUpdated': FieldValue.serverTimestamp(),
-          });
-        } else {
-          final ref = db.collection('budgetPrograms').doc();
-          batch.set(ref, {
-            'name': entry.key,
-            'fiscalPeriod': period,
-            'allocated': amount,
-            'utilized': 0,
-            'remaining': amount,
-            'thresholdPercent': 10,
-            'thresholdAmount': amount * 0.1,
-            'status': 'healthy',
-            'lastUpdated': FieldValue.serverTimestamp(),
-          });
+        // Delete ALL existing docs for this program+period to prevent duplicates
+        for (final doc in snap.docs) {
+          batch.delete(doc.reference);
         }
+
+        // Create single canonical document
+        final ref = db.collection('budgetPrograms').doc();
+        batch.set(ref, {
+          'name': entry.key,
+          'fiscalPeriod': period,
+          'allocated': amount,
+          'utilized': 0,
+          'remaining': amount,
+          'thresholdPercent': 10,
+          'thresholdAmount': amount * 0.1,
+          'status': 'healthy',
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
       }
 
       await batch.commit();

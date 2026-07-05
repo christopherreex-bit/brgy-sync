@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
+import '../../services/auth_service.dart';
 
 class OverdueCasesScreen extends StatefulWidget {
   const OverdueCasesScreen({super.key});
@@ -94,34 +96,53 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                 ...overdueCases.map((c) {
                   final deadline = c['deadline'] as DateTime;
                   final daysOverdue = DateTime.now().difference(deadline).inDays;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: Colors.red.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                  return InkWell(
+                    onTap: () => _showUpdateStatusDialog(c),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: Colors.red.shade200),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Text(c['ref'], style: const TextStyle(fontWeight: FontWeight.bold, color: kNavy, fontSize: 13)),
-                              const SizedBox(height: 2),
-                              Text('${c['name']} · Deadline: ${deadline.month}/${deadline.day}/${deadline.year}',
-                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(c['ref'], style: const TextStyle(fontWeight: FontWeight.bold, color: kNavy, fontSize: 13)),
+                                    const SizedBox(height: 2),
+                                    Text('${c['name']} · Deadline: ${deadline.month}/${deadline.day}/${deadline.year}',
+                                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
+                                child: Text('+$daysOverdue days overdue',
+                                    style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ),
                             ],
                           ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
-                          child: Text('+$daysOverdue days overdue',
-                              style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text('Tap to update status',
+                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontStyle: FontStyle.italic)),
+                              const SizedBox(width: 4),
+                              Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey.shade400),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }),
@@ -181,6 +202,108 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
         );
       },
     );
+  }
+
+  void _showUpdateStatusDialog(Map<String, dynamic> c) {
+    final auth = context.read<AuthService>();
+    final currentUser = auth.currentUserModel;
+    String? newStatus;
+    String? notes;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: Text('Update Status: ${c['ref']}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${c['name']} · Overdue', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: newStatus,
+                    decoration: const InputDecoration(
+                      labelText: 'New Status',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'pending_review', child: Text('Pending Review')),
+                      DropdownMenuItem(value: 'processing', child: Text('Processing')),
+                      DropdownMenuItem(value: 'awaiting_docs', child: Text('Awaiting Documents')),
+                      DropdownMenuItem(value: 'approved', child: Text('Approved')),
+                      DropdownMenuItem(value: 'released', child: Text('Released')),
+                      DropdownMenuItem(value: 'rejected', child: Text('Rejected')),
+                    ],
+                    onChanged: (v) => setState(() => newStatus = v),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    onChanged: (v) => notes = v,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                      hintText: 'Reason for status change...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
+                ElevatedButton(
+                  onPressed: newStatus == null
+                      ? null
+                      : () async {
+                          Navigator.pop(dialogCtx);
+                          await _updateCaseStatus(c['id'], newStatus!, notes, currentUser);
+                        },
+                  style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _updateCaseStatus(String caseId, String newStatus, String? notes, user) async {
+    try {
+      final db = FirebaseFirestore.instance;
+      final now = FieldValue.serverTimestamp();
+
+      await db.collection('cases').doc(caseId).update({
+        'status': newStatus,
+        'lastUpdated': now,
+      });
+
+      await db.collection('cases').doc(caseId).collection('actionLog').add({
+        'timestamp': now,
+        'staffId': user?.uid ?? '',
+        'staffName': user?.name ?? 'Unknown',
+        'action': 'Status changed to $newStatus',
+        'previousStatus': '',
+        'newStatus': newStatus,
+        'notes': notes ?? '',
+        'smsSent': false,
+        'smsBody': '',
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Status updated.'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Future<void> _saveNote() async {

@@ -132,8 +132,23 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                   ? categoryFieldMap[_selectedCategory]
                   : null;
 
+              // Deduplicate by program name + fiscalPeriod — keep latest
+              final Map<String, Map<String, dynamic>> deduped = {};
               for (final doc in docs) {
                 final d = doc.data() as Map<String, dynamic>;
+                final name = (d['name'] ?? '').toString();
+                final period = (d['fiscalPeriod'] ?? '').toString();
+                final key = '$name|$period';
+                final existing = deduped[key];
+                final updated = (d['lastUpdated'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+                final existingUpdated = (existing?['lastUpdated'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+
+                if (!deduped.containsKey(key) || updated > existingUpdated) {
+                  deduped[key] = d;
+                }
+              }
+
+              for (final d in deduped.values) {
                 final name = (d['name'] ?? '').toString();
 
                 // Apply category filter

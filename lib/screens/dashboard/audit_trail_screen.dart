@@ -202,45 +202,48 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
 
   Future<List<Map<String, dynamic>>> _fetchAuditLogs() async {
     final db = FirebaseFirestore.instance;
-    // Get all cases and their action logs
-    final casesSnap = await db.collection('cases').get();
+    Query query = db.collectionGroup('actionLog').orderBy('timestamp', descending: true).limit(500);
+
+    // Note: Firestore collection group queries don't support multiple where clauses with different fields easily
+    // We'll fetch recent logs and filter in memory for search/date
+    final snap = await query.get();
+
     final List<Map<String, dynamic>> allLogs = [];
+    for (final logDoc in snap.docs) {
+      final log = logDoc.data() as Map<String, dynamic>;
 
-    for (final caseDoc in casesSnap.docs) {
-      final caseData = caseDoc.data();
-      final caseRef = caseData['referenceNumber'] ?? caseDoc.id;
-      final logsSnap = await db
-          .collection('cases')
-          .doc(caseDoc.id)
-          .collection('actionLog')
-          .orderBy('timestamp', descending: true)
-          .get();
+      // Get case reference from parent document
+      final caseRef = logDoc.reference.parent.parent;
+      if (caseRef == null) continue;
+      final caseSnap = await caseRef.get();
+      final caseData = caseSnap.data() as Map<String, dynamic>?;
+      final caseRefNum = caseData?['referenceNumber'] ?? caseRef.id;
+      log['caseRef'] = caseRefNum;
 
-      for (final logDoc in logsSnap.docs) {
-        final log = logDoc.data();
-        log['caseRef'] = caseRef;
-        // Date filter
-        if (_dateFrom != null || _dateTo != null) {
-          final ts = log['timestamp'] is Timestamp ? (log['timestamp'] as Timestamp).toDate() : null;
-          if (ts != null) {
-            if (_dateFrom != null && ts.isBefore(_dateFrom!)) continue;
-            if (_dateTo != null && ts.isAfter(_dateTo!.add(const Duration(days: 1)))) continue;
-          }
+      // Date filter
+      if (_dateFrom != null || _dateTo != null) {
+        final ts = log['timestamp'] is Timestamp ? (log['timestamp'] as Timestamp).toDate() : null;
+        if (ts != null) {
+          if (_dateFrom != null && ts.isBefore(_dateFrom!)) continue;
+          if (_dateTo != null && ts.isAfter(_dateTo!.add(const Duration(days: 1)))) continue;
         }
-        // Search filter
-        final query = _searchCtrl.text.trim().toLowerCase();
-        if (query.isNotEmpty) {
-          final action = (log['action'] ?? '').toString().toLowerCase();
-          final staff = (log['staffName'] ?? '').toString().toLowerCase();
-          if (!action.contains(query) && !staff.contains(query) && !caseRef.toString().toLowerCase().contains(query)) {
-            continue;
-          }
-        }
-        allLogs.add(log);
       }
+
+      // Search filter
+      final queryStr = _searchCtrl.text.trim().toLowerCase();
+      if (queryStr.isNotEmpty) {
+        final action = (log['action'] ?? '').toString().toLowerCase();
+        final staff = (log['staffName'] ?? '').toString().toLowerCase();
+        final ref = caseRefNum.toString().toLowerCase();
+        if (!action.contains(queryStr) && !staff.contains(queryStr) && !ref.contains(queryStr)) {
+          continue;
+        }
+      }
+
+      allLogs.add(log);
     }
 
-    // Sort all logs by timestamp descending
+    // Sort by timestamp descending
     allLogs.sort((a, b) {
       final ta = a['timestamp'] is Timestamp ? (a['timestamp'] as Timestamp).toDate() : DateTime(2000);
       final tb = b['timestamp'] is Timestamp ? (b['timestamp'] as Timestamp).toDate() : DateTime(2000);

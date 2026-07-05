@@ -121,7 +121,7 @@ class _SlaConfigScreenState extends State<SlaConfigScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: Text('Edit SLA: ${entry.name}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -150,9 +150,12 @@ class _SlaConfigScreenState extends State<SlaConfigScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () => _saveSla(entry.name, int.tryParse(valueCtrl.text) ?? entry.value, unit),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              _saveSla(entry.name, int.tryParse(valueCtrl.text) ?? entry.value, unit);
+            },
             style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
             child: const Text('Save'),
           ),
@@ -184,7 +187,6 @@ class _SlaConfigScreenState extends State<SlaConfigScreen> {
         });
       }
       if (mounted) {
-        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('SLA updated.'), backgroundColor: Colors.green),
         );
