@@ -110,10 +110,8 @@ After seeding, sign in with:
 
 | Role | Email | Password |
 |------|-------|----------|
-| Resident | resident@brgysync.demo | Password123! |
-| Staff | staff@brgysync.demo | Password123! |
-| Officer | officer@brgysync.demo | Password123! |
-| Captain | captain@brgysync.demo | Password123! |
+| Resident | hehe@email.com | test123 |
+| Captain | captain@barangay.test | admin123 |
 
 ---
 
