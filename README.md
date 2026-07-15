@@ -203,8 +203,3 @@ firebase deploy --only firestore:rules,firestore:indexes
 
 ---
 
-## 7. Notes
-
-- **Build & deploy details** live in `CLAUDE.md` (Flutter SDK path, test accounts, integration-test commands).
-- **Seed scripts** are documented in `scripts/README.md`.
-- The app is **web-only**; mobile/desktop builds are out of scope for this deployment.
