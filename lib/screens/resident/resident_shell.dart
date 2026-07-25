@@ -42,8 +42,18 @@ class ResidentShellState extends State<ResidentShell> {
             const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('BrgySync', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                Text('Barangay Calzada-Tipas, Taguig City', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                Text(
+                  'BrgySync',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Barangay Calzada-Tipas, Taguig City',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
               ],
             ),
           ],
@@ -52,8 +62,14 @@ class ResidentShellState extends State<ResidentShell> {
           Container(
             margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
-            child: const Text('Resident Portal', style: TextStyle(color: Colors.white, fontSize: 13)),
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Resident Portal',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
           ),
           if (user != null)
             Padding(
@@ -71,7 +87,10 @@ class ResidentShellState extends State<ResidentShell> {
                     children: [
                       Icon(Icons.logout, color: Colors.white70, size: 18),
                       SizedBox(width: 4),
-                      Text('Log Out', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(
+                        'Log Out',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
                     ],
                   ),
                 ),
@@ -109,7 +128,7 @@ class ResidentShellState extends State<ResidentShell> {
               children: [
                 _tabButton('Home', 0),
                 _tabButton('Submit a Request', 1),
-                _tabButton('Track My Request', 2),
+                _tabButton('My Cases', 2),
               ],
             ),
           ),
@@ -122,12 +141,12 @@ class ResidentShellState extends State<ResidentShell> {
                     },
                   )
                 : _currentIndex == 1
-                    ? SubmitRequestScreen(
-                        key: ValueKey('submit_$_pendingCategoryId$_pendingSubType'),
-                        initialCategoryId: _pendingCategoryId,
-                        initialSubType: _pendingSubType,
-                      )
-                    : const TrackRequestScreen(),
+                ? SubmitRequestScreen(
+                    key: ValueKey('submit_$_pendingCategoryId$_pendingSubType'),
+                    initialCategoryId: _pendingCategoryId,
+                    initialSubType: _pendingSubType,
+                  )
+                : const TrackRequestScreen(),
           ),
         ],
       ),
@@ -143,7 +162,10 @@ class ResidentShellState extends State<ResidentShell> {
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(color: isActive ? kNavy : Colors.transparent, width: 3),
+              bottom: BorderSide(
+                color: isActive ? kNavy : Colors.transparent,
+                width: 3,
+              ),
             ),
           ),
           child: Text(
