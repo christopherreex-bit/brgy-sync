@@ -38,7 +38,12 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
     return _validTransitions[currentStatus] ?? [];
   }
 
-  String _buildSmsPreview(String currentStatus, String? nextStatus, String refNumber, String residentMobile) {
+  String _buildSmsPreview(
+    String currentStatus,
+    String? nextStatus,
+    String refNumber,
+    String residentMobile,
+  ) {
     final name = 'resident'; // Could be looked up
     switch (nextStatus) {
       case 'processing':
@@ -66,7 +71,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       return;
     }
 
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
       final db = FirebaseFirestore.instance;
@@ -76,7 +84,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       // Get current case data
       final caseDoc = await db.collection('cases').doc(widget.caseId).get();
       if (!caseDoc.exists) {
-        setState(() { _loading = false; _error = 'Case not found.'; });
+        setState(() {
+          _loading = false;
+          _error = 'Case not found.';
+        });
         return;
       }
       final caseData = caseDoc.data()!;
@@ -97,21 +108,35 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       // Business rule: BASS medical cannot approve without Certificate of Admission
       final serviceCategory = caseData['serviceCategory'] ?? '';
       final serviceSubType = caseData['serviceSubType'] ?? '';
-      if (_newStatus == 'approved' && serviceCategory == 'bass' &&
-          (serviceSubType.toLowerCase().contains('dialysis') || serviceSubType.toLowerCase().contains('chemotherapy') || serviceSubType.toLowerCase().contains('major'))) {
-        final documents = List<Map<String, dynamic>>.from(caseData['documents'] ?? []);
-        final certOfAdmission = documents.where((d) => d['name']!.toLowerCase().contains('certificate of admission')).toList();
-        if (certOfAdmission.isEmpty || certOfAdmission.first['status'] != 'uploaded') {
+      if (_newStatus == 'approved' &&
+          serviceCategory == 'bass' &&
+          (serviceSubType.toLowerCase().contains('dialysis') ||
+              serviceSubType.toLowerCase().contains('chemotherapy') ||
+              serviceSubType.toLowerCase().contains('major'))) {
+        final documents = List<Map<String, dynamic>>.from(
+          caseData['documents'] ?? [],
+        );
+        final certOfAdmission = documents
+            .where(
+              (d) =>
+                  d['name']!.toLowerCase().contains('certificate of admission'),
+            )
+            .toList();
+        if (certOfAdmission.isEmpty ||
+            certOfAdmission.first['status'] != 'uploaded') {
           setState(() {
             _loading = false;
-            _error = 'Cannot approve: Certificate of Admission is required for BASS medical cases.';
+            _error =
+                'Cannot approve: Certificate of Admission is required for BASS medical cases.';
           });
           return;
         }
       }
 
       // Business rule: VAW/BCPC cannot reject without reason
-      if (_newStatus == 'rejected' && (serviceCategory == 'vaw' || _actionNotesCtrl.text.trim().length < 10)) {
+      if (_newStatus == 'rejected' &&
+          (serviceCategory == 'vaw' ||
+              _actionNotesCtrl.text.trim().length < 10)) {
         if (serviceCategory == 'vaw' && _actionNotesCtrl.text.trim().isEmpty) {
           setState(() {
             _loading = false;
@@ -125,7 +150,9 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       String? smsError;
       final smsTo = (caseData['isSeedData'] == true)
           ? TwilioService.fallbackNumber
-          : (residentMobile.isNotEmpty ? residentMobile : TwilioService.fallbackNumber);
+          : (residentMobile.isNotEmpty
+                ? residentMobile
+                : TwilioService.fallbackNumber);
       switch (_newStatus) {
         case 'processing':
           smsError = await _twilio.sendStatusProcessing(smsTo, refNumber);
@@ -144,31 +171,44 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           break;
       }
 
-      // Update case status
-      await db.collection('cases').doc(widget.caseId).update({
+      // Commit the status and its audit entry together. This prevents a case
+      // update from succeeding without the corresponding action log.
+      final caseRef = db.collection('cases').doc(widget.caseId);
+      final logRef = caseRef.collection('actionLog').doc();
+      final batch = db.batch();
+      batch.update(caseRef, {
         'status': _newStatus,
         'lastUpdated': FieldValue.serverTimestamp(),
       });
-
-      // Add action log
-      await db.collection('cases').doc(widget.caseId).collection('actionLog').add({
+      batch.set(logRef, {
         'caseId': widget.caseId,
         'referenceNumber': refNumber,
         'timestamp': FieldValue.serverTimestamp(),
         'staffId': user?.uid ?? '',
         'staffName': user?.name ?? 'Staff',
-        'action': 'Status updated: ${_formatStatus(currentStatus)} → ${_formatStatus(_newStatus!)}',
+        'action':
+            'Status updated: ${_formatStatus(currentStatus)} → ${_formatStatus(_newStatus!)}',
         'previousStatus': currentStatus,
         'newStatus': _newStatus,
         'notes': _actionNotesCtrl.text.trim(),
         'smsSent': smsError == null,
         'smsError': smsError,
-        'smsBody': _buildSmsPreview(currentStatus, _newStatus, refNumber, residentMobile),
+        'smsBody': _buildSmsPreview(
+          currentStatus,
+          _newStatus,
+          refNumber,
+          residentMobile,
+        ),
       });
+      await batch.commit();
 
       // If released with assistance amount, deduct from budget (atomic transaction)
-      if (_newStatus == 'released' && caseData['assistanceAmount'] != null && caseData['budgetProgramId'] != null) {
-        final programRef = db.collection('budgetPrograms').doc(caseData['budgetProgramId']);
+      if (_newStatus == 'released' &&
+          caseData['assistanceAmount'] != null &&
+          caseData['budgetProgramId'] != null) {
+        final programRef = db
+            .collection('budgetPrograms')
+            .doc(caseData['budgetProgramId']);
         final amount = (caseData['assistanceAmount'] as num).toDouble();
 
         await db.runTransaction((transaction) async {
@@ -178,7 +218,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           final utilized = (pData['utilized'] as num?)?.toDouble() ?? 0;
           final allocated = (pData['allocated'] as num?)?.toDouble() ?? 0;
           final newUtilized = utilized + amount;
-          final threshold = (pData['thresholdPercent'] as num?)?.toDouble() ?? 10;
+          final threshold =
+              (pData['thresholdPercent'] as num?)?.toDouble() ?? 10;
           final thresholdAmount = allocated * threshold / 100;
           String budgetStatus = 'healthy';
           if (allocated - newUtilized <= 0) {
@@ -210,9 +251,11 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         final smsSuccess = smsError == null;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(smsSuccess
-                ? 'Status updated and SMS sent successfully.'
-                : 'Status updated. SMS not sent: $smsError'),
+            content: Text(
+              smsSuccess
+                  ? 'Status updated and SMS sent successfully.'
+                  : 'Status updated. SMS not sent: $smsError',
+            ),
             backgroundColor: smsSuccess ? Colors.green : Colors.orange,
             duration: const Duration(seconds: 5),
           ),
@@ -221,19 +264,29 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() { _loading = false; _error = 'Update failed: $e'; });
+        setState(() {
+          _loading = false;
+          _error = 'Update failed: $e';
+        });
       }
     }
   }
 
   static String _formatStatus(String status) {
-    return status.replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ');
+    return status
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((w) => w[0].toUpperCase() + w.substring(1))
+        .join(' ');
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('cases').doc(widget.caseId).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('cases')
+          .doc(widget.caseId)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -245,14 +298,20 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         final data = snapshot.data!.data() as Map<String, dynamic>;
         final currentStatus = data['status'] ?? '';
         final isConfidential = data['isConfidential'] ?? false;
-        final residentName = isConfidential ? 'Confidential' : (data['residentName'] ?? '');
+        final residentName = isConfidential
+            ? 'Confidential'
+            : (data['residentName'] ?? '');
         final ref = data['referenceNumber'] ?? '';
         final residentMobile = data['residentMobile'] ?? '';
         final validNext = _getValidNextStatuses(currentStatus);
 
         // Check for missing docs
-        final documents = List<Map<String, dynamic>>.from(data['documents'] ?? []);
-        final missingDocs = documents.where((d) => d['required'] == true && d['status'] != 'uploaded').toList();
+        final documents = List<Map<String, dynamic>>.from(
+          data['documents'] ?? [],
+        );
+        final missingDocs = documents
+            .where((d) => d['required'] == true && d['status'] != 'uploaded')
+            .toList();
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -265,11 +324,19 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                 label: const Text('Back to case detail'),
               ),
               const SizedBox(height: 8),
-              const Text('Update Case Status',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+              const Text(
+                'Update Case Status',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('$ref · $residentName',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              Text(
+                '$ref · $residentName',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
               const SizedBox(height: 24),
 
               // Missing docs warning
@@ -285,7 +352,11 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.warning_amber, color: Colors.amber, size: 20),
+                      const Icon(
+                        Icons.warning_amber,
+                        color: Colors.amber,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -305,7 +376,13 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Current Status', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text(
+                          'Current Status',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         Container(
                           width: double.infinity,
@@ -318,7 +395,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                             children: [
                               StatusBadge(status: currentStatus),
                               const Spacer(),
-                              Text(_formatStatus(currentStatus), style: const TextStyle(fontSize: 13)),
+                              Text(
+                                _formatStatus(currentStatus),
+                                style: const TextStyle(fontSize: 13),
+                              ),
                             ],
                           ),
                         ),
@@ -333,19 +413,32 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('New Status', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text(
+                          'New Status',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           value: _newStatus,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                           hint: const Text('Select new status'),
-                          items: validNext.map((s) => DropdownMenuItem(
-                            value: s,
-                            child: Text(_formatStatus(s)),
-                          )).toList(),
+                          items: validNext
+                              .map(
+                                (s) => DropdownMenuItem(
+                                  value: s,
+                                  child: Text(_formatStatus(s)),
+                                ),
+                              )
+                              .toList(),
                           onChanged: (v) => setState(() => _newStatus = v),
                         ),
                       ],
@@ -356,13 +449,17 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
               const SizedBox(height: 24),
 
               // Action taken
-              const Text('Action Taken *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const Text(
+                'Action Taken *',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: _actionNotesCtrl,
                 maxLines: 4,
                 decoration: const InputDecoration(
-                  hintText: 'Describe what was done, reviewed, or decided on this case',
+                  hintText:
+                      'Describe what was done, reviewed, or decided on this case',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -384,13 +481,23 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                         children: [
                           const Icon(Icons.sms, color: Colors.blue, size: 18),
                           const SizedBox(width: 8),
-                          const Text('SMS notification to resident',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          const Text(
+                            'SMS notification to resident',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('An automated SMS will be sent to +639397193163 upon saving this update.',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                      Text(
+                        'An automated SMS will be sent to +639397193163 upon saving this update.',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Container(
                         width: double.infinity,
@@ -400,8 +507,16 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          _buildSmsPreview(currentStatus, _newStatus, ref, residentMobile),
-                          style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
+                          _buildSmsPreview(
+                            currentStatus,
+                            _newStatus,
+                            ref,
+                            residentMobile,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
                       ),
                     ],
@@ -416,8 +531,14 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
-                  child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red, fontSize: 13),
+                  ),
                 ),
 
               // Buttons
@@ -432,15 +553,30 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                         minimumSize: const Size(0, 48),
                       ),
                       child: _loading
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Save update & send SMS', style: TextStyle(fontSize: 15)),
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Save update & send SMS',
+                              style: TextStyle(fontSize: 15),
+                            ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _loading ? null : () => context.go('/dashboard/case/${widget.caseId}'),
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                      onPressed: _loading
+                          ? null
+                          : () =>
+                                context.go('/dashboard/case/${widget.caseId}'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 48),
+                      ),
                       child: const Text('Cancel'),
                     ),
                   ),

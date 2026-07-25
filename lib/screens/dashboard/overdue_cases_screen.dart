@@ -30,7 +30,15 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('cases')
-          .where('status', whereIn: ['pending_review', 'processing', 'awaiting_docs', 'approved'])
+          .where(
+            'status',
+            whereIn: [
+              'pending_review',
+              'processing',
+              'awaiting_docs',
+              'approved',
+            ],
+          )
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -51,7 +59,9 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
               'id': doc.id,
               'ref': data['referenceNumber'] ?? '',
               'category': data['serviceCategory'] ?? '',
-              'name': data['isConfidential'] == true ? 'Confidential' : (data['residentName'] ?? ''),
+              'name': data['isConfidential'] == true
+                  ? 'Confidential'
+                  : (data['residentName'] ?? ''),
               'deadline': deadline,
               'caseStatus': data['status'] ?? '',
             });
@@ -63,11 +73,19 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Overdue Cases',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+              const Text(
+                'Overdue Cases',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
               const SizedBox(height: 4),
-              const Text('Cases that have exceeded their SLA deadline.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const Text(
+                'Cases that have exceeded their SLA deadline.',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
               const SizedBox(height: 20),
 
               if (overdueCases.isNotEmpty)
@@ -91,13 +109,18 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.all(32),
-                    child: Text('No overdue cases. Great job!', style: TextStyle(color: Colors.green, fontSize: 16)),
+                    child: Text(
+                      'No overdue cases. Great job!',
+                      style: TextStyle(color: Colors.green, fontSize: 16),
+                    ),
                   ),
                 )
               else
                 ...overdueCases.map((c) {
                   final deadline = c['deadline'] as DateTime;
-                  final daysOverdue = DateTime.now().difference(deadline).inDays;
+                  final daysOverdue = DateTime.now()
+                      .difference(deadline)
+                      .inDays;
                   return InkWell(
                     onTap: () => _showUpdateStatusDialog(c),
                     borderRadius: BorderRadius.circular(8),
@@ -120,19 +143,40 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                   children: [
                                     Row(
                                       children: [
-                                        Text(c['ref'], style: const TextStyle(fontWeight: FontWeight.bold, color: kNavy, fontSize: 13)),
+                                        Text(
+                                          c['ref'],
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: kNavy,
+                                            fontSize: 13,
+                                          ),
+                                        ),
                                         const SizedBox(width: 8),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
                                           decoration: BoxDecoration(
-                                            color: (c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange).withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(4),
+                                            color:
+                                                (c['caseStatus'] == 'processing'
+                                                        ? Colors.blue
+                                                        : Colors.orange)
+                                                    .withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
                                           ),
                                           child: Text(
-                                            (c['caseStatus'] as String).replaceAll('_', ' '),
+                                            (c['caseStatus'] as String)
+                                                .replaceAll('_', ' '),
                                             style: TextStyle(
                                               fontSize: 9,
-                                              color: c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange,
+                                              color:
+                                                  c['caseStatus'] ==
+                                                      'processing'
+                                                  ? Colors.blue
+                                                  : Colors.orange,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
@@ -140,16 +184,33 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                       ],
                                     ),
                                     const SizedBox(height: 2),
-                                    Text('${c['name']} · Deadline: ${deadline.month}/${deadline.day}/${deadline.year}',
-                                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                    Text(
+                                      '${c['name']} · Deadline: ${deadline.month}/${deadline.day}/${deadline.year}',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
-                                child: Text('+$daysOverdue days overdue',
-                                    style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '+$daysOverdue days overdue',
+                                  style: const TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -157,10 +218,20 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              Text('Tap to update status',
-                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontStyle: FontStyle.italic)),
+                              Text(
+                                'Tap to update status',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
                               const SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey.shade400),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 12,
+                                color: Colors.grey.shade400,
+                              ),
                             ],
                           ),
                         ],
@@ -171,8 +242,14 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
 
               const SizedBox(height: 32),
               // Resolution note form
-              const Text('Add Resolution Note',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kNavy)),
+              const Text(
+                'Add Resolution Note',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _selectedCaseId,
@@ -180,15 +257,21 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   labelText: 'Case Reference',
                   border: OutlineInputBorder(),
                 ),
-                items: overdueCases.map((c) => DropdownMenuItem(
-                  value: c['id'] as String,
-                  child: Text('${c['ref']} - ${c['name']}'),
-                )).toList(),
+                items: overdueCases
+                    .map(
+                      (c) => DropdownMenuItem(
+                        value: c['id'] as String,
+                        child: Text('${c['ref']} - ${c['name']}'),
+                      ),
+                    )
+                    .toList(),
                 onChanged: (v) {
-                  final found = overdueCases.cast<Map<String, dynamic>>().firstWhere(
-                    (c) => c['id'] == v,
-                    orElse: () => <String, dynamic>{'ref': ''},
-                  );
+                  final found = overdueCases
+                      .cast<Map<String, dynamic>>()
+                      .firstWhere(
+                        (c) => c['id'] == v,
+                        orElse: () => <String, dynamic>{'ref': ''},
+                      );
                   setState(() {
                     _selectedCaseId = v;
                     _selectedCaseRef = found['ref'] as String?;
@@ -202,7 +285,9 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   labelText: 'Reason for Delay',
                   border: OutlineInputBorder(),
                 ),
-                items: _reasons.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                items: _reasons
+                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                    .toList(),
                 onChanged: (v) => setState(() => _selectedReason = v),
               ),
               const SizedBox(height: 12),
@@ -211,7 +296,8 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Additional Notes',
-                  hintText: 'Describe corrective action taken or reason for delay',
+                  hintText:
+                      'Describe corrective action taken or reason for delay',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -220,7 +306,9 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                 width: double.infinity,
                 height: 44,
                 child: ElevatedButton(
-                  onPressed: _selectedCaseId != null && _selectedReason != null ? _saveNote : null,
+                  onPressed: _selectedCaseId != null && _selectedReason != null
+                      ? _saveNote
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: kNavy,
                     foregroundColor: Colors.white,
@@ -251,7 +339,10 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('${c['name']} · Overdue', style: const TextStyle(fontSize: 13)),
+                  Text(
+                    '${c['name']} · Overdue',
+                    style: const TextStyle(fontSize: 13),
+                  ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: newStatus,
@@ -260,12 +351,30 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                       border: OutlineInputBorder(),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'pending_review', child: Text('Pending Review')),
-                      DropdownMenuItem(value: 'processing', child: Text('Processing')),
-                      DropdownMenuItem(value: 'awaiting_docs', child: Text('Awaiting Documents')),
-                      DropdownMenuItem(value: 'approved', child: Text('Approved')),
-                      DropdownMenuItem(value: 'released', child: Text('Released')),
-                      DropdownMenuItem(value: 'rejected', child: Text('Rejected')),
+                      DropdownMenuItem(
+                        value: 'pending_review',
+                        child: Text('Pending Review'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'processing',
+                        child: Text('Processing'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'awaiting_docs',
+                        child: Text('Awaiting Documents'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'approved',
+                        child: Text('Approved'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'released',
+                        child: Text('Released'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'rejected',
+                        child: Text('Rejected'),
+                      ),
                     ],
                     onChanged: (v) => setState(() => newStatus = v),
                   ),
@@ -282,16 +391,28 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Cancel'),
+                ),
                 ElevatedButton(
                   onPressed: newStatus == null
                       ? null
                       : () async {
-                                                Navigator.pop(dialogCtx);
-                                                await _updateCaseStatus(c['id'], newStatus!, notes, currentUser, referenceNumber: c['ref']);
-                                              },
-                                        style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
-                                        child: const Text('Save'),
+                          Navigator.pop(dialogCtx);
+                          await _updateCaseStatus(
+                            c['id'],
+                            newStatus!,
+                            notes,
+                            currentUser,
+                            referenceNumber: c['ref'],
+                          );
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kNavy,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Save'),
                 ),
               ],
             );
@@ -301,33 +422,44 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
     );
   }
 
-  Future<void> _updateCaseStatus(String caseId, String newStatus, String? notes, user, {String? referenceNumber}) async {
+  Future<void> _updateCaseStatus(
+    String caseId,
+    String newStatus,
+    String? notes,
+    user, {
+    String? referenceNumber,
+  }) async {
     try {
       final db = FirebaseFirestore.instance;
       final now = FieldValue.serverTimestamp();
+      final caseRef = db.collection('cases').doc(caseId);
+      final currentCase = await caseRef.get();
+      final previousStatus = currentCase.data()?['status'] ?? '';
+      final logRef = caseRef.collection('actionLog').doc();
+      final batch = db.batch();
 
-      await db.collection('cases').doc(caseId).update({
-        'status': newStatus,
-        'lastUpdated': now,
-      });
-
-      await db.collection('cases').doc(caseId).collection('actionLog').add({
+      batch.update(caseRef, {'status': newStatus, 'lastUpdated': now});
+      batch.set(logRef, {
         'caseId': caseId,
         'referenceNumber': referenceNumber ?? '',
         'timestamp': now,
         'staffId': user?.uid ?? '',
         'staffName': user?.name ?? 'Unknown',
-        'action': 'Status changed to $newStatus',
-        'previousStatus': '',
+        'action': 'Status changed: $previousStatus → $newStatus',
+        'previousStatus': previousStatus,
         'newStatus': newStatus,
         'notes': notes ?? '',
         'smsSent': false,
         'smsBody': '',
       });
+      await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Status updated.'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('Status updated.'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -347,24 +479,31 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
           .doc(_selectedCaseId)
           .collection('actionLog')
           .add({
-        'caseId': _selectedCaseId,
-        'referenceNumber': _selectedCaseRef ?? '',
-        'timestamp': FieldValue.serverTimestamp(),
-        'staffId': '',
-        'staffName': 'System',
-        'action': 'Resolution note: $_selectedReason',
-        'previousStatus': '',
-        'newStatus': '',
-        'notes': _notesCtrl.text.trim(),
-        'smsSent': false,
-        'smsBody': '',
-      });
+            'caseId': _selectedCaseId,
+            'referenceNumber': _selectedCaseRef ?? '',
+            'timestamp': FieldValue.serverTimestamp(),
+            'staffId': '',
+            'staffName': 'System',
+            'action': 'Resolution note: $_selectedReason',
+            'previousStatus': '',
+            'newStatus': '',
+            'notes': _notesCtrl.text.trim(),
+            'smsSent': false,
+            'smsBody': '',
+          });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Resolution note saved.'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('Resolution note saved.'),
+            backgroundColor: Colors.green,
+          ),
         );
         _notesCtrl.clear();
-        setState(() { _selectedCaseId = null; _selectedCaseRef = null; _selectedReason = null; });
+        setState(() {
+          _selectedCaseId = null;
+          _selectedCaseRef = null;
+          _selectedReason = null;
+        });
       }
     } catch (e) {
       if (mounted) {

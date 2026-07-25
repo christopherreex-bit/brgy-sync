@@ -13,7 +13,10 @@ class CaseDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Single stream for case data — no nested StreamBuilders
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('cases').doc(caseId).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('cases')
+          .doc(caseId)
+          .snapshots(),
       builder: (context, caseSnapshot) {
         if (caseSnapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -24,15 +27,21 @@ class CaseDetailScreen extends StatelessWidget {
 
         final data = caseSnapshot.data!.data() as Map<String, dynamic>;
         final isConfidential = data['isConfidential'] ?? false;
-        final residentName = isConfidential ? 'Confidential' : (data['residentName'] ?? '');
+        final residentName = isConfidential
+            ? 'Confidential'
+            : (data['residentName'] ?? '');
         final ref = data['referenceNumber'] ?? '';
         final status = data['status'] ?? '';
         final category = data['serviceCategory'] ?? '';
         final subType = data['serviceSubType'] ?? '';
         final channel = data['submissionChannel'] ?? 'portal';
         final ts = data['submissionTimestamp'];
-        final dateStr = ts is Timestamp ? ts.toDate().toString().split('.').first : '';
-        final documents = List<Map<String, dynamic>>.from(data['documents'] ?? []);
+        final dateStr = ts is Timestamp
+            ? ts.toDate().toString().split('.').first
+            : '';
+        final documents = List<Map<String, dynamic>>.from(
+          data['documents'] ?? [],
+        );
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -49,14 +58,23 @@ class CaseDetailScreen extends StatelessWidget {
               // Header
               Row(
                 children: [
-                  Text(ref, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: kNavy)),
+                  Text(
+                    ref,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: kNavy,
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   StatusBadge(status: status),
                 ],
               ),
               const SizedBox(height: 4),
-              Text('$dateStr · via ${channel == 'walkin' ? 'Walk-in' : 'Resident Portal'}',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              Text(
+                '$dateStr · via ${channel == 'walkin' ? 'Walk-in' : 'Resident Portal'}',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
               const SizedBox(height: 24),
 
               // Two-column layout
@@ -77,7 +95,10 @@ class CaseDetailScreen extends StatelessWidget {
                           _row('Service Type', category.toUpperCase()),
                           _row('Sub-type', subType),
                           if (data['assistanceAmount'] != null)
-                            _row('Assistance Amount', '₱${data['assistanceAmount']}'),
+                            _row(
+                              'Assistance Amount',
+                              '₱${data['assistanceAmount']}',
+                            ),
                         ]),
                       ],
                     ),
@@ -89,7 +110,13 @@ class CaseDetailScreen extends StatelessWidget {
                       children: [
                         _infoCard('Submitted documents', [
                           if (documents.isEmpty)
-                            const Text('No documents uploaded.', style: TextStyle(color: Colors.grey, fontSize: 13))
+                            const Text(
+                              'No documents uploaded.',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            )
                           else
                             ...documents.map((d) {
                               final uploaded = d['status'] == 'uploaded';
@@ -98,8 +125,12 @@ class CaseDetailScreen extends StatelessWidget {
                                 child: Row(
                                   children: [
                                     Icon(
-                                      uploaded ? Icons.check_circle : Icons.cancel,
-                                      color: uploaded ? Colors.green : Colors.red,
+                                      uploaded
+                                          ? Icons.check_circle
+                                          : Icons.cancel,
+                                      color: uploaded
+                                          ? Colors.green
+                                          : Colors.red,
                                       size: 18,
                                     ),
                                     const SizedBox(width: 8),
@@ -108,7 +139,9 @@ class CaseDetailScreen extends StatelessWidget {
                                         '${d['name'] ?? ''} – ${uploaded ? 'uploaded' : 'missing'}',
                                         style: TextStyle(
                                           fontSize: 13,
-                                          color: uploaded ? Colors.green.shade700 : Colors.red.shade700,
+                                          color: uploaded
+                                              ? Colors.green.shade700
+                                              : Colors.red.shade700,
                                         ),
                                       ),
                                     ),
@@ -131,7 +164,8 @@ class CaseDetailScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 44,
                 child: ElevatedButton.icon(
-                  onPressed: () => context.go('/dashboard/case/$caseId/update-status'),
+                  onPressed: () =>
+                      context.go('/dashboard/case/$caseId/update-status'),
                   icon: const Icon(Icons.edit),
                   label: const Text('Update status'),
                   style: ElevatedButton.styleFrom(
@@ -159,7 +193,14 @@ class CaseDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kNavy)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: kNavy,
+            ),
+          ),
           const SizedBox(height: 12),
           ...children,
         ],
@@ -175,7 +216,10 @@ class CaseDetailScreen extends StatelessWidget {
         children: [
           SizedBox(
             width: 100,
-            child: Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+            child: Text(
+              label,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
           ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
         ],
@@ -183,24 +227,50 @@ class CaseDetailScreen extends StatelessWidget {
     );
   }
 
-  // Action log as a FutureBuilder (one-time fetch, not a stream — reduces listeners)
+  // Keep listening so a log written just after the case update appears
+  // immediately without requiring the user to leave and reopen the case.
   Widget _actionLogWidget() {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
           .collection('cases')
           .doc(caseId)
           .collection('actionLog')
-          .orderBy('timestamp', descending: true)
-          .limit(50)
-          .get(),
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ));
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
         }
-        final logs = snapshot.data?.docs ?? [];
+        if (snapshot.hasError) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              border: Border.all(color: Colors.red.shade100),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Could not load action log: ${snapshot.error}',
+              style: TextStyle(color: Colors.red.shade700, fontSize: 13),
+            ),
+          );
+        }
+        final logs = [...?snapshot.data?.docs];
+        logs.sort((a, b) {
+          final aData = a.data() as Map<String, dynamic>;
+          final bData = b.data() as Map<String, dynamic>;
+          final aTimestamp = aData['timestamp'] as Timestamp?;
+          final bTimestamp = bData['timestamp'] as Timestamp?;
+          return (bTimestamp?.millisecondsSinceEpoch ?? 0).compareTo(
+            aTimestamp?.millisecondsSinceEpoch ?? 0,
+          );
+        });
+        final visibleLogs = logs.take(50);
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
@@ -212,17 +282,28 @@ class CaseDetailScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Action log', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kNavy)),
+              const Text(
+                'Action log',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: kNavy,
+                ),
+              ),
               const SizedBox(height: 12),
               if (logs.isEmpty)
-                const Text('No actions recorded yet.', style: TextStyle(color: Colors.grey, fontSize: 13))
+                const Text(
+                  'No actions recorded yet.',
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                )
               else
-                ...logs.map((doc) {
+                ...visibleLogs.map((doc) {
                   final log = doc.data() as Map<String, dynamic>;
                   final ts = log['timestamp'] is Timestamp
                       ? (log['timestamp'] as Timestamp).toDate()
                       : DateTime.now();
-                  final tsStr = '${ts.month}/${ts.day}/${ts.year} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
+                  final tsStr =
+                      '${ts.month}/${ts.day}/${ts.year} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
                   final smsSent = log['smsSent'] ?? false;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -233,7 +314,10 @@ class CaseDetailScreen extends StatelessWidget {
                           width: 10,
                           height: 10,
                           margin: const EdgeInsets.only(top: 4),
-                          decoration: const BoxDecoration(color: kNavy, shape: BoxShape.circle),
+                          decoration: const BoxDecoration(
+                            color: kNavy,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -243,23 +327,53 @@ class CaseDetailScreen extends StatelessWidget {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(log['action'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    child: Text(
+                                      log['action'] ?? '',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
                                   ),
                                   if (smsSent)
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(10)),
-                                      child: const Text('SMS sent', style: TextStyle(color: Colors.green, fontSize: 10)),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Text(
+                                        'SMS sent',
+                                        style: TextStyle(
+                                          color: Colors.green,
+                                          fontSize: 10,
+                                        ),
+                                      ),
                                     ),
                                 ],
                               ),
                               const SizedBox(height: 2),
-                              Text('${log['staffName'] ?? ''} · $tsStr',
-                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
-                              if (log['notes'] != null && log['notes'].toString().isNotEmpty)
+                              Text(
+                                '${log['staffName'] ?? ''} · $tsStr',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              if (log['notes'] != null &&
+                                  log['notes'].toString().isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 2),
-                                  child: Text(log['notes'], style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                  child: Text(
+                                    log['notes'],
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),

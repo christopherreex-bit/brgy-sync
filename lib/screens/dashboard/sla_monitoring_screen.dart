@@ -32,7 +32,10 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('${c['name']} · ${c['subType']}', style: const TextStyle(fontSize: 13)),
+                  Text(
+                    '${c['name']} · ${c['subType']}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: newStatus,
@@ -41,12 +44,30 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                       border: OutlineInputBorder(),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'pending_review', child: Text('Pending Review')),
-                      DropdownMenuItem(value: 'processing', child: Text('Processing')),
-                      DropdownMenuItem(value: 'awaiting_docs', child: Text('Awaiting Documents')),
-                      DropdownMenuItem(value: 'approved', child: Text('Approved')),
-                      DropdownMenuItem(value: 'released', child: Text('Released')),
-                      DropdownMenuItem(value: 'rejected', child: Text('Rejected')),
+                      DropdownMenuItem(
+                        value: 'pending_review',
+                        child: Text('Pending Review'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'processing',
+                        child: Text('Processing'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'awaiting_docs',
+                        child: Text('Awaiting Documents'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'approved',
+                        child: Text('Approved'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'released',
+                        child: Text('Released'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'rejected',
+                        child: Text('Rejected'),
+                      ),
                     ],
                     onChanged: (v) => setState(() => newStatus = v),
                   ),
@@ -63,16 +84,28 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Cancel'),
+                ),
                 ElevatedButton(
                   onPressed: newStatus == null
                       ? null
                       : () async {
-                                                Navigator.pop(dialogCtx);
-                                                await _updateCaseStatus(c['id'], newStatus!, notes, currentUser, referenceNumber: c['ref']);
-                                              },
-                                        style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
-                                        child: const Text('Save'),
+                          Navigator.pop(dialogCtx);
+                          await _updateCaseStatus(
+                            c['id'],
+                            newStatus!,
+                            notes,
+                            currentUser,
+                            referenceNumber: c['ref'],
+                          );
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kNavy,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Save'),
                 ),
               ],
             );
@@ -82,33 +115,44 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     );
   }
 
-  Future<void> _updateCaseStatus(String caseId, String newStatus, String? notes, user, {String? referenceNumber}) async {
+  Future<void> _updateCaseStatus(
+    String caseId,
+    String newStatus,
+    String? notes,
+    user, {
+    String? referenceNumber,
+  }) async {
     try {
       final db = FirebaseFirestore.instance;
       final now = FieldValue.serverTimestamp();
+      final caseRef = db.collection('cases').doc(caseId);
+      final currentCase = await caseRef.get();
+      final previousStatus = currentCase.data()?['status'] ?? '';
+      final logRef = caseRef.collection('actionLog').doc();
+      final batch = db.batch();
 
-      await db.collection('cases').doc(caseId).update({
-        'status': newStatus,
-        'lastUpdated': now,
-      });
-
-      await db.collection('cases').doc(caseId).collection('actionLog').add({
+      batch.update(caseRef, {'status': newStatus, 'lastUpdated': now});
+      batch.set(logRef, {
         'caseId': caseId,
         'referenceNumber': referenceNumber ?? '',
         'timestamp': now,
         'staffId': user?.uid ?? '',
         'staffName': user?.name ?? 'Unknown',
-        'action': 'Status changed to $newStatus',
-        'previousStatus': '',
+        'action': 'Status changed: $previousStatus → $newStatus',
+        'previousStatus': previousStatus,
         'newStatus': newStatus,
         'notes': notes ?? '',
         'smsSent': false,
         'smsBody': '',
       });
+      await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Status updated.'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('Status updated.'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -125,7 +169,15 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('cases')
-          .where('status', whereIn: ['pending_review', 'processing', 'awaiting_docs', 'approved'])
+          .where(
+            'status',
+            whereIn: [
+              'pending_review',
+              'processing',
+              'awaiting_docs',
+              'approved',
+            ],
+          )
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -144,53 +196,96 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
           if (deadline == null) continue;
 
           final status = sla.computeSLAStatus(deadline);
-          if (status == 'on_time') onTime++;
-          else if (status == 'near_deadline') nearDeadline++;
-          else overdue++;
+          if (status == 'on_time')
+            onTime++;
+          else if (status == 'near_deadline')
+            nearDeadline++;
+          else
+            overdue++;
 
           caseRows.add({
-              'id': doc.id,
-              'ref': data['referenceNumber'] ?? '',
-              'category': data['serviceCategory'] ?? '',
-              'name': data['isConfidential'] == true ? 'Confidential' : (data['residentName'] ?? ''),
-              'subType': data['serviceSubType'] ?? '',
-              'submitted': data['submissionTimestamp'],
-              'deadline': deadline,
-              'slaStatus': status,
-              'caseStatus': data['status'] ?? '',
+            'id': doc.id,
+            'ref': data['referenceNumber'] ?? '',
+            'category': data['serviceCategory'] ?? '',
+            'name': data['isConfidential'] == true
+                ? 'Confidential'
+                : (data['residentName'] ?? ''),
+            'subType': data['serviceSubType'] ?? '',
+            'submitted': data['submissionTimestamp'],
+            'deadline': deadline,
+            'slaStatus': status,
+            'caseStatus': data['status'] ?? '',
           });
         }
 
         final total = onTime + nearDeadline + overdue;
-        final complianceRate = total > 0 ? (onTime / total * 100).toStringAsFixed(1) : '100.0';
+        final complianceRate = total > 0
+            ? (onTime / total * 100).toStringAsFixed(1)
+            : '100.0';
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('SLA Monitoring',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+              const Text(
+                'SLA Monitoring',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
               const SizedBox(height: 4),
-              const Text("Active cases monitored against Citizens' Charter deadlines",
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const Text(
+                "Active cases monitored against Citizens' Charter deadlines",
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
               const SizedBox(height: 20),
 
               // KPI row
               Row(
                 children: [
-                  Expanded(child: KpiCard(label: 'On Time', value: '$onTime', accentColor: Colors.green, icon: Icons.check_circle)),
+                  Expanded(
+                    child: KpiCard(
+                      label: 'On Time',
+                      value: '$onTime',
+                      accentColor: Colors.green,
+                      icon: Icons.check_circle,
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: KpiCard(label: 'Near Deadline', value: '$nearDeadline', accentColor: Colors.orange, icon: Icons.warning)),
+                  Expanded(
+                    child: KpiCard(
+                      label: 'Near Deadline',
+                      value: '$nearDeadline',
+                      accentColor: Colors.orange,
+                      icon: Icons.warning,
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: KpiCard(label: 'Overdue', value: '$overdue', accentColor: Colors.red, icon: Icons.error)),
+                  Expanded(
+                    child: KpiCard(
+                      label: 'Overdue',
+                      value: '$overdue',
+                      accentColor: Colors.red,
+                      icon: Icons.error,
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: KpiCard(label: 'Compliance Rate', value: '$complianceRate%', accentColor: Colors.blue, icon: Icons.assessment)),
+                  Expanded(
+                    child: KpiCard(
+                      label: 'Compliance Rate',
+                      value: '$complianceRate%',
+                      accentColor: Colors.blue,
+                      icon: Icons.assessment,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
 
-                  // Alert banner
+              // Alert banner
               if (overdue > 0)
                 Container(
                   width: double.infinity,
@@ -205,26 +300,42 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                     children: [
                       const Icon(Icons.warning, color: Colors.red, size: 20),
                       const SizedBox(width: 8),
-                      Text('$overdue overdue cases require immediate attention.',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      Text(
+                        '$overdue overdue cases require immediate attention.',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                 ),
 
               // Active cases list
-              const Text('Active cases — SLA status',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kNavy)),
+              const Text(
+                'Active cases — SLA status',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
               const SizedBox(height: 12),
               if (caseRows.isEmpty)
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.all(32),
-                    child: Text('No active cases.', style: TextStyle(color: Colors.grey)),
+                    child: Text(
+                      'No active cases.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
                   ),
                 )
               else
                 ...caseRows.map((c) {
-                  final ts = c['submitted'] is Timestamp ? (c['submitted'] as Timestamp).toDate() : DateTime.now();
+                  final ts = c['submitted'] is Timestamp
+                      ? (c['submitted'] as Timestamp).toDate()
+                      : DateTime.now();
                   final dateStr = '${ts.month}/${ts.day}/${ts.year}';
                   final timeStr = sla.timeRemainingString(c['deadline']);
 
@@ -244,26 +355,57 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                         children: [
                           Row(
                             children: [
-                              Text(c['ref'], style: const TextStyle(fontWeight: FontWeight.bold, color: kNavy, fontSize: 13)),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: kNavy.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
-                                child: Text((c['category'] as String).toUpperCase(),
-                                    style: const TextStyle(fontSize: 9, color: kNavy, fontWeight: FontWeight.bold)),
+                              Text(
+                                c['ref'],
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: kNavy,
+                                  fontSize: 13,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: (c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange).withValues(alpha: 0.1),
+                                  color: kNavy.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  (c['caseStatus'] as String).replaceAll('_', ' '),
+                                  (c['category'] as String).toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: kNavy,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (c['caseStatus'] == 'processing'
+                                              ? Colors.blue
+                                              : Colors.orange)
+                                          .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  (c['caseStatus'] as String).replaceAll(
+                                    '_',
+                                    ' ',
+                                  ),
                                   style: TextStyle(
                                     fontSize: 9,
-                                    color: c['caseStatus'] == 'processing' ? Colors.blue : Colors.orange,
+                                    color: c['caseStatus'] == 'processing'
+                                        ? Colors.blue
+                                        : Colors.orange,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -273,17 +415,36 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text('${c['name']} · $dateStr', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                          Text(
+                            '${c['name']} · $dateStr',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 12,
+                            ),
+                          ),
                           const SizedBox(height: 8),
-                          SlaBar(slaStatus: c['slaStatus'], timeRemaining: timeStr),
+                          SlaBar(
+                            slaStatus: c['slaStatus'],
+                            timeRemaining: timeStr,
+                          ),
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              Text('Tap to update status',
-                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontStyle: FontStyle.italic)),
+                              Text(
+                                'Tap to update status',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
                               const SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey.shade400),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 12,
+                                color: Colors.grey.shade400,
+                              ),
                             ],
                           ),
                         ],
