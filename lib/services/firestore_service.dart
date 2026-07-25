@@ -44,7 +44,9 @@ class FirestoreService {
   }
 
   Stream<QuerySnapshot> getCases({String? statusFilter}) {
-    Query query = _db.collection('cases').orderBy('submissionTimestamp', descending: true);
+    Query query = _db
+        .collection('cases')
+        .orderBy('submissionTimestamp', descending: true);
     if (statusFilter != null) {
       query = query.where('status', isEqualTo: statusFilter);
     }
@@ -55,7 +57,10 @@ class FirestoreService {
     return _db.collection('cases').doc(caseId).get();
   }
 
-  Future<void> updateCaseStatus(String caseId, Map<String, dynamic> data) async {
+  Future<void> updateCaseStatus(
+    String caseId,
+    Map<String, dynamic> data,
+  ) async {
     await _db.collection('cases').doc(caseId).update({
       ...data,
       'lastUpdated': FieldValue.serverTimestamp(),
@@ -63,11 +68,7 @@ class FirestoreService {
   }
 
   Future<void> addActionLog(String caseId, Map<String, dynamic> logData) async {
-    await _db
-        .collection('cases')
-        .doc(caseId)
-        .collection('actionLog')
-        .add({
+    await _db.collection('cases').doc(caseId).collection('actionLog').add({
       ...logData,
       'timestamp': FieldValue.serverTimestamp(),
     });
@@ -108,6 +109,9 @@ class FirestoreService {
 
   // ─── Reports ──────────────────────────────────────────────────
   Stream<QuerySnapshot> getReports() {
-    return _db.collection('reports').orderBy('generatedAt', descending: true).snapshots();
+    return _db
+        .collection('reports')
+        .orderBy('generatedAt', descending: true)
+        .snapshots();
   }
 }
