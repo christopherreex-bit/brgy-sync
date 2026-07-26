@@ -16,20 +16,19 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
     final now = DateTime.now();
     switch (_filter) {
       case 'month':
-        return DateTimeRange(
-          start: DateTime(now.year, now.month, 1),
-          end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
-        );
+        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
       case '3months':
         return DateTimeRange(
           start: DateTime(now.year, now.month - 2, 1),
-          end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
+          end: now,
+        );
+      case '6months':
+        return DateTimeRange(
+          start: DateTime(now.year, now.month - 5, 1),
+          end: now,
         );
       case 'ytd':
-        return DateTimeRange(
-          start: DateTime(now.year, 1, 1),
-          end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
-        );
+        return DateTimeRange(start: DateTime(now.year, 1, 1), end: now);
       default:
         return null; // All time
     }
@@ -42,22 +41,30 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Service Demand Statistics',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+          const Text(
+            'Service Demand Statistics',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: kNavy,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text('Descriptive statistics by service category.',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+          const Text(
+            'Descriptive statistics by service category.',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
           const SizedBox(height: 20),
 
           // Time filter tabs
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _filterBtn('All Time', 'all'),
-              const SizedBox(width: 8),
               _filterBtn('This Month', 'month'),
-              const SizedBox(width: 8),
               _filterBtn('Last 3 Months', '3months'),
-              const SizedBox(width: 8),
+              _filterBtn('Last 6 Months', '6months'),
               _filterBtn('Year to Date', 'ytd'),
             ],
           ),
@@ -67,13 +74,33 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
             stream: _getDateRange() == null
                 ? FirebaseFirestore.instance.collection('cases').snapshots()
                 : FirebaseFirestore.instance
-                    .collection('cases')
-                    .where('submissionTimestamp',
-                        isGreaterThanOrEqualTo: Timestamp.fromDate(_getDateRange()!.start))
-                    .where('submissionTimestamp',
-                        isLessThanOrEqualTo: Timestamp.fromDate(_getDateRange()!.end))
-                    .snapshots(),
+                      .collection('cases')
+                      .where(
+                        'submissionTimestamp',
+                        isGreaterThanOrEqualTo: Timestamp.fromDate(
+                          _getDateRange()!.start,
+                        ),
+                      )
+                      .where(
+                        'submissionTimestamp',
+                        isLessThanOrEqualTo: Timestamp.fromDate(
+                          _getDateRange()!.end,
+                        ),
+                      )
+                      .snapshots(),
             builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    'Could not load service demand data: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                );
+              }
               final docs = snapshot.data?.docs ?? [];
               final categoryStats = <String, Map<String, int>>{};
               int total = 0;
@@ -82,11 +109,16 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
                 final data = doc.data() as Map<String, dynamic>;
                 final cat = data['serviceCategory'] ?? 'unknown';
                 final status = data['status'] ?? '';
-                categoryStats.putIfAbsent(cat, () => {'requests': 0, 'resolved': 0});
-                categoryStats[cat]!['requests'] = categoryStats[cat]!['requests']! + 1;
+                categoryStats.putIfAbsent(
+                  cat,
+                  () => {'requests': 0, 'resolved': 0},
+                );
+                categoryStats[cat]!['requests'] =
+                    categoryStats[cat]!['requests']! + 1;
                 total++;
                 if (status == 'released') {
-                  categoryStats[cat]!['resolved'] = categoryStats[cat]!['resolved']! + 1;
+                  categoryStats[cat]!['resolved'] =
+                      categoryStats[cat]!['resolved']! + 1;
                 }
               }
 
@@ -98,37 +130,109 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(8),
+                        ),
                       ),
                       child: const Row(
                         children: [
-                          Expanded(flex: 3, child: Text('Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('Requests', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('% of Total', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('Resolved', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'Category',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Requests',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              '% of Total',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Released',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     if (categoryStats.isEmpty)
                       const Padding(
                         padding: EdgeInsets.all(24),
-                        child: Text('No data available.', style: TextStyle(color: Colors.grey)),
+                        child: Text(
+                          'No data available.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
                       )
                     else
                       ...categoryStats.entries.map((entry) {
-                        final pct = total > 0 ? (entry.value['requests']! / total * 100).toStringAsFixed(1) : '0.0';
+                        final pct = total > 0
+                            ? (entry.value['requests']! / total * 100)
+                                  .toStringAsFixed(1)
+                            : '0.0';
                         return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade200))),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(color: Colors.grey.shade200),
+                            ),
+                          ),
                           child: Row(
                             children: [
-                              Expanded(flex: 3, child: Text(entry.key.toUpperCase(), style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('${entry.value['requests']}', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('$pct%', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('${entry.value['resolved']}', style: const TextStyle(fontSize: 12))),
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  entry.key.toUpperCase(),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${entry.value['requests']}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '$pct%',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${entry.value['resolved']}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
                             ],
                           ),
                         );
@@ -154,11 +258,14 @@ class _ServiceDemandScreenState extends State<ServiceDemandScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: isActive ? kNavy : Colors.grey.shade300),
         ),
-        child: Text(label,
-            style: TextStyle(
-                color: isActive ? Colors.white : Colors.grey.shade700,
-                fontSize: 12,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? Colors.white : Colors.grey.shade700,
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
       ),
     );
   }
