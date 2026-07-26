@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
@@ -13,18 +14,11 @@ class AuthService extends ChangeNotifier {
   UserModel? _currentUserModel;
   UserModel? get currentUserModel => _currentUserModel;
 
-  bool _ignoreNextAuthState = false;
-
   AuthService() {
     _auth.authStateChanges().listen(_onAuthStateChanged);
   }
 
   Future<void> _onAuthStateChanged(User? user) async {
-    if (_ignoreNextAuthState) {
-      _ignoreNextAuthState = false;
-      notifyListeners();
-      return;
-    }
     if (user != null) {
       await _loadUserData(user.uid);
     } else {
@@ -118,10 +112,37 @@ class AuthService extends ChangeNotifier {
 
   // ─── Staff Account Management (Phase 12) ───────────────────────
 
+  /// Reauthenticates the currently signed-in manager before a sensitive
+  /// account-management action. No account is created if this fails.
+  Future<String?> confirmCurrentUserPassword(String password) async {
+    final currentUser = _auth.currentUser;
+    final email = currentUser?.email;
+    if (currentUser == null || email == null || email.isEmpty) {
+      return 'Your session has expired. Please log in again.';
+    }
+
+    try {
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: password,
+      );
+      await currentUser.reauthenticateWithCredential(credential);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' ||
+          e.code == 'invalid-credential' ||
+          e.code == 'invalid-login-credentials') {
+        return 'Incorrect password. No account was created.';
+      }
+      return e.message ?? 'Could not confirm your identity.';
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   /// Creates a new staff/officer/captain account (NOT resident).
-  /// Returns the new user's UID on success, error message on failure.
-  /// Note: createUserWithEmailAndPassword signs in as the new user.
-  /// The caller is responsible for re-logging in as the captain after.
+  /// Uses an isolated Firebase Auth instance so the manager's primary browser
+  /// session is never replaced by the newly created account.
   Future<String?> createStaffAccount({
     required String name,
     required String email,
@@ -129,42 +150,72 @@ class AuthService extends ChangeNotifier {
     required String password,
     required String role,
   }) async {
+    FirebaseAuth? secondaryAuth;
+    User? createdUser;
     try {
-      // createUserWithEmailAndPassword signs in as the new user.
-      // Ignore the auth state change so _currentUserModel stays as the captain.
-      _ignoreNextAuthState = true;
-      final cred = await _auth.createUserWithEmailAndPassword(
+      const secondaryAppName = 'staff-account-creation';
+      FirebaseApp secondaryApp;
+      try {
+        secondaryApp = Firebase.app(secondaryAppName);
+      } on FirebaseException {
+        secondaryApp = await Firebase.initializeApp(
+          name: secondaryAppName,
+          options: Firebase.app().options,
+        );
+      }
+      secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      await secondaryAuth.signOut();
+
+      final cred = await secondaryAuth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      if (cred.user != null) {
-        final user = UserModel(
-          uid: cred.user!.uid,
-          name: name,
-          mobile: mobile,
-          email: email,
-          role: role,
-          isActive: true,
-          createdAt: DateTime.now(),
-        );
-        await _firestore
-            .collection('users')
-            .doc(cred.user!.uid)
-            .set(user.toMap());
-        return null;
+      createdUser = cred.user;
+      if (createdUser == null) {
+        return 'Failed to create user.';
       }
-      return 'Failed to create user.';
+
+      final user = UserModel(
+        uid: createdUser.uid,
+        name: name,
+        mobile: mobile,
+        email: email,
+        role: role,
+        isActive: true,
+        createdAt: DateTime.now(),
+      );
+      await _firestore
+          .collection('users')
+          .doc(createdUser.uid)
+          .set(user.toMap());
+      return null;
     } on FirebaseAuthException catch (e) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
       return e.message;
     } catch (e) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
       return e.toString();
+    } finally {
+      try {
+        await secondaryAuth?.signOut();
+      } catch (_) {}
     }
   }
 
   /// Updates a user's role in Firestore.
   Future<String?> updateUserRole(String userId, String newRole) async {
     try {
-      await _firestore.collection('users').doc(userId).update({'role': newRole});
+      await _firestore.collection('users').doc(userId).update({
+        'role': newRole,
+      });
       return null;
     } catch (e) {
       return e.toString();
@@ -174,7 +225,9 @@ class AuthService extends ChangeNotifier {
   /// Deactivates a user account (soft delete).
   Future<String?> deactivateAccount(String userId) async {
     try {
-      await _firestore.collection('users').doc(userId).update({'isActive': false});
+      await _firestore.collection('users').doc(userId).update({
+        'isActive': false,
+      });
       return null;
     } catch (e) {
       return e.toString();
@@ -184,7 +237,9 @@ class AuthService extends ChangeNotifier {
   /// Reactivates a user account.
   Future<String?> activateAccount(String userId) async {
     try {
-      await _firestore.collection('users').doc(userId).update({'isActive': true});
+      await _firestore.collection('users').doc(userId).update({
+        'isActive': true,
+      });
       return null;
     } catch (e) {
       return e.toString();

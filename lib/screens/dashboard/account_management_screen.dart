@@ -9,7 +9,8 @@ class AccountManagementScreen extends StatefulWidget {
   const AccountManagementScreen({super.key});
 
   @override
-  State<AccountManagementScreen> createState() => _AccountManagementScreenState();
+  State<AccountManagementScreen> createState() =>
+      _AccountManagementScreenState();
 }
 
 class _AccountManagementScreenState extends State<AccountManagementScreen> {
@@ -28,7 +29,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     final mobileCtrl = TextEditingController();
     final passCtrl = TextEditingController();
     String selectedRole = 'staff';
-    bool loading = false;
 
     showDialog(
       context: context,
@@ -41,59 +41,68 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Full Name',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.email),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.email),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
                   ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: mobileCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Mobile (09XXXXXXXXX)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.phone),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: mobileCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Mobile (09XXXXXXXXX)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
                   ),
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: passCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Password',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Password',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.lock),
+                    ),
+                    obscureText: true,
                   ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.badge),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Role',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.badge),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'staff',
+                        child: Text('Barangay Staff'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'officer',
+                        child: Text('Committee Officer'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'captain',
+                        child: Text('Barangay Captain'),
+                      ),
+                    ],
+                    onChanged: (v) => setDialogState(() => selectedRole = v!),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'staff', child: Text('Barangay Staff')),
-                    DropdownMenuItem(value: 'officer', child: Text('Committee Officer')),
-                    DropdownMenuItem(value: 'captain', child: Text('Barangay Captain')),
-                  ],
-                  onChanged: (v) => setDialogState(() => selectedRole = v!),
-                ),
                 ],
               ),
             ),
@@ -104,37 +113,30 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: loading
-                  ? null
-                  : () async {
-                      if (nameCtrl.text.isEmpty ||
-                          emailCtrl.text.isEmpty ||
-                          mobileCtrl.text.isEmpty ||
-                          passCtrl.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('All fields are required')),
-                        );
-                        return;
-                      }
-                      Navigator.pop(ctx);
-                      // Show password confirmation dialog
-                      _showConfirmPasswordDialog(
-                        name: nameCtrl.text.trim(),
-                        email: emailCtrl.text.trim(),
-                        mobile: mobileCtrl.text.trim(),
-                        password: passCtrl.text,
-                        role: selectedRole,
-                      );
-                    },
+              onPressed: () {
+                if (nameCtrl.text.isEmpty ||
+                    emailCtrl.text.isEmpty ||
+                    mobileCtrl.text.isEmpty ||
+                    passCtrl.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('All fields are required')),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx);
+                _showConfirmPasswordDialog(
+                  name: nameCtrl.text.trim(),
+                  email: emailCtrl.text.trim(),
+                  mobile: mobileCtrl.text.trim(),
+                  password: passCtrl.text,
+                  role: selectedRole,
+                );
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: kNavy,
                 foregroundColor: Colors.white,
               ),
-              child: loading
-                  ? const SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Create Account'),
+              child: const Text('Create Account'),
             ),
           ],
         ),
@@ -160,8 +162,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Enter your password to confirm account creation',
-                  style: TextStyle(fontSize: 13, color: Colors.grey)),
+              const Text(
+                'Enter your password to confirm account creation',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
               const SizedBox(height: 16),
               TextField(
                 controller: confirmPassCtrl,
@@ -185,14 +189,32 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   : () async {
                       if (confirmPassCtrl.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please enter your password')),
+                          const SnackBar(
+                            content: Text('Please enter your password'),
+                          ),
                         );
                         return;
                       }
                       setDialogState(() => loading = true);
                       final auth = context.read<AuthService>();
-                      final captainEmail = auth.currentUserModel?.email ?? '';
                       final captainPassword = confirmPassCtrl.text;
+                      final confirmationError = await auth
+                          .confirmCurrentUserPassword(captainPassword);
+                      if (confirmationError != null) {
+                        if (ctx.mounted) {
+                          setDialogState(() => loading = false);
+                        }
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(confirmationError),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                        return;
+                      }
+
                       final err = await auth.createStaffAccount(
                         name: name,
                         email: email,
@@ -200,20 +222,19 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                         password: password,
                         role: role,
                       );
-                      if (err == null && captainEmail.isNotEmpty) {
-                        // createUserWithEmailAndPassword signs in as the new user.
-                        // Re-login as the captain so the session switches back.
-                        await auth.login(
-                          email: captainEmail,
-                          password: captainPassword,
-                        );
+                      if (ctx.mounted && err == null) Navigator.pop(ctx);
+                      if (ctx.mounted && err != null) {
+                        setDialogState(() => loading = false);
                       }
-                      if (ctx.mounted) Navigator.pop(ctx);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(err ?? 'Account created successfully'),
-                            backgroundColor: err != null ? Colors.red : Colors.green,
+                            content: Text(
+                              err ?? 'Account created successfully',
+                            ),
+                            backgroundColor: err != null
+                                ? Colors.red
+                                : Colors.green,
                           ),
                         );
                       }
@@ -224,8 +245,13 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
               ),
               child: loading
                   ? const SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
                   : const Text('Confirm & Create'),
             ),
           ],
@@ -234,7 +260,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     );
   }
 
-  void _showChangeRoleDialog(String userId, String currentRole, String userName) {
+  void _showChangeRoleDialog(
+    String userId,
+    String currentRole,
+    String userName,
+  ) {
     String selectedRole = currentRole;
 
     showDialog(
@@ -243,15 +273,21 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         builder: (ctx, setDialogState) => AlertDialog(
           title: Text('Change Role — $userName'),
           content: DropdownButtonFormField<String>(
-            value: selectedRole,
+            initialValue: selectedRole,
             decoration: const InputDecoration(
               labelText: 'New Role',
               border: OutlineInputBorder(),
             ),
             items: const [
               DropdownMenuItem(value: 'staff', child: Text('Barangay Staff')),
-              DropdownMenuItem(value: 'officer', child: Text('Committee Officer')),
-              DropdownMenuItem(value: 'captain', child: Text('Barangay Captain')),
+              DropdownMenuItem(
+                value: 'officer',
+                child: Text('Committee Officer'),
+              ),
+              DropdownMenuItem(
+                value: 'captain',
+                child: Text('Barangay Captain'),
+              ),
             ],
             onChanged: (v) => setDialogState(() => selectedRole = v!),
           ),
@@ -265,13 +301,20 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   ? null
                   : () async {
                       final auth = context.read<AuthService>();
-                      final err = await auth.updateUserRole(userId, selectedRole);
+                      final err = await auth.updateUserRole(
+                        userId,
+                        selectedRole,
+                      );
                       if (ctx.mounted) Navigator.pop(ctx);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(err ?? 'Role updated to $selectedRole'),
-                            backgroundColor: err != null ? Colors.red : Colors.green,
+                            content: Text(
+                              err ?? 'Role updated to $selectedRole',
+                            ),
+                            backgroundColor: err != null
+                                ? Colors.red
+                                : Colors.green,
                           ),
                         );
                       }
@@ -288,7 +331,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     );
   }
 
-  void _toggleActive(String userId, bool currentlyActive, String userName) async {
+  void _toggleActive(
+    String userId,
+    bool currentlyActive,
+    String userName,
+  ) async {
     final auth = context.read<AuthService>();
     final err = currentlyActive
         ? await auth.deactivateAccount(userId)
@@ -296,7 +343,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(err ?? '${currentlyActive ? 'Deactivated' : 'Activated'} $userName'),
+          content: Text(
+            err ?? '${currentlyActive ? 'Deactivated' : 'Activated'} $userName',
+          ),
           backgroundColor: err != null ? Colors.red : Colors.green,
         ),
       );
@@ -327,11 +376,15 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Account Management',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const Text(
+              'Account Management',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 4),
-            const Text('Create and manage barangay staff accounts',
-                style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const Text(
+              'Create and manage barangay staff accounts',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -344,7 +397,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
-                    onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+                    onChanged: (v) =>
+                        setState(() => _searchQuery = v.toLowerCase()),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -355,7 +409,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: kNavy,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                   ),
                 ),
               ],
@@ -385,21 +442,31 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   }).toList();
 
                   if (_searchQuery.isNotEmpty) {
-                    users = users.where((u) =>
-                      u['name'].toString().toLowerCase().contains(_searchQuery) ||
-                      u['email'].toString().toLowerCase().contains(_searchQuery)
-                    ).toList();
+                    users = users
+                        .where(
+                          (u) =>
+                              u['name'].toString().toLowerCase().contains(
+                                _searchQuery,
+                              ) ||
+                              u['email'].toString().toLowerCase().contains(
+                                _searchQuery,
+                              ),
+                        )
+                        .toList();
                   }
 
                   if (users.isEmpty) {
                     return const Center(
-                      child: Text('No staff accounts found', style: TextStyle(color: Colors.grey)),
+                      child: Text(
+                        'No staff accounts found',
+                        style: TextStyle(color: Colors.grey),
+                      ),
                     );
                   }
 
                   return ListView.separated(
                     itemCount: users.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final u = users[index];
                       final isSelf = u['uid'] == currentUser?.uid;
@@ -408,13 +475,23 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                           backgroundColor: kNavyLight,
                           child: Text(
                             u['name'].toString().isNotEmpty
-                                ? u['name'].toString().split(' ').map((w) => w[0]).take(2).join()
+                                ? u['name']
+                                      .toString()
+                                      .split(' ')
+                                      .map((w) => w[0])
+                                      .take(2)
+                                      .join()
                                 : '?',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                        title: Text(u['name'].toString(),
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        title: Text(
+                          u['name'].toString(),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -425,7 +502,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                 StatusBadge(status: u['role'].toString()),
                                 const SizedBox(width: 8),
                                 StatusBadge(
-                                  status: u['isActive'] == true ? 'active' : 'inactive',
+                                  status: u['isActive'] == true
+                                      ? 'active'
+                                      : 'inactive',
                                 ),
                               ],
                             ),
@@ -433,7 +512,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                         ),
                         trailing: isSelf
                             ? const Chip(
-                                label: Text('You', style: TextStyle(fontSize: 11)),
+                                label: Text(
+                                  'You',
+                                  style: TextStyle(fontSize: 11),
+                                ),
                                 backgroundColor: Colors.blueGrey,
                                 labelStyle: TextStyle(color: Colors.white),
                               )
@@ -445,10 +527,18 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                     onSelected: (action) {
                                       switch (action) {
                                         case 'role':
-                                          _showChangeRoleDialog(u['uid'], u['role'], u['name']);
+                                          _showChangeRoleDialog(
+                                            u['uid'],
+                                            u['role'],
+                                            u['name'],
+                                          );
                                           break;
                                         case 'toggle':
-                                          _toggleActive(u['uid'], u['isActive'] == true, u['name']);
+                                          _toggleActive(
+                                            u['uid'],
+                                            u['isActive'] == true,
+                                            u['name'],
+                                          );
                                           break;
                                         case 'reset':
                                           _sendReset(u['email'], u['name']);
@@ -456,12 +546,22 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                       }
                                     },
                                     itemBuilder: (_) => [
-                                      const PopupMenuItem(value: 'role', child: Text('Change Role')),
+                                      const PopupMenuItem(
+                                        value: 'role',
+                                        child: Text('Change Role'),
+                                      ),
                                       PopupMenuItem(
                                         value: 'toggle',
-                                        child: Text(u['isActive'] == true ? 'Deactivate' : 'Activate'),
+                                        child: Text(
+                                          u['isActive'] == true
+                                              ? 'Deactivate'
+                                              : 'Activate',
+                                        ),
                                       ),
-                                      const PopupMenuItem(value: 'reset', child: Text('Send Password Reset')),
+                                      const PopupMenuItem(
+                                        value: 'reset',
+                                        child: Text('Send Password Reset'),
+                                      ),
                                     ],
                                   ),
                                 ],
@@ -477,5 +577,4 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
       ),
     );
   }
-
 }
