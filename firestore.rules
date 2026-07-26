@@ -20,11 +20,42 @@ service cloud.firestore {
     // ─── Cases ───────────────────────────────────────────────────
     match /cases/{caseId} {
       allow read: if request.auth.uid == resource.data.residentId || isStaff();
-      // Issue #1 fix: residents can only create cases for themselves
+      // Residents reserve the globally next sequence number and create their
+      // case together in one atomic transaction.
       allow create: if request.auth != null
-                    && request.resource.data.residentId == request.auth.uid;
+                    && request.resource.data.residentId == request.auth.uid
+                    && request.resource.data.sequenceYear is int
+                    && request.resource.data.sequenceNumber is int
+                    && getAfter(/databases/$(database)/documents/caseCounters/$(request.resource.data.sequenceYear)).data.lastCaseId == caseId
+                    && getAfter(/databases/$(database)/documents/caseCounters/$(request.resource.data.sequenceYear)).data.lastNumber == request.resource.data.sequenceNumber;
       allow update: if isStaff();
+      allow delete: if request.auth != null
+                    && (resource.data.residentId == request.auth.uid || isCaptain())
+                    && existsAfter(/databases/$(database)/documents/auditEvents/$(caseId))
+                    && getAfter(/databases/$(database)/documents/auditEvents/$(caseId)).data.eventType == 'case_deleted'
+                    && getAfter(/databases/$(database)/documents/auditEvents/$(caseId)).data.actorId == request.auth.uid;
 
+    }
+
+    // ─── Global Case Number Counters ─────────────────────────────
+    // One counter per calendar year, shared by every resident.
+    match /caseCounters/{year} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.lastNumber == 1
+                    && request.resource.data.lastCaseId is string
+                    && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId))
+                    && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.residentId == request.auth.uid
+                    && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.sequenceNumber == 1;
+      allow update: if request.auth != null
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['lastNumber', 'lastCaseId', 'lastUpdated'])
+                    && request.resource.data.lastNumber == resource.data.lastNumber + 1
+                    && request.resource.data.lastCaseId is string
+                    && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId))
+                    && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.residentId == request.auth.uid
+                    && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.sequenceNumber == request.resource.data.lastNumber;
+      allow delete: if false;
     }
 
     // ─── Action Log — collection group access ───────────────────
@@ -32,6 +63,27 @@ service cloud.firestore {
     match /{path=**}/actionLog/{logId} {
       allow read: if isStaff();
       allow write: if isStaff();
+    }
+
+    match /cases/{caseId}/actionLog/{logId} {
+      allow read, delete: if request.auth != null
+                          && (get(/databases/$(database)/documents/cases/$(caseId)).data.residentId == request.auth.uid
+                              || isCaptain());
+    }
+
+    // Immutable record required whenever a case is permanently deleted.
+    match /auditEvents/{caseId} {
+      allow read: if isStaff();
+      allow create: if request.auth != null
+                    && request.resource.data.eventType == 'case_deleted'
+                    && request.resource.data.caseId == caseId
+                    && request.resource.data.actorId == request.auth.uid
+                    && request.resource.data.referenceNumber
+                        == get(/databases/$(database)/documents/cases/$(caseId)).data.referenceNumber
+                    && (get(/databases/$(database)/documents/cases/$(caseId)).data.residentId == request.auth.uid
+                        || isCaptain())
+                    && !existsAfter(/databases/$(database)/documents/cases/$(caseId));
+      allow update, delete: if false;
     }
 
     // ─── SLA Config ──────────────────────────────────────────────

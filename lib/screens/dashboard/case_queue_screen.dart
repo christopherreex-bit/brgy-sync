@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/case_list_item.dart';
 
@@ -36,6 +39,9 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canDelete =
+        context.watch<AuthService>().currentUserModel?.role == 'captain';
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -270,6 +276,12 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                       isConfidential: isConfidential,
                       onTap: () =>
                           context.go('/dashboard/case/${docs[index].id}'),
+                      onDelete: canDelete
+                          ? () => _confirmDeleteCase(
+                              docs[index].id,
+                              ref.toString(),
+                            )
+                          : null,
                     );
                   },
                 );
@@ -279,6 +291,58 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDeleteCase(String caseId, String referenceNumber) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete case?'),
+        content: Text(
+          'Permanently delete $referenceNumber and its action log? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final user = context.read<AuthService>().currentUserModel;
+      if (user == null || !user.isCaptain) {
+        throw StateError('Only the Barangay Captain can delete cases.');
+      }
+      await FirestoreService().deleteCase(
+        caseId,
+        actorId: user.uid,
+        actorName: user.name,
+        actorRole: user.role,
+        source: 'captain_case_queue',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$referenceNumber was deleted.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not delete case: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

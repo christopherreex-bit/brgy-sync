@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../models/case_model.dart';
 
 class FirestoreService {
@@ -8,39 +7,32 @@ class FirestoreService {
   // ─── Cases ────────────────────────────────────────────────────
   Future<String> createCase(CaseModel caseData) async {
     final year = DateTime.now().year;
-    // Query only the resident's own cases for ref# sequencing.
-    // Residents cannot read other residents' cases (Firestore read rule),
-    // so we filter by residentId to satisfy the rule.
-    QuerySnapshot? snapshot;
-    try {
-      snapshot = await _db
-          .collection('cases')
-          .where('residentId', isEqualTo: caseData.residentId)
-          .where('referenceNumber', isGreaterThanOrEqualTo: 'BRGY-$year-')
-          .where('referenceNumber', isLessThan: 'BRGY-${year + 1}-')
-          .orderBy('referenceNumber', descending: true)
-          .limit(1)
-          .get();
-    } catch (e) {
-      // Resident may not have any prior cases yet — fall back to #1.
-      debugPrint('FirestoreService: ref# query failed: $e');
-    }
-
-    int nextNum = 1;
-    if (snapshot != null && snapshot.docs.isNotEmpty) {
-      final data = snapshot.docs.first.data() as Map<String, dynamic>?;
-      final lastRef = data?['referenceNumber'] as String? ?? '';
-      if (lastRef.isNotEmpty) {
-        final parts = lastRef.split('-');
-        final lastPart = parts.last;
-        nextNum = (int.tryParse(lastPart) ?? 0) + 1;
-      }
-    }
-
-    final refNumber = 'BRGY-$year-${nextNum.toString().padLeft(5, '0')}';
+    final counterRef = _db.collection('caseCounters').doc('$year');
     final docRef = _db.collection('cases').doc();
-    await docRef.set(caseData.toMap()..['referenceNumber'] = refNumber);
-    return refNumber;
+
+    return _db.runTransaction((transaction) async {
+      final counterSnapshot = await transaction.get(counterRef);
+      final currentNumber = counterSnapshot.exists
+          ? ((counterSnapshot.data()?['lastNumber'] as num?)?.toInt() ?? 0)
+          : 0;
+      final nextNumber = currentNumber + 1;
+      final referenceNumber =
+          'BRGY-$year-${nextNumber.toString().padLeft(5, '0')}';
+
+      transaction.set(counterRef, {
+        'lastNumber': nextNumber,
+        'lastCaseId': docRef.id,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      transaction.set(docRef, {
+        ...caseData.toMap(),
+        'referenceNumber': referenceNumber,
+        'sequenceYear': year,
+        'sequenceNumber': nextNumber,
+      });
+
+      return referenceNumber;
+    });
   }
 
   Stream<QuerySnapshot> getCases({String? statusFilter}) {
@@ -55,6 +47,60 @@ class FirestoreService {
 
   Future<DocumentSnapshot> getCase(String caseId) {
     return _db.collection('cases').doc(caseId).get();
+  }
+
+  /// Permanently deletes a case and its action logs while preserving an
+  /// immutable deletion record for Audit Trail.
+  Future<void> deleteCase(
+    String caseId, {
+    required String actorId,
+    required String actorName,
+    required String actorRole,
+    required String source,
+  }) async {
+    final caseRef = _db.collection('cases').doc(caseId);
+    final caseSnapshot = await caseRef.get();
+    if (!caseSnapshot.exists) throw StateError('Case no longer exists.');
+
+    final caseData = caseSnapshot.data() as Map<String, dynamic>;
+    final referenceNumber = (caseData['referenceNumber'] ?? '').toString();
+    final actionLog = caseRef.collection('actionLog');
+
+    while (true) {
+      final logSnapshot = await actionLog.limit(400).get();
+      final batch = _db.batch();
+      for (final log in logSnapshot.docs) {
+        batch.delete(log.reference);
+      }
+
+      final isLastBatch = logSnapshot.docs.length < 400;
+      if (isLastBatch) {
+        batch.set(_db.collection('auditEvents').doc(caseId), {
+          'eventType': 'case_deleted',
+          'action': 'Case deleted',
+          'caseId': caseId,
+          'referenceNumber': referenceNumber,
+          'actorId': actorId,
+          'staffName': actorName,
+          'actorRole': actorRole,
+          'source': source,
+          'residentId': caseData['residentId'] ?? '',
+          'residentName': caseData['residentName'] ?? '',
+          'serviceCategory': caseData['serviceCategory'] ?? '',
+          'serviceSubType': caseData['serviceSubType'] ?? '',
+          'previousStatus': caseData['status'] ?? '',
+          'notes': actorRole == 'resident'
+              ? 'Permanently deleted by the resident from My Cases.'
+              : 'Permanently deleted by the Barangay Captain from Case Queue.',
+          'smsSent': false,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+        batch.delete(caseRef);
+      }
+
+      await batch.commit();
+      if (isLastBatch) break;
+    }
   }
 
   Future<void> updateCaseStatus(

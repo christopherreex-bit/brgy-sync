@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
 import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 
 class TrackRequestScreen extends StatelessWidget {
   const TrackRequestScreen({super.key});
@@ -79,7 +80,10 @@ class TrackRequestScreen extends StatelessWidget {
                 )
               else
                 ...cases.map(
-                  (doc) => _CaseCard(data: doc.data() as Map<String, dynamic>),
+                  (doc) => _CaseCard(
+                    caseId: doc.id,
+                    data: doc.data() as Map<String, dynamic>,
+                  ),
                 ),
             ],
           ),
@@ -90,9 +94,10 @@ class TrackRequestScreen extends StatelessWidget {
 }
 
 class _CaseCard extends StatelessWidget {
+  final String caseId;
   final Map<String, dynamic> data;
 
-  const _CaseCard({required this.data});
+  const _CaseCard({required this.caseId, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +144,12 @@ class _CaseCard extends StatelessWidget {
                 ),
               ),
               StatusBadge(status: status),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _confirmDelete(context, ref.toString()),
+                tooltip: 'Delete case',
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -168,6 +179,56 @@ class _CaseCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, String reference) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete case?'),
+        content: Text(
+          'Permanently delete $reference and its action log? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final user = context.read<AuthService>().currentUserModel;
+      if (user == null) throw StateError('Please sign in again.');
+      await FirestoreService().deleteCase(
+        caseId,
+        actorId: user.uid,
+        actorName: user.name,
+        actorRole: user.role,
+        source: 'resident_my_cases',
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$reference was deleted.')));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not delete case: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 

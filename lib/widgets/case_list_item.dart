@@ -11,6 +11,7 @@ class CaseListItem extends StatelessWidget {
   final String status;
   final bool isConfidential;
   final VoidCallback? onTap;
+  final VoidCallback? onDelete;
 
   const CaseListItem({
     super.key,
@@ -22,6 +23,7 @@ class CaseListItem extends StatelessWidget {
     required this.status,
     this.isConfidential = false,
     this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -45,28 +47,52 @@ class CaseListItem extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(referenceNumber,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, color: kNavy, fontSize: 13)),
+                      Text(
+                        referenceNumber,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: kNavy,
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: kNavy.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(category.toUpperCase(),
-                            style: const TextStyle(fontSize: 9, color: kNavy, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          category.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 9,
+                            color: kNavy,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text('$displayName · $subType · $dateStr',
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                  Text(
+                    '$displayName · $subType · $dateStr',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
                 ],
               ),
             ),
             StatusBadge(status: status),
+            if (onDelete != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: onDelete,
+                tooltip: 'Delete case',
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+              ),
+            ],
           ],
         ),
       ),
