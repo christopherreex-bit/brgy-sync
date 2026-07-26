@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import '../../utils/account_validators.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
 
@@ -29,6 +30,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     final mobileCtrl = TextEditingController();
     final passCtrl = TextEditingController();
     String selectedRole = 'staff';
+    String? emailError;
+    String? mobileError;
+    String? passwordError;
 
     showDialog(
       context: context,
@@ -52,32 +56,57 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: emailCtrl,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Email',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.email),
+                      errorText: emailError,
+                      suffixIcon:
+                          emailCtrl.text.isNotEmpty && emailError == null
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : null,
                     ),
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: (value) => setDialogState(
+                      () => emailError = validateAccountEmail(value),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: mobileCtrl,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Mobile (09XXXXXXXXX)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.phone),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.phone),
+                      errorText: mobileError,
+                      suffixIcon:
+                          mobileCtrl.text.isNotEmpty && mobileError == null
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : null,
                     ),
                     keyboardType: TextInputType.phone,
+                    onChanged: (value) => setDialogState(
+                      () => mobileError = validatePhilippineMobile(value),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: passCtrl,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Password',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.lock),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.lock),
+                      errorText: passwordError,
+                      helperText: 'At least 6 characters',
+                      suffixIcon:
+                          passCtrl.text.isNotEmpty && passwordError == null
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : null,
                     ),
                     obscureText: true,
+                    onChanged: (value) => setDialogState(
+                      () => passwordError = validateStaffPassword(value),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
@@ -114,19 +143,31 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                if (nameCtrl.text.isEmpty ||
-                    emailCtrl.text.isEmpty ||
-                    mobileCtrl.text.isEmpty ||
-                    passCtrl.text.isEmpty) {
+                final nextEmailError = validateAccountEmail(emailCtrl.text);
+                final nextMobileError = validatePhilippineMobile(
+                  mobileCtrl.text,
+                );
+                final nextPasswordError = validateStaffPassword(passCtrl.text);
+                setDialogState(() {
+                  emailError = nextEmailError;
+                  mobileError = nextMobileError;
+                  passwordError = nextPasswordError;
+                });
+                if (nameCtrl.text.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('All fields are required')),
+                    const SnackBar(content: Text('Full name is required.')),
                   );
+                  return;
+                }
+                if (nextEmailError != null ||
+                    nextMobileError != null ||
+                    nextPasswordError != null) {
                   return;
                 }
                 Navigator.pop(ctx);
                 _showConfirmPasswordDialog(
                   name: nameCtrl.text.trim(),
-                  email: emailCtrl.text.trim(),
+                  email: emailCtrl.text.trim().toLowerCase(),
                   mobile: mobileCtrl.text.trim(),
                   password: passCtrl.text,
                   role: selectedRole,

@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
+import '../utils/account_validators.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -150,6 +151,13 @@ class AuthService extends ChangeNotifier {
     required String password,
     required String role,
   }) async {
+    final emailError = validateAccountEmail(email);
+    if (emailError != null) return emailError;
+    final mobileError = validatePhilippineMobile(mobile);
+    if (mobileError != null) return mobileError;
+    final passwordError = validateStaffPassword(password);
+    if (passwordError != null) return passwordError;
+
     FirebaseAuth? secondaryAuth;
     User? createdUser;
     try {
