@@ -21,6 +21,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     final currentUser = auth.currentUserModel;
     String? newStatus;
     String? notes;
+    String? notesError;
 
     showDialog(
       context: context,
@@ -38,7 +39,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: newStatus,
+                    initialValue: newStatus,
                     decoration: const InputDecoration(
                       labelText: 'New Status',
                       border: OutlineInputBorder(),
@@ -73,12 +74,18 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                   ),
                   const SizedBox(height: 16),
                   TextField(
-                    onChanged: (v) => notes = v,
+                    onChanged: (value) {
+                      notes = value;
+                      if (value.trim().isNotEmpty && notesError != null) {
+                        setState(() => notesError = null);
+                      }
+                    },
                     maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
+                    decoration: InputDecoration(
+                      labelText: 'Reason *',
                       hintText: 'Reason for status change...',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      errorText: notesError,
                     ),
                   ),
                 ],
@@ -92,11 +99,19 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                   onPressed: newStatus == null
                       ? null
                       : () async {
+                          final reason = notes?.trim() ?? '';
+                          if (reason.isEmpty) {
+                            setState(
+                              () => notesError =
+                                  'Please enter a reason for the status change.',
+                            );
+                            return;
+                          }
                           Navigator.pop(dialogCtx);
                           await _updateCaseStatus(
                             c['id'],
                             newStatus!,
-                            notes,
+                            reason,
                             currentUser,
                             referenceNumber: c['ref'],
                           );
@@ -118,7 +133,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
   Future<void> _updateCaseStatus(
     String caseId,
     String newStatus,
-    String? notes,
+    String notes,
     user, {
     String? referenceNumber,
   }) async {
@@ -141,7 +156,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
         'action': 'Status changed: $previousStatus → $newStatus',
         'previousStatus': previousStatus,
         'newStatus': newStatus,
-        'notes': notes ?? '',
+        'notes': notes,
         'smsSent': false,
         'smsBody': '',
       });
@@ -196,12 +211,13 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
           if (deadline == null) continue;
 
           final status = sla.computeSLAStatus(deadline);
-          if (status == 'on_time')
+          if (status == 'on_time') {
             onTime++;
-          else if (status == 'near_deadline')
+          } else if (status == 'near_deadline') {
             nearDeadline++;
-          else
+          } else {
             overdue++;
+          }
 
           caseRows.add({
             'id': doc.id,
