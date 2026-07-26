@@ -21,7 +21,8 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     {'key': 'processing', 'label': 'Processing'},
     {'key': 'awaiting_docs', 'label': 'Awaiting Docs'},
     {'key': 'approved', 'label': 'Approved'},
-    {'key': 'released', 'label': 'Resolved'},
+    {'key': 'released', 'label': 'Released'},
+    {'key': 'rejected', 'label': 'Rejected'},
   ];
 
   @override
@@ -31,11 +32,19 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Case Queue',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+          const Text(
+            'Case Queue',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: kNavy,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text("Active cases monitored against Citizens' Charter deadlines",
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+          const Text(
+            "Active cases monitored against Citizens' Charter deadlines",
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
           const SizedBox(height: 20),
 
           // Filter tabs
@@ -49,17 +58,27 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                   child: GestureDetector(
                     onTap: () => setState(() => _activeFilter = f['key']!),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: isActive ? kNavy : Colors.white,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isActive ? kNavy : Colors.grey.shade300),
+                        border: Border.all(
+                          color: isActive ? kNavy : Colors.grey.shade300,
+                        ),
                       ),
-                      child: Text(f['label']!,
-                          style: TextStyle(
-                              color: isActive ? Colors.white : Colors.grey.shade700,
-                              fontSize: 12,
-                              fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+                      child: Text(
+                        f['label']!,
+                        style: TextStyle(
+                          color: isActive ? Colors.white : Colors.grey.shade700,
+                          fontSize: 12,
+                          fontWeight: isActive
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -95,11 +114,23 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             child: const Row(
               children: [
                 Expanded(
-                  child: Text('CASE',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                  child: Text(
+                    'CASE',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                      color: Colors.grey,
+                    ),
+                  ),
                 ),
-                Text('STATUS',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                Text(
+                  'STATUS',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
+                ),
               ],
             ),
           ),
@@ -109,22 +140,27 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: _activeFilter == 'all'
                   ? FirebaseFirestore.instance
-                      .collection('cases')
-                      .orderBy('submissionTimestamp', descending: true)
-                      .limit(50)
-                      .snapshots()
+                        .collection('cases')
+                        .orderBy('submissionTimestamp', descending: true)
+                        .limit(50)
+                        .snapshots()
                   : FirebaseFirestore.instance
-                      .collection('cases')
-                      .where('status', isEqualTo: _activeFilter)
-                      .orderBy('submissionTimestamp', descending: true)
-                      .limit(50)
-                      .snapshots(),
+                        .collection('cases')
+                        .where('status', isEqualTo: _activeFilter)
+                        .orderBy('submissionTimestamp', descending: true)
+                        .limit(50)
+                        .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+                  return Center(
+                    child: Text(
+                      'Error: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  );
                 }
 
                 var docs = snapshot.data?.docs ?? [];
@@ -134,10 +170,18 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                 if (query.isNotEmpty) {
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final ref = (data['referenceNumber'] ?? '').toString().toLowerCase();
-                    final name = (data['residentName'] ?? '').toString().toLowerCase();
-                    final mobile = (data['residentMobile'] ?? '').toString().toLowerCase();
-                    return ref.contains(query) || name.contains(query) || mobile.contains(query);
+                    final ref = (data['referenceNumber'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    final name = (data['residentName'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    final mobile = (data['residentMobile'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    return ref.contains(query) ||
+                        name.contains(query) ||
+                        mobile.contains(query);
                   }).toList();
                 }
 
@@ -146,13 +190,27 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.inbox_outlined, size: 48, color: Colors.grey.shade300),
+                        Icon(
+                          Icons.inbox_outlined,
+                          size: 48,
+                          color: Colors.grey.shade300,
+                        ),
                         const SizedBox(height: 12),
-                        Text('No cases found',
-                            style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+                        Text(
+                          'No cases found',
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text('Cases will appear here once residents submit requests.',
-                            style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                        Text(
+                          'Cases will appear here once residents submit requests.',
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 13,
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -167,7 +225,9 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     final subType = data['serviceSubType'] ?? '';
                     final status = data['status'] ?? 'pending_review';
                     final isConfidential = data['isConfidential'] ?? false;
-                    final residentName = isConfidential ? 'Confidential' : (data['residentName'] ?? '');
+                    final residentName = isConfidential
+                        ? 'Confidential'
+                        : (data['residentName'] ?? '');
                     final ts = data['submissionTimestamp'];
                     final date = ts is Timestamp ? ts.toDate() : DateTime.now();
 
@@ -179,7 +239,8 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                       submittedAt: date,
                       status: status,
                       isConfidential: isConfidential,
-                      onTap: () => context.go('/dashboard/case/${docs[index].id}'),
+                      onTap: () =>
+                          context.go('/dashboard/case/${docs[index].id}'),
                     );
                   },
                 );
