@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../utils/constants.dart';
 import '../../widgets/kpi_card.dart';
 import '../../widgets/budget_program_card.dart';
+import '../../utils/budget_health.dart';
 import '../../utils/budget_period.dart';
 
 class BudgetOverviewScreen extends StatefulWidget {
@@ -107,6 +108,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
         final programsByName = <String, _BudgetProgramView>{};
         for (final doc in latestByProgramAndQuarter.values) {
           final data = doc.data() as Map<String, dynamic>;
+          final docPeriod = BudgetPeriod.fromData(data);
           final name = (data['name'] ?? '').toString().trim();
           final key = name.toLowerCase();
           final allocated = (data['allocated'] as num?)?.toDouble() ?? 0;
@@ -117,6 +119,15 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
             allocated: (existing?.allocated ?? 0) + allocated,
             utilized: (existing?.utilized ?? 0) + utilized,
             documentId: isAnnual ? null : doc.id,
+            quarterlyBudgets: [
+              ...?existing?.quarterlyBudgets,
+              _QuarterBudget(
+                fiscalYear: docPeriod.fiscalYear!,
+                quarter: docPeriod.quarter!,
+                allocated: allocated,
+                utilized: utilized,
+              ),
+            ],
           );
         }
         for (final name in _defaultPrograms) {
@@ -127,6 +138,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
               allocated: 0,
               utilized: 0,
               documentId: null,
+              quarterlyBudgets: const [],
             ),
           );
         }
@@ -280,7 +292,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                     border: Border.all(color: Colors.pink.shade200),
                   ),
                   child: Text(
-                    '$flagged program(s) are below the budget threshold.',
+                    '$flagged program(s) are below the expected remaining '
+                    'budget for the current checkpoint.',
                     style: const TextStyle(fontSize: 13),
                   ),
                 ),
@@ -364,20 +377,42 @@ class _BudgetProgramView {
   final double allocated;
   final double utilized;
   final String? documentId;
+  final List<_QuarterBudget> quarterlyBudgets;
 
   const _BudgetProgramView({
     required this.name,
     required this.allocated,
     required this.utilized,
     required this.documentId,
+    required this.quarterlyBudgets,
   });
 
   String get status {
-    if (allocated <= 0) return budgetHealthy;
-    if (allocated - utilized <= allocated * 0.10) {
-      return budgetCritical;
-    }
-    if (allocated - utilized <= allocated * 0.20) return budgetLow;
-    return budgetHealthy;
+    final now = DateTime.now();
+    return worstBudgetHealth(
+      quarterlyBudgets.map(
+        (budget) => calculateBudgetHealth(
+          allocated: budget.allocated,
+          utilized: budget.utilized,
+          fiscalYear: budget.fiscalYear,
+          quarter: budget.quarter,
+          asOf: now,
+        ),
+      ),
+    );
   }
+}
+
+class _QuarterBudget {
+  final int fiscalYear;
+  final int quarter;
+  final double allocated;
+  final double utilized;
+
+  const _QuarterBudget({
+    required this.fiscalYear,
+    required this.quarter,
+    required this.allocated,
+    required this.utilized,
+  });
 }
