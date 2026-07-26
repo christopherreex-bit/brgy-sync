@@ -1,20 +1,32 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../utils/constants.dart';
+import 'package:flutter/material.dart';
+
 import '../../services/export_service.dart';
+import '../../utils/budget_period.dart';
+import '../../utils/constants.dart';
 
 class ExpenditureSummaryScreen extends StatefulWidget {
   const ExpenditureSummaryScreen({super.key});
 
   @override
-  State<ExpenditureSummaryScreen> createState() => _ExpenditureSummaryScreenState();
+  State<ExpenditureSummaryScreen> createState() =>
+      _ExpenditureSummaryScreenState();
 }
 
 class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
-  String _selectedPeriod = 'All Periods';
+  static const _defaultPrograms = [
+    'BASS – Medical Assistance',
+    'BASS – Burial Assistance',
+    'BASS – Drug Rehabilitation',
+    'BASS – Fire Relief',
+    'Senior Citizen Birthday',
+    'PWD Birthday',
+    'Education Incentive',
+  ];
+
+  late int _selectedFiscalYear;
+  String _selectedPeriod = 'annual';
   String _selectedCategory = 'All Categories';
-  List<String> _availablePeriods = ['All Periods'];
-  bool _loadingPeriods = true;
   List<Map<String, dynamic>> _programData = [];
   double _totalAllocated = 0;
   double _totalUtilized = 0;
@@ -23,258 +35,403 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAvailablePeriods();
-  }
-
-  Future<void> _loadAvailablePeriods() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('budgetPrograms')
-          .get();
-      final periods = snap.docs
-          .map((d) => d.data()['fiscalPeriod'] as String?)
-          .where((p) => p != null && p.isNotEmpty)
-          .cast<String>()
-          .toSet()
-          .toList()
-        ..sort((a, b) => b.compareTo(a)); // newest first
-      if (mounted) {
-        setState(() {
-          _availablePeriods = ['All Periods', ...periods];
-          _loadingPeriods = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _loadingPeriods = false);
-    }
+    _selectedFiscalYear = DateTime.now().year;
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Expenditure Summary',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
-          const SizedBox(height: 4),
-          const Text('Budget expenditure breakdown by program and period.',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
-          const SizedBox(height: 20),
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('budgetPrograms')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Could not load expenditure data: ${snapshot.error}',
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
 
-          // Filters
-          Row(
+        final docs = snapshot.data?.docs ?? [];
+        final currentYear = DateTime.now().year;
+        final fiscalYears = <int>{
+          currentYear - 1,
+          currentYear,
+          currentYear + 1,
+          _selectedFiscalYear,
+          ...docs
+              .map(
+                (doc) => BudgetPeriod.fromData(
+                  doc.data() as Map<String, dynamic>,
+                ).fiscalYear,
+              )
+              .whereType<int>(),
+        }.toList()..sort();
+
+        final selectedQuarter = _selectedPeriod == 'annual'
+            ? null
+            : int.parse(_selectedPeriod.substring(1));
+        final latestByProgramAndQuarter = <String, QueryDocumentSnapshot>{};
+        for (final doc in docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final period = BudgetPeriod.fromData(data);
+          if (period.fiscalYear != _selectedFiscalYear ||
+              period.type != 'quarterly' ||
+              (selectedQuarter != null && period.quarter != selectedQuarter)) {
+            continue;
+          }
+
+          final canonicalName = _canonicalProgramName(
+            (data['name'] ?? '').toString(),
+          );
+          if (canonicalName.isEmpty ||
+              !_matchesCategory(canonicalName, _selectedCategory)) {
+            continue;
+          }
+
+          final key = '${canonicalName.toLowerCase()}|q${period.quarter}';
+          final existing = latestByProgramAndQuarter[key];
+          if (existing == null ||
+              _lastUpdated(doc) > _lastUpdated(existing) ||
+              (_lastUpdated(doc) == _lastUpdated(existing) &&
+                  doc.id.compareTo(existing.id) > 0)) {
+            latestByProgramAndQuarter[key] = doc;
+          }
+        }
+
+        final totalsByProgram = <String, Map<String, dynamic>>{};
+        for (final doc in latestByProgramAndQuarter.values) {
+          final data = doc.data() as Map<String, dynamic>;
+          final name = _canonicalProgramName((data['name'] ?? '').toString());
+          final key = name.toLowerCase();
+          final allocated = (data['allocated'] as num?)?.toDouble() ?? 0;
+          final utilized = (data['utilized'] as num?)?.toDouble() ?? 0;
+          final existing = totalsByProgram[key];
+          totalsByProgram[key] = {
+            'name': name,
+            'allocated': (existing?['allocated'] as double? ?? 0) + allocated,
+            'utilized': (existing?['utilized'] as double? ?? 0) + utilized,
+          };
+        }
+
+        for (final name in _defaultPrograms.where(
+          (name) => _matchesCategory(name, _selectedCategory),
+        )) {
+          totalsByProgram.putIfAbsent(
+            name.toLowerCase(),
+            () => {'name': name, 'allocated': 0.0, 'utilized': 0.0},
+          );
+        }
+
+        _programData =
+            totalsByProgram.values.map((program) {
+              final allocated = program['allocated'] as double;
+              final utilized = program['utilized'] as double;
+              return {...program, 'remaining': allocated - utilized};
+            }).toList()..sort(
+              (a, b) => (a['name'] as String).compareTo(b['name'] as String),
+            );
+
+        _totalAllocated = _programData.fold(
+          0,
+          (total, item) => total + (item['allocated'] as double),
+        );
+        _totalUtilized = _programData.fold(
+          0,
+          (total, item) => total + (item['utilized'] as double),
+        );
+        _totalRemaining = _totalAllocated - _totalUtilized;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedPeriod,
-                  decoration: const InputDecoration(
-                    labelText: 'Period',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  items: _loadingPeriods
-                      ? [
-                          const DropdownMenuItem(
-                            value: 'All Periods',
-                            child: Text('Loading...'),
-                          ),
-                        ]
-                      : _availablePeriods
-                          .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+              const Text(
+                'Expenditure Summary',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Budget expenditure breakdown by program and period.',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      key: ValueKey(_selectedFiscalYear),
+                      initialValue: _selectedFiscalYear,
+                      decoration: const InputDecoration(
+                        labelText: 'Fiscal Year',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: fiscalYears
+                          .map(
+                            (year) => DropdownMenuItem(
+                              value: year,
+                              child: Text('FY $year'),
+                            ),
+                          )
                           .toList(),
-                  onChanged: (v) => setState(() => _selectedPeriod = v!),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedCategory,
-                  decoration: const InputDecoration(
-                    labelText: 'Category',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      onChanged: (year) {
+                        if (year != null) {
+                          setState(() => _selectedFiscalYear = year);
+                        }
+                      },
+                    ),
                   ),
-                  items: ['All Categories', 'BASS', 'Senior Citizen', 'PWD', 'Education']
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedCategory = v!),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey('${_selectedFiscalYear}_$_selectedPeriod'),
+                      initialValue: _selectedPeriod,
+                      decoration: const InputDecoration(
+                        labelText: 'Period',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem<String>(
+                          value: 'annual',
+                          child: Text('Annual'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'q1',
+                          child: Text('Q1'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'q2',
+                          child: Text('Q2'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'q3',
+                          child: Text('Q3'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'q4',
+                          child: Text('Q4'),
+                        ),
+                      ],
+                      onChanged: (period) {
+                        if (period != null) {
+                          setState(() => _selectedPeriod = period);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        border: OutlineInputBorder(),
+                      ),
+                      items:
+                          const [
+                                'All Categories',
+                                'BASS',
+                                'Senior Citizen',
+                                'PWD',
+                                'Education',
+                              ]
+                              .map(
+                                (category) => DropdownMenuItem(
+                                  value: category,
+                                  child: Text(category),
+                                ),
+                              )
+                              .toList(),
+                      onChanged: (category) {
+                        if (category != null) {
+                          setState(() => _selectedCategory = category);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                selectedQuarter == null
+                    ? 'Annual totals equal Q1 + Q2 + Q3 + Q4 for FY $_selectedFiscalYear.'
+                    : 'Showing Q$selectedQuarter for FY $_selectedFiscalYear.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+              const SizedBox(height: 20),
+              _buildTable(),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _exportCsv,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Export (.xlsx)'),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: _exportPdf,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download PDF'),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 20),
+        );
+      },
+    );
+  }
 
-          // Breakdown table
-          StreamBuilder<QuerySnapshot>(
-            stream: _selectedPeriod == 'All Periods'
-                ? FirebaseFirestore.instance.collection('budgetPrograms').snapshots()
-                : FirebaseFirestore.instance
-                    .collection('budgetPrograms')
-                    .where('fiscalPeriod', isEqualTo: _selectedPeriod)
-                    .snapshots(),
-            builder: (context, snapshot) {
-              final docs = snapshot.data?.docs ?? [];
-              _totalAllocated = 0;
-              _totalUtilized = 0;
-              _totalRemaining = 0;
-              _programData = [];
-
-              // Category filter mapping
-              final categoryFieldMap = {
-                'BASS': 'bass',
-                'Senior Citizen': 'senior',
-                'PWD': 'pwd',
-                'Education': 'education',
-              };
-              final categoryFilter = _selectedCategory != 'All Categories'
-                  ? categoryFieldMap[_selectedCategory]
-                  : null;
-
-              // Deduplicate by program name + fiscalPeriod — keep latest
-              final Map<String, Map<String, dynamic>> deduped = {};
-              for (final doc in docs) {
-                final d = doc.data() as Map<String, dynamic>;
-                final name = (d['name'] ?? '').toString();
-                final period = (d['fiscalPeriod'] ?? '').toString();
-                final key = '$name|$period';
-                final existing = deduped[key];
-                final updated = (d['lastUpdated'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-                final existingUpdated = (existing?['lastUpdated'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-
-                if (!deduped.containsKey(key) || updated > existingUpdated) {
-                  deduped[key] = d;
-                }
-              }
-
-              for (final d in deduped.values) {
-                final name = (d['name'] ?? '').toString();
-
-                // Apply category filter
-                if (categoryFilter != null && !name.toLowerCase().contains(categoryFilter)) {
-                  continue;
-                }
-
-                final allocated = (d['allocated'] as num?)?.toDouble() ?? 0;
-                final utilized = (d['utilized'] as num?)?.toDouble() ?? 0;
-                final remaining = allocated - utilized;
-                _totalAllocated += allocated;
-                _totalUtilized += utilized;
-                _totalRemaining += remaining;
-                _programData.add({
-                  'name': name,
-                  'allocated': allocated,
-                  'utilized': utilized,
-                  'remaining': remaining,
-                });
-              }
-
-              return Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade200),
-                  borderRadius: BorderRadius.circular(8),
+  Widget _buildTable() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(8),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'Program',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
                 ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-                      ),
-                      child: const Row(
-                        children: [
-                          Expanded(flex: 3, child: Text('Program', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('Allocated', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('Utilized', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('Remaining', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                        ],
-                      ),
-                    ),
-                    if (docs.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text('No data available.', style: TextStyle(color: Colors.grey)),
-                      )
-                    else
-                      ..._programData.map((p) {
-                        final currency = '₱';
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade200))),
-                          child: Row(
-                            children: [
-                              Expanded(flex: 3, child: Text(p['name'] ?? '', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('$currency${(p['allocated'] as double).toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('$currency${(p['utilized'] as double).toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
-                              Expanded(child: Text('$currency${(p['remaining'] as double).toStringAsFixed(0)}', style: const TextStyle(fontSize: 12))),
-                            ],
-                          ),
-                        );
-                      }),
-                    // Totals row
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Expanded(flex: 3, child: Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('₱${_totalAllocated.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('₱${_totalUtilized.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                          Expanded(child: Text('₱${_totalRemaining.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                Expanded(child: _TableHeading('Allocated')),
+                Expanded(child: _TableHeading('Utilized')),
+                Expanded(child: _TableHeading('Remaining')),
+              ],
+            ),
           ),
-
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => _exportCsv(),
-                icon: const Icon(Icons.download),
-                label: const Text('Export (.xlsx)'),
+          ..._programData.map(
+            (program) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: Colors.grey.shade200)),
               ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: () => _exportPdf(),
-                icon: const Icon(Icons.download),
-                label: const Text('Download PDF'),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      program['name'] as String,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  Expanded(child: _moneyCell(program['allocated'] as double)),
+                  Expanded(child: _moneyCell(program['utilized'] as double)),
+                  Expanded(child: _moneyCell(program['remaining'] as double)),
+                ],
               ),
-            ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(8),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Expanded(flex: 3, child: _TableHeading('TOTAL')),
+                Expanded(child: _moneyCell(_totalAllocated, bold: true)),
+                Expanded(child: _moneyCell(_totalUtilized, bold: true)),
+                Expanded(child: _moneyCell(_totalRemaining, bold: true)),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _exportCsv() {
-    if (_programData.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No data available to export.')),
-      );
-      return;
+  Widget _moneyCell(double value, {bool bold = false}) {
+    return Text(
+      '₱${value.toStringAsFixed(0)}',
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+      ),
+    );
+  }
+
+  String _canonicalProgramName(String rawName) {
+    final normalized = rawName.trim().toLowerCase();
+    if (normalized.contains('medical')) return _defaultPrograms[0];
+    if (normalized.contains('burial')) return _defaultPrograms[1];
+    if (normalized.contains('drug rehabilitation')) return _defaultPrograms[2];
+    if (normalized.contains('fire relief')) return _defaultPrograms[3];
+    if (normalized.contains('senior') && normalized.contains('birthday')) {
+      return _defaultPrograms[4];
     }
+    if (normalized.contains('pwd') && normalized.contains('birthday')) {
+      return _defaultPrograms[5];
+    }
+    if (normalized.contains('education')) return _defaultPrograms[6];
+    return rawName.trim();
+  }
+
+  bool _matchesCategory(String programName, String category) {
+    if (category == 'All Categories') return true;
+    final normalized = programName.toLowerCase();
+    return switch (category) {
+      'BASS' =>
+        normalized.contains('bass') ||
+            normalized.contains('medical') ||
+            normalized.contains('burial') ||
+            normalized.contains('drug rehabilitation') ||
+            normalized.contains('fire relief'),
+      'Senior Citizen' => normalized.contains('senior'),
+      'PWD' => normalized.contains('pwd'),
+      'Education' => normalized.contains('education'),
+      _ => true,
+    };
+  }
+
+  int _lastUpdated(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return (data['lastUpdated'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+  }
+
+  void _exportCsv() {
     ExportService.downloadCsv(
       headers: ['Program', 'Allocated', 'Utilized', 'Remaining'],
-      rows: _programData.map<List<String>>((p) {
-        final currency = '₱';
-        return <String>[
-          p['name'] ?? '',
-          '$currency${(p['allocated'] as double).toStringAsFixed(0)}',
-          '$currency${(p['utilized'] as double).toStringAsFixed(0)}',
-          '$currency${(p['remaining'] as double).toStringAsFixed(0)}',
-        ];
-      }).toList(),
-      filename: 'expenditure_summary_${DateTime.now().millisecondsSinceEpoch}.csv',
+      rows: _programData
+          .map<List<String>>(
+            (program) => [
+              program['name'] as String,
+              '₱${(program['allocated'] as double).toStringAsFixed(0)}',
+              '₱${(program['utilized'] as double).toStringAsFixed(0)}',
+              '₱${(program['remaining'] as double).toStringAsFixed(0)}',
+            ],
+          )
+          .toList(),
+      filename:
+          'expenditure_summary_${DateTime.now().millisecondsSinceEpoch}.csv',
     );
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -287,17 +444,25 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
   }
 
   void _exportPdf() {
-    if (_programData.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No data available to export.')),
-      );
-      return;
-    }
     ExportService.generateExpenditurePdf(
       programData: _programData,
       totalAllocated: _totalAllocated,
       totalUtilized: _totalUtilized,
       totalRemaining: _totalRemaining,
+    );
+  }
+}
+
+class _TableHeading extends StatelessWidget {
+  final String text;
+
+  const _TableHeading(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
     );
   }
 }
