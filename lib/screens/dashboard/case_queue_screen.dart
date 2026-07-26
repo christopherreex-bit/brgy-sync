@@ -15,6 +15,15 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
   String _activeFilter = 'all';
   final _searchCtrl = TextEditingController();
 
+  static const _statusOrder = {
+    'pending_review': 0,
+    'processing': 1,
+    'awaiting_docs': 2,
+    'approved': 3,
+    'released': 4,
+    'rejected': 5,
+  };
+
   static const _filters = [
     {'key': 'all', 'label': 'All'},
     {'key': 'pending_review', 'label': 'Pending'},
@@ -163,7 +172,27 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                   );
                 }
 
-                var docs = snapshot.data?.docs ?? [];
+                var docs = [...?snapshot.data?.docs];
+
+                // Group the queue by workflow stage. Within each stage, show
+                // the most recently submitted cases first.
+                docs.sort((a, b) {
+                  final aData = a.data() as Map<String, dynamic>;
+                  final bData = b.data() as Map<String, dynamic>;
+                  final aStatus =
+                      aData['status'] as String? ?? 'pending_review';
+                  final bStatus =
+                      bData['status'] as String? ?? 'pending_review';
+                  final statusComparison = (_statusOrder[aStatus] ?? 999)
+                      .compareTo(_statusOrder[bStatus] ?? 999);
+                  if (statusComparison != 0) return statusComparison;
+
+                  final aTimestamp = aData['submissionTimestamp'] as Timestamp?;
+                  final bTimestamp = bData['submissionTimestamp'] as Timestamp?;
+                  return (bTimestamp?.millisecondsSinceEpoch ?? 0).compareTo(
+                    aTimestamp?.millisecondsSinceEpoch ?? 0,
+                  );
+                });
 
                 // Client-side search filter
                 final query = _searchCtrl.text.trim().toLowerCase();
