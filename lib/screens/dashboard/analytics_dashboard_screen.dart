@@ -4,6 +4,11 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../utils/constants.dart';
 import '../../widgets/kpi_card.dart';
 
+double calculateCategoryShare(int categoryCount, int totalCases) {
+  if (totalCases <= 0) return 0;
+  return (categoryCount / totalCases).clamp(0.0, 1.0);
+}
+
 class AnalyticsDashboardScreen extends StatelessWidget {
   const AnalyticsDashboardScreen({super.key});
 
@@ -131,10 +136,7 @@ class AnalyticsDashboardScreen extends StatelessWidget {
                 const Text('No data yet.', style: TextStyle(color: Colors.grey))
               else
                 ...categoryCounts.entries.map((entry) {
-                  final maxCount = categoryCounts.values.reduce(
-                    (a, b) => a > b ? a : b,
-                  );
-                  final pct = maxCount > 0 ? entry.value / maxCount : 0.0;
+                  final pct = calculateCategoryShare(entry.value, totalCases);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(

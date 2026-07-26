@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
 import '../../services/auth_service.dart';
+import '../../widgets/sla_bar.dart';
 import '../../widgets/status_badge.dart';
 
 class OverdueCasesScreen extends StatefulWidget {
@@ -77,6 +78,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   'name': data['isConfidential'] == true
                       ? 'Confidential'
                       : (data['residentName'] ?? ''),
+                  'submitted': submitted,
                   'deadline': deadline,
                   'caseStatus': data['status'] ?? '',
                 });
@@ -132,10 +134,9 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                     )
                   else
                     ...overdueCases.map((c) {
+                      final submitted = c['submitted'] as DateTime;
                       final deadline = c['deadline'] as DateTime;
-                      final daysOverdue = DateTime.now()
-                          .difference(deadline)
-                          .inDays;
+                      final overdueDuration = sla.timeRemainingString(deadline);
                       return InkWell(
                         onTap: () => _showUpdateStatusDialog(c),
                         borderRadius: BorderRadius.circular(8),
@@ -194,7 +195,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
-                                      '+$daysOverdue days overdue',
+                                      overdueDuration,
                                       style: const TextStyle(
                                         color: Colors.red,
                                         fontSize: 12,
@@ -203,6 +204,13 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                     ),
                                   ),
                                 ],
+                              ),
+                              const SizedBox(height: 8),
+                              SlaBar(
+                                slaStatus: slaOverdue,
+                                timeRemaining: overdueDuration,
+                                submittedAt: submitted,
+                                deadline: deadline,
                               ),
                               const SizedBox(height: 8),
                               Row(

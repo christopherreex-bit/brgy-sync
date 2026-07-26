@@ -460,6 +460,8 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                               SlaBar(
                                 slaStatus: c['slaStatus'],
                                 timeRemaining: timeStr,
+                                submittedAt: ts,
+                                deadline: c['deadline'] as DateTime,
                               ),
                               const SizedBox(height: 8),
                               Row(
