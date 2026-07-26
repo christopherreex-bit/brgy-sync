@@ -14,7 +14,11 @@ class SubmitRequestScreen extends StatefulWidget {
   final String? initialCategoryId;
   final String? initialSubType;
 
-  const SubmitRequestScreen({super.key, this.initialCategoryId, this.initialSubType});
+  const SubmitRequestScreen({
+    super.key,
+    this.initialCategoryId,
+    this.initialSubType,
+  });
 
   @override
   State<SubmitRequestScreen> createState() => _SubmitRequestScreenState();
@@ -47,7 +51,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     super.initState();
     if (widget.initialCategoryId != null) {
       _selectedCategoryId = widget.initialCategoryId;
-      final cat = kServiceCategories.firstWhere((c) => c.id == _selectedCategoryId);
+      final cat = kServiceCategories.firstWhere(
+        (c) => c.id == _selectedCategoryId,
+      );
       if (widget.initialSubType != null) {
         _selectedSubType = widget.initialSubType;
       }
@@ -72,73 +78,84 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       if (f.type == FormFieldType.date) _dateValues[f.key] = null;
     }
     // BASS doc checklist
-      if (_selectedCategoryId == 'bass') {
-        _bassDocs = kBassDocuments();
-      } else {
-        _bassDocs = null;
-      }
+    if (_selectedCategoryId == 'bass') {
+      _bassDocs = kBassDocuments();
+    } else {
+      _bassDocs = null;
+    }
+  }
+
+  /// Validate a single field and update error state
+  String? _validateField(FormFieldConfig f) {
+    String? textValue;
+    DateTime? dateValue;
+    String? dropdownValue;
+    String? radioValue;
+
+    switch (f.type) {
+      case FormFieldType.text:
+      case FormFieldType.email:
+      case FormFieldType.number:
+      case FormFieldType.phone:
+      case FormFieldType.textarea:
+      case FormFieldType.email:
+        textValue = _controllers[f.key]?.text;
+        break;
+      case FormFieldType.dropdown:
+        dropdownValue = _dropdownValues[f.key];
+        break;
+      case FormFieldType.radio:
+        radioValue = _radioValues[f.key];
+        break;
+      case FormFieldType.date:
+        dateValue = _dateValues[f.key];
+        break;
     }
 
-    /// Validate a single field and update error state
-    String? _validateField(FormFieldConfig f) {
-      String? textValue;
-      DateTime? dateValue;
-      String? dropdownValue;
-      String? radioValue;
+    final error = validateField(
+      f,
+      textValue,
+      dateValue,
+      dropdownValue,
+      radioValue,
+    );
+    setState(() {
+      _fieldErrors[f.key] = error;
+    });
+    return error;
+  }
 
-      switch (f.type) {
-        case FormFieldType.text:
-          case FormFieldType.email:
-        case FormFieldType.number:
-        case FormFieldType.phone:
-        case FormFieldType.textarea:
-        case FormFieldType.email:
-          textValue = _controllers[f.key]?.text;
-          break;
-        case FormFieldType.dropdown:
-          dropdownValue = _dropdownValues[f.key];
-          break;
-        case FormFieldType.radio:
-          radioValue = _radioValues[f.key];
-          break;
-        case FormFieldType.date:
-          dateValue = _dateValues[f.key];
-          break;
+  /// Validate all fields
+  bool _validateAllFields() {
+    bool isValid = true;
+    for (final f in _fields) {
+      if (f.required) {
+        final error = _validateField(f);
+        if (error != null) isValid = false;
       }
-
-      final error = validateField(f, textValue, dateValue, dropdownValue, radioValue);
-      setState(() {
-        _fieldErrors[f.key] = error;
-      });
-      return error;
     }
-
-    /// Validate all fields
-    bool _validateAllFields() {
-      bool isValid = true;
-      for (final f in _fields) {
-        if (f.required) {
-          final error = _validateField(f);
-          if (error != null) isValid = false;
-        }
+    // Validate BASS documents
+    if (_bassDocs != null) {
+      final missingRequired = _bassDocs!
+          .where((d) => d.required && !d.uploaded)
+          .toList();
+      if (missingRequired.isNotEmpty) {
+        _showError(
+          'Please upload all required documents: ${missingRequired.map((d) => d.name).join(', ')}',
+        );
+        return false;
       }
-      // Validate BASS documents
-      if (_bassDocs != null) {
-        final missingRequired = _bassDocs!.where((d) => d.required && !d.uploaded).toList();
-        if (missingRequired.isNotEmpty) {
-          _showError('Please upload all required documents: ${missingRequired.map((d) => d.name).join(', ')}');
-          return false;
-        }
-      }
-      return isValid;
     }
+    return isValid;
+  }
 
-    /// Called externally (from HomeScreen) to set the category.
+  /// Called externally (from HomeScreen) to set the category.
   void setCategory(String categoryId, {String? subType}) {
     setState(() {
       _selectedCategoryId = categoryId;
       final cat = kServiceCategories.firstWhere((c) => c.id == categoryId);
-      _selectedSubType = subType ?? (cat.subTypes.isNotEmpty ? cat.subTypes.first : null);
+      _selectedSubType =
+          subType ?? (cat.subTypes.isNotEmpty ? cat.subTypes.first : null);
       _submitted = false;
       _refNumber = null;
       _loadForm();
@@ -146,34 +163,39 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   }
 
   Future<void> _submit() async {
-      // Issue #3 fix: rate limiting — max 5 cases per resident per hour
-      final auth = context.read<AuthService>();
-      final user = auth.currentUserModel;
-      if (user != null) {
-        try {
-          final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
-          final recentCases = await FirebaseFirestore.instance
-              .collection('cases')
-              .where('residentId', isEqualTo: user.uid)
-              .where('submissionTimestamp', isGreaterThan: Timestamp.fromDate(oneHourAgo))
-              .count()
-              .get();
-          if ((recentCases.count ?? 0) >= 5) {
-            _showError('Rate limit exceeded. You can submit up to 5 cases per hour.');
-            return;
-          }
-        } catch (e) {
-          // If rate limit check fails, allow submission (fail-open)
-          debugPrint('Rate limit check failed: $e');
+    // Issue #3 fix: rate limiting — max 5 cases per resident per hour
+    final auth = context.read<AuthService>();
+    final user = auth.currentUserModel;
+    if (user != null) {
+      try {
+        final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
+        final recentCases = await FirebaseFirestore.instance
+            .collection('cases')
+            .where('residentId', isEqualTo: user.uid)
+            .where(
+              'submissionTimestamp',
+              isGreaterThan: Timestamp.fromDate(oneHourAgo),
+            )
+            .count()
+            .get();
+        if ((recentCases.count ?? 0) >= 5) {
+          _showError(
+            'Rate limit exceeded. You can submit up to 5 cases per hour.',
+          );
+          return;
         }
+      } catch (e) {
+        // If rate limit check fails, allow submission (fail-open)
+        debugPrint('Rate limit check failed: $e');
       }
+    }
 
-      // Validate all fields using new validation
-      if (!_validateAllFields()) {
-        return;
-      }
+    // Validate all fields using new validation
+    if (!_validateAllFields()) {
+      return;
+    }
 
-      setState(() => _loading = true);
+    setState(() => _loading = true);
 
     try {
       final auth = context.read<AuthService>();
@@ -210,20 +232,40 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       // Documents
       List<Map<String, dynamic>> documents = [];
       if (_bassDocs != null) {
-        documents = _bassDocs!.map((d) => {
-          'name': d.name,
-          'required': d.required,
-          'status': d.uploaded ? 'uploaded' : 'missing',
-        }).toList();
+        documents = _bassDocs!
+            .map(
+              (d) => {
+                'name': d.name,
+                'required': d.required,
+                'status': d.uploaded ? 'uploaded' : 'missing',
+              },
+            )
+            .toList();
       }
 
       // Compute SLA
       final now = DateTime.now();
-      final deadline = sla.computeDeadline(now, _selectedCategoryId!, _selectedSubType!);
+      final slaSnapshot = await FirebaseFirestore.instance
+          .collection('slaConfig')
+          .get();
+      final slaConfig = sla.buildSlaConfig(
+        slaSnapshot.docs.map((doc) => doc.data()),
+      );
+      final deadline = sla.computeDeadline(
+        now,
+        _selectedCategoryId!,
+        _selectedSubType!,
+        config: slaConfig,
+      );
 
       final caseData = CaseModel(
         residentId: user.uid,
-        residentName: formData['fullName'] ?? formData['patientName'] ?? formData['studentName'] ?? formData['beneficiaryName'] ?? user.name,
+        residentName:
+            formData['fullName'] ??
+            formData['patientName'] ??
+            formData['studentName'] ??
+            formData['beneficiaryName'] ??
+            user.name,
         residentMobile: user.mobile,
         residentAddress: formData['address'] ?? '',
         serviceCategory: _selectedCategoryId!,
@@ -233,15 +275,21 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         submissionTimestamp: now,
         slaDeadline: deadline,
         slaStatus: 'on_time',
-        isConfidential: kServiceCategories.firstWhere((c) => c.id == _selectedCategoryId!).isConfidential,
+        isConfidential: kServiceCategories
+            .firstWhere((c) => c.id == _selectedCategoryId!)
+            .isConfidential,
         documents: documents,
-        assistanceAmount: formData['assistanceAmount'] != null && formData['assistanceAmount'].toString().isNotEmpty
+        assistanceAmount:
+            formData['assistanceAmount'] != null &&
+                formData['assistanceAmount'].toString().isNotEmpty
             ? double.tryParse(formData['assistanceAmount'].toString())
             : null,
       );
 
       final refNumber = await _firestore.createCase(caseData);
-      final smsTo = user.isSeedData == true ? TwilioService.fallbackNumber : user.mobile;
+      final smsTo = user.isSeedData == true
+          ? TwilioService.fallbackNumber
+          : user.mobile;
       final smsResult = await _twilio.sendSubmissionAck(smsTo, refNumber);
 
       if (mounted) {
@@ -253,7 +301,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         if (smsResult != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Case submitted. SMS notification could not be sent: $smsResult'),
+              content: Text(
+                'Case submitted. SMS notification could not be sent: $smsResult',
+              ),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 5),
             ),
@@ -269,9 +319,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
   void _reset() {
@@ -311,11 +361,19 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Submit a Request',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+          const Text(
+            'Submit a Request',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: kNavy,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text('Select a service category to begin.',
-              style: TextStyle(color: Colors.grey, fontSize: 14)),
+          const Text(
+            'Select a service category to begin.',
+            style: TextStyle(color: Colors.grey, fontSize: 14),
+          ),
           const SizedBox(height: 24),
           // Walk-in toggle
           Row(
@@ -324,8 +382,10 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 value: _isWalkIn,
                 onChanged: (v) => setState(() => _isWalkIn = v ?? false),
               ),
-              const Text('Encoding on behalf of resident (walk-in)',
-                  style: TextStyle(fontSize: 13)),
+              const Text(
+                'Encoding on behalf of resident (walk-in)',
+                style: TextStyle(fontSize: 13),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -375,7 +435,13 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           color: Colors.white,
           border: Border.all(color: Colors.grey.shade300),
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.shade100,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: isWide
             ? Row(
@@ -387,9 +453,22 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(cat.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kNavy)),
+                        Text(
+                          cat.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: kNavy,
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text(cat.description, style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                        Text(
+                          cat.description,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 11,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -401,9 +480,23 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 children: [
                   Icon(cat.icon, color: kNavy, size: 24),
                   const SizedBox(height: 8),
-                  Text(cat.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kNavy), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  Text(
+                    cat.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: kNavy,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 4),
-                  Text(cat.description, style: TextStyle(color: Colors.grey.shade600, fontSize: 11), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  Text(
+                    cat.description,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
       ),
@@ -412,7 +505,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
   // ─── Step 2: Pick Sub-Type ───────────────────────────────────────
   Widget _buildSubTypePicker() {
-    final cat = kServiceCategories.firstWhere((c) => c.id == _selectedCategoryId);
+    final cat = kServiceCategories.firstWhere(
+      (c) => c.id == _selectedCategoryId,
+    );
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -428,28 +523,51 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 }),
               ),
               const SizedBox(width: 8),
-              Text(cat.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kNavy)),
+              Text(
+                cat.name,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
           const Padding(
             padding: EdgeInsets.only(left: 48),
-            child: Text('Select the specific service type.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            child: Text(
+              'Select the specific service type.',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
           ),
           const SizedBox(height: 20),
-          ...cat.subTypes.map((st) => ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: const Icon(Icons.chevron_right, color: kNavy),
-                title: Text(st, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                onTap: () {
-                  setState(() {
-                    _selectedSubType = st;
-                    _loadForm();
-                  });
-                },
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                tileColor: Colors.grey.shade50,
-              )),
+          ...cat.subTypes.map(
+            (st) => ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
+              leading: const Icon(Icons.chevron_right, color: kNavy),
+              title: Text(
+                st,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onTap: () {
+                setState(() {
+                  _selectedSubType = st;
+                  _loadForm();
+                });
+              },
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              tileColor: Colors.grey.shade50,
+            ),
+          ),
         ],
       ),
     );
@@ -457,7 +575,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
   // ─── Step 3: Fill Form ──────────────────────────────────────────
   Widget _buildForm() {
-    final cat = kServiceCategories.firstWhere((c) => c.id == _selectedCategoryId);
+    final cat = kServiceCategories.firstWhere(
+      (c) => c.id == _selectedCategoryId,
+    );
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -474,13 +594,32 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${cat.name} — $_selectedSubType',
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: kNavy)),
+                    Text(
+                      '${cat.name} — $_selectedSubType',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: kNavy,
+                      ),
+                    ),
                     if (cat.isConfidential)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
-                        child: const Text('CONFIDENTIAL', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'CONFIDENTIAL',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                   ],
                 ),
@@ -492,10 +631,19 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           // BASS document checklist
           if (_bassDocs != null) ...[
             const SizedBox(height: 24),
-            const Text('Required Documents', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kNavy)),
+            const Text(
+              'Required Documents',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: kNavy,
+              ),
+            ),
             const SizedBox(height: 4),
-            const Text('Check off documents as they are provided.',
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const Text(
+              'Check off documents as they are provided.',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
             const SizedBox(height: 12),
             ...(_bassDocs!).asMap().entries.map((entry) {
               final i = entry.key;
@@ -504,9 +652,21 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 dense: true,
                 value: doc.uploaded,
                 onChanged: (v) => setState(() => doc.uploaded = v ?? false),
-                title: Text('${i + 1}. ${doc.name}',
-                    style: TextStyle(fontSize: 13, fontWeight: doc.required ? FontWeight.w600 : FontWeight.normal)),
-                subtitle: doc.required ? const Text('Required', style: TextStyle(color: Colors.red, fontSize: 11)) : null,
+                title: Text(
+                  '${i + 1}. ${doc.name}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: doc.required
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                ),
+                subtitle: doc.required
+                    ? const Text(
+                        'Required',
+                        style: TextStyle(color: Colors.red, fontSize: 11),
+                      )
+                    : null,
                 controlAffinity: ListTileControlAffinity.leading,
               );
             }),
@@ -559,8 +719,18 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 foregroundColor: Colors.white,
               ),
               child: _loading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Submit request', style: TextStyle(fontSize: 16)),
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'Submit request',
+                      style: TextStyle(fontSize: 16),
+                    ),
             ),
           ),
         ],
@@ -574,7 +744,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     Widget field;
     switch (f.type) {
       case FormFieldType.text:
-          case FormFieldType.email:
+      case FormFieldType.email:
       case FormFieldType.number:
       case FormFieldType.phone:
       case FormFieldType.email:
@@ -583,10 +753,10 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           keyboardType: f.type == FormFieldType.number
               ? TextInputType.number
               : f.type == FormFieldType.phone
-                  ? TextInputType.phone
-                  : f.type == FormFieldType.email
-                      ? TextInputType.emailAddress
-                      : TextInputType.text,
+              ? TextInputType.phone
+              : f.type == FormFieldType.email
+              ? TextInputType.emailAddress
+              : TextInputType.text,
           onChanged: (_) => _validateField(f),
           decoration: InputDecoration(
             labelText: f.label + (f.required ? ' *' : ''),
@@ -617,7 +787,14 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             border: const OutlineInputBorder(),
             errorText: _fieldErrors[f.key],
           ),
-          items: (f.options ?? []).map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 14)))).toList(),
+          items: (f.options ?? [])
+              .map(
+                (o) => DropdownMenuItem(
+                  value: o,
+                  child: Text(o, style: const TextStyle(fontSize: 14)),
+                ),
+              )
+              .toList(),
           onChanged: (v) {
             setState(() => _dropdownValues[f.key] = v);
             _validateField(f);
@@ -628,29 +805,39 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         field = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(f.label + (f.required ? ' *' : ''), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            Text(
+              f.label + (f.required ? ' *' : ''),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
             const SizedBox(height: 4),
             Wrap(
               spacing: 16,
-              children: (f.options ?? []).map((o) => Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Radio<String>(
-                    value: o,
-                    groupValue: _radioValues[f.key],
-                    onChanged: (v) {
-                      setState(() => _radioValues[f.key] = v);
-                      _validateField(f);
-                    },
-                  ),
-                  Text(o, style: const TextStyle(fontSize: 13)),
-                ],
-              )).toList(),
+              children: (f.options ?? [])
+                  .map(
+                    (o) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Radio<String>(
+                          value: o,
+                          groupValue: _radioValues[f.key],
+                          onChanged: (v) {
+                            setState(() => _radioValues[f.key] = v);
+                            _validateField(f);
+                          },
+                        ),
+                        Text(o, style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                  )
+                  .toList(),
             ),
             if (_fieldErrors[f.key] != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(_fieldErrors[f.key]!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                child: Text(
+                  _fieldErrors[f.key]!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
               ),
           ],
         );
@@ -679,17 +866,16 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               _dateValues[f.key] != null
                   ? '${_dateValues[f.key]!.year}-${_dateValues[f.key]!.month.toString().padLeft(2, '0')}-${_dateValues[f.key]!.day.toString().padLeft(2, '0')}'
                   : 'Select date',
-              style: TextStyle(color: _dateValues[f.key] != null ? Colors.black : Colors.grey),
+              style: TextStyle(
+                color: _dateValues[f.key] != null ? Colors.black : Colors.grey,
+              ),
             ),
           ),
         );
         break;
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: field,
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 16), child: field);
   }
 
   // ─── Confirmation Screen ─────────────────────────────────────────
@@ -713,12 +899,28 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
-            const Text('Case Reference Number:', style: TextStyle(color: Colors.grey, fontSize: 13)),
-            Text(_refNumber ?? '', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+            const Text(
+              'Case Reference Number:',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+            Text(
+              _refNumber ?? '',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: kNavy,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text('Date Submitted: ${DateTime.now().toString().split('.').first}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            Text(
+              'Date Submitted: ${DateTime.now().toString().split('.').first}',
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
             const SizedBox(height: 16),
-            const Text('We will notify you once there is an update.', style: TextStyle(fontSize: 14)),
+            const Text(
+              'We will notify you once there is an update.',
+              style: TextStyle(fontSize: 14),
+            ),
             const SizedBox(height: 4),
             const Text('Thank you!', style: TextStyle(fontSize: 14)),
             const SizedBox(height: 24),

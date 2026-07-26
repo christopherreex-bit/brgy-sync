@@ -17,13 +17,13 @@ const Map<String, Map<String, dynamic>> kSlaDefaults = {
 
 /// Returns the SLA config key for a given category + sub-type.
 String slaKeyFor(String category, String subType) {
-  if (category == 'bass') {
-    final medical = [
-      'Medical – Dialysis',
-      'Medical – Chemotherapy',
-      'Medical – Major Operations',
-    ];
-    return medical.contains(subType) ? 'bass_medical' : 'bass_standard';
+  if (category.trim().toLowerCase() == 'bass') {
+    final normalizedSubType = subType.trim().toLowerCase();
+    final isMedical =
+        normalizedSubType.contains('dialysis') ||
+        normalizedSubType.contains('chemotherapy') ||
+        normalizedSubType.contains('major operation');
+    return isMedical ? 'bass_medical' : 'bass_standard';
   }
   switch (category) {
     case 'documents':

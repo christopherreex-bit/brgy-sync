@@ -1,5 +1,32 @@
 import '../models/service_category.dart';
 
+typedef SlaConfigMap = Map<String, Map<String, dynamic>>;
+
+/// Builds a complete SLA configuration by overlaying Firestore values on the
+/// application defaults. Missing or invalid records safely retain defaults.
+SlaConfigMap buildSlaConfig(Iterable<Map<String, dynamic>> documents) {
+  final config = <String, Map<String, dynamic>>{
+    for (final entry in kSlaDefaults.entries)
+      entry.key: Map<String, dynamic>.from(entry.value),
+  };
+
+  for (final document in documents) {
+    final key = document['category'];
+    final value = (document['deadlineValue'] as num?)?.toInt();
+    final unit = document['deadlineUnit'];
+    if (key is! String ||
+        !config.containsKey(key) ||
+        value == null ||
+        value <= 0 ||
+        (unit != 'minutes' && unit != 'working_days')) {
+      continue;
+    }
+    config[key] = {'value': value, 'unit': unit};
+  }
+
+  return config;
+}
+
 /// Philippine public holidays for a given year.
 /// Covers fixed-date national holidays. Movable holidays (Easter, Eid) are not included.
 /// For production, consider using a proper holiday API.
@@ -49,12 +76,18 @@ List<String> _easterHolidays(int year) {
 }
 
 /// Returns the set of holiday date strings for the current year.
-Set<String> get currentHolidays => _philippineHolidaysForYear(DateTime.now().year);
+Set<String> get currentHolidays =>
+    _philippineHolidaysForYear(DateTime.now().year);
 
 /// Compute the SLA deadline from a submission timestamp.
-DateTime computeDeadline(DateTime submitted, String category, String subType) {
+DateTime computeDeadline(
+  DateTime submitted,
+  String category,
+  String subType, {
+  SlaConfigMap? config,
+}) {
   final slaKey = slaKeyFor(category, subType);
-  final sla = kSlaDefaults[slaKey]!;
+  final sla = config?[slaKey] ?? kSlaDefaults[slaKey]!;
   final value = sla['value'] as int;
   final unit = sla['unit'] as String;
 
@@ -70,7 +103,8 @@ DateTime computeDeadline(DateTime submitted, String category, String subType) {
     current = current.add(const Duration(days: 1));
     final dow = current.weekday;
     if (dow == DateTime.saturday || dow == DateTime.sunday) continue;
-    final key = '${current.year}-${current.month.toString().padLeft(2, '0')}-${current.day.toString().padLeft(2, '0')}';
+    final key =
+        '${current.year}-${current.month.toString().padLeft(2, '0')}-${current.day.toString().padLeft(2, '0')}';
     if (holidays.contains(key)) continue;
     daysAdded++;
   }
@@ -97,6 +131,8 @@ String timeRemainingString(DateTime deadline) {
     return '+${overdue.inMinutes}m overdue';
   }
   if (diff.inDays > 0) return '${diff.inDays}d ${diff.inHours % 24}h remaining';
-  if (diff.inHours > 0) return '${diff.inHours}h ${diff.inMinutes % 60}m remaining';
+  if (diff.inHours > 0) {
+    return '${diff.inHours}h ${diff.inMinutes % 60}m remaining';
+  }
   return '${diff.inMinutes}m remaining';
 }

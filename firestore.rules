@@ -36,7 +36,9 @@ service cloud.firestore {
 
     // ─── SLA Config ──────────────────────────────────────────────
     match /slaConfig/{doc} {
-      allow read: if isStaff();
+      // Residents also need these values to calculate the deadline attached
+      // to a newly submitted case.
+      allow read: if request.auth != null;
       allow write: if isCaptain();
     }
 
