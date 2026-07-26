@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
 import '../../services/auth_service.dart';
+import '../../widgets/status_badge.dart';
 
 class OverdueCasesScreen extends StatefulWidget {
   const OverdueCasesScreen({super.key});
@@ -152,34 +153,8 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                (c['caseStatus'] == 'processing'
-                                                        ? Colors.blue
-                                                        : Colors.orange)
-                                                    .withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            (c['caseStatus'] as String)
-                                                .replaceAll('_', ' '),
-                                            style: TextStyle(
-                                              fontSize: 9,
-                                              color:
-                                                  c['caseStatus'] ==
-                                                      'processing'
-                                                  ? Colors.blue
-                                                  : Colors.orange,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
+                                        StatusBadge(
+                                          status: c['caseStatus'] as String,
                                         ),
                                       ],
                                     ),
@@ -328,6 +303,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
     final currentUser = auth.currentUserModel;
     String? newStatus;
     String? notes;
+    String? notesError;
 
     showDialog(
       context: context,
@@ -380,12 +356,18 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   ),
                   const SizedBox(height: 16),
                   TextField(
-                    onChanged: (v) => notes = v,
+                    onChanged: (value) {
+                      notes = value;
+                      if (value.trim().isNotEmpty && notesError != null) {
+                        setState(() => notesError = null);
+                      }
+                    },
                     maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
+                    decoration: InputDecoration(
+                      labelText: 'Reason *',
                       hintText: 'Reason for status change...',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      errorText: notesError,
                     ),
                   ),
                 ],
@@ -399,11 +381,19 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   onPressed: newStatus == null
                       ? null
                       : () async {
+                          final reason = notes?.trim() ?? '';
+                          if (reason.isEmpty) {
+                            setState(
+                              () => notesError =
+                                  'Please enter a reason for the status change.',
+                            );
+                            return;
+                          }
                           Navigator.pop(dialogCtx);
                           await _updateCaseStatus(
                             c['id'],
                             newStatus!,
-                            notes,
+                            reason,
                             currentUser,
                             referenceNumber: c['ref'],
                           );
@@ -425,7 +415,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
   Future<void> _updateCaseStatus(
     String caseId,
     String newStatus,
-    String? notes,
+    String notes,
     user, {
     String? referenceNumber,
   }) async {
@@ -448,7 +438,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
         'action': 'Status changed: $previousStatus → $newStatus',
         'previousStatus': previousStatus,
         'newStatus': newStatus,
-        'notes': notes ?? '',
+        'notes': notes,
         'smsSent': false,
         'smsBody': '',
       });
