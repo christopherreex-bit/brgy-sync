@@ -46,11 +46,19 @@ class _SidebarState extends State<Sidebar> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('BrgySync',
-                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'BrgySync',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text('Brgy. Calzada-Tipas, Taguig',
-                      style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                  Text(
+                    'Brgy. Calzada-Tipas, Taguig',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
+                  ),
                 ],
               ),
             ),
@@ -63,19 +71,35 @@ class _SidebarState extends State<Sidebar> {
                   CircleAvatar(
                     radius: 20,
                     backgroundColor: kNavyLight,
-                    child: Text(initials,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user.name,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                            overflow: TextOverflow.ellipsis),
-                        Text(roleLabel,
-                            style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                        Text(
+                          user.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          roleLabel,
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 11,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -93,34 +117,128 @@ class _SidebarState extends State<Sidebar> {
                     children: [
                       if (user.isStaff || user.isOfficer || user.isCaptain) ...[
                         _sectionHeader('CASE MONITORING'),
-                        _navItem(context, Icons.list_alt, 'Case Queue', '/dashboard', currentLocation),
-                        _navItem(context, Icons.assignment, 'Distributions', '/dashboard/distributions', currentLocation),
-                        _navItem(context, Icons.history, 'Audit Trail', '/dashboard/audit', currentLocation),
+                        _navItem(
+                          context,
+                          Icons.list_alt,
+                          'Case Queue',
+                          '/dashboard',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
+                          Icons.assignment,
+                          'Distributions',
+                          '/dashboard/distributions',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
+                          Icons.history,
+                          'Audit Trail',
+                          '/dashboard/audit',
+                          currentLocation,
+                        ),
                       ],
                       if (user.isOfficer || user.isCaptain) ...[
                         _sectionHeader('CHARTER COMPLIANCE'),
-                        _navItem(context, Icons.timer, 'SLA Monitoring', '/dashboard/sla-monitoring', currentLocation),
-                        _navItem(context, Icons.warning_amber, 'Overdue Cases', '/dashboard/overdue', currentLocation),
-                        _navItem(context, Icons.assessment, 'Compliance Report', '/dashboard/compliance-report', currentLocation),
+                        _navItem(
+                          context,
+                          Icons.timer,
+                          'SLA Monitoring',
+                          '/dashboard/sla-monitoring',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
+                          Icons.warning_amber,
+                          'Overdue Cases',
+                          '/dashboard/overdue',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
+                          Icons.assessment,
+                          'Compliance Report',
+                          '/dashboard/compliance-report',
+                          currentLocation,
+                        ),
                         if (user.isCaptain)
-                          _navItem(context, Icons.settings, 'SLA Configuration', '/dashboard/sla-config', currentLocation),
+                          _navItem(
+                            context,
+                            Icons.settings,
+                            'SLA Configuration',
+                            '/dashboard/sla-config',
+                            currentLocation,
+                          ),
                       ],
                       if (user.isOfficer || user.isCaptain) ...[
                         _sectionHeader('BUDGET TRACKING'),
-                        _navItem(context, Icons.account_balance_wallet, 'Budget Overview', '/dashboard/budget', currentLocation),
+                        _navItem(
+                          context,
+                          Icons.account_balance_wallet,
+                          'Budget Overview',
+                          '/dashboard/budget',
+                          currentLocation,
+                        ),
                         if (user.isCaptain)
-                          _navItem(context, Icons.tune, 'Allocation Setup', '/dashboard/allocation-setup', currentLocation),
-                        _navItem(context, Icons.receipt_long, 'Expenditure Summary', '/dashboard/expenditure', currentLocation),
+                          _navItem(
+                            context,
+                            Icons.tune,
+                            'Allocation Setup',
+                            '/dashboard/allocation-setup',
+                            currentLocation,
+                          ),
+                        _navItem(
+                          context,
+                          Icons.receipt_long,
+                          'Expenditure Summary',
+                          '/dashboard/expenditure',
+                          currentLocation,
+                        ),
                       ],
                       if (user.isCaptain) ...[
                         _sectionHeader('ANALYTICS & REPORTING'),
-                        _navItem(context, Icons.dashboard, 'Analytics Dashboard', '/dashboard/analytics', currentLocation),
-                        _navItem(context, Icons.trending_up, 'Service Demand', '/dashboard/service-demand', currentLocation),
-                        _navItem(context, Icons.description, 'Report Generator', '/dashboard/report-builder', currentLocation),
+                        _navItem(
+                          context,
+                          Icons.dashboard,
+                          'Analytics Dashboard',
+                          '/dashboard/analytics',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
+                          Icons.trending_up,
+                          'Service Demand',
+                          '/dashboard/service-demand',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
+                          Icons.description,
+                          'Report Generator',
+                          '/dashboard/report-builder',
+                          currentLocation,
+                        ),
                       ],
                       if (user.isCaptain) ...[
                         _sectionHeader('ADMINISTRATION'),
-                        _navItem(context, Icons.manage_accounts, 'Account Management', '/dashboard/account-management', currentLocation),
+                        _navItem(
+                          context,
+                          Icons.manage_accounts,
+                          'Account Management',
+                          '/dashboard/account-management',
+                          currentLocation,
+                        ),
+                      ],
+                      if (user.isStaff || user.isOfficer) ...[
+                        _sectionHeader('PROFILE'),
+                        _navItem(
+                          context,
+                          Icons.person_outline,
+                          'User Management',
+                          '/dashboard/user-management',
+                          currentLocation,
+                        ),
                       ],
                       // Bottom padding so last item isn't hidden behind logout
                       const SizedBox(height: 8),
@@ -131,9 +249,7 @@ class _SidebarState extends State<Sidebar> {
                     right: 0,
                     top: 0,
                     bottom: 0,
-                    child: _CustomScrollbar(
-                      controller: _scrollController,
-                    ),
+                    child: _CustomScrollbar(controller: _scrollController),
                   ),
                 ],
               ),
@@ -150,13 +266,25 @@ class _SidebarState extends State<Sidebar> {
   Widget _sectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Text(title,
-          style: const TextStyle(
-              color: kSidebarInactive, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: kSidebarInactive,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
+        ),
+      ),
     );
   }
 
-  Widget _navItem(BuildContext context, IconData icon, String label, String route, String currentLocation) {
+  Widget _navItem(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String route,
+    String currentLocation,
+  ) {
     final isActive = route == '/dashboard'
         ? currentLocation == route
         : currentLocation == route || currentLocation.startsWith('$route/');
@@ -175,14 +303,23 @@ class _SidebarState extends State<Sidebar> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                Icon(icon, color: isActive ? Colors.white : kSidebarInactive, size: 20),
+                Icon(
+                  icon,
+                  color: isActive ? Colors.white : kSidebarInactive,
+                  size: 20,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(label,
-                      style: TextStyle(
-                          color: isActive ? Colors.white : kSidebarInactive,
-                          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 13)),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isActive ? Colors.white : kSidebarInactive,
+                      fontWeight: isActive
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -206,7 +343,10 @@ class _SidebarState extends State<Sidebar> {
             children: [
               Icon(Icons.logout, color: Colors.white70, size: 20),
               SizedBox(width: 12),
-              Text('Log Out', style: TextStyle(color: Colors.white70, fontSize: 13)),
+              Text(
+                'Log Out',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
             ],
           ),
         ),
@@ -253,7 +393,9 @@ class _CustomScrollbarState extends State<_CustomScrollbar> {
       _visible = true;
       final trackHeight = position.viewportDimension;
       // Thumb size proportional to content ratio, min 30px
-      final contentRatio = position.viewportDimension / (position.viewportDimension + position.maxScrollExtent);
+      final contentRatio =
+          position.viewportDimension /
+          (position.viewportDimension + position.maxScrollExtent);
       _thumbHeight = (trackHeight * contentRatio).clamp(30.0, trackHeight);
       // Thumb position
       final scrollFraction = position.pixels / position.maxScrollExtent;
@@ -273,8 +415,14 @@ class _CustomScrollbarState extends State<_CustomScrollbar> {
         // Convert drag delta to scroll delta
         final trackHeight = position.viewportDimension - _thumbHeight;
         if (trackHeight <= 0) return;
-        final scrollDelta = details.delta.dy * (position.maxScrollExtent / trackHeight);
-        widget.controller.jumpTo((widget.controller.offset + scrollDelta).clamp(0.0, position.maxScrollExtent));
+        final scrollDelta =
+            details.delta.dy * (position.maxScrollExtent / trackHeight);
+        widget.controller.jumpTo(
+          (widget.controller.offset + scrollDelta).clamp(
+            0.0,
+            position.maxScrollExtent,
+          ),
+        );
       },
       child: Container(
         width: 12,

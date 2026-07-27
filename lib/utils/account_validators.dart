@@ -21,3 +21,16 @@ String? validateStaffPassword(String value) {
   if (value.length < 6) return 'Use at least 6 characters.';
   return null;
 }
+
+String? validatePasswordChange({
+  required String currentPassword,
+  required String newPassword,
+}) {
+  if (currentPassword.isEmpty) return 'Enter your current password.';
+  final passwordError = validateStaffPassword(newPassword);
+  if (passwordError != null) return passwordError;
+  if (newPassword == currentPassword) {
+    return 'New password must be different from your current password.';
+  }
+  return null;
+}

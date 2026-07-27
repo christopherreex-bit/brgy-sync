@@ -266,6 +266,75 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<String?> changeOwnPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final passwordError = validatePasswordChange(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    if (passwordError != null) return passwordError;
+
+    final reauthenticationError = await confirmCurrentUserPassword(
+      currentPassword,
+    );
+    if (reauthenticationError != null) {
+      return reauthenticationError.replaceAll(
+        'No account was created.',
+        'Your password was not changed.',
+      );
+    }
+
+    try {
+      await _auth.currentUser!.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'Could not change your password.';
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  Future<String?> deleteOwnAccount({required String currentPassword}) async {
+    final user = _auth.currentUser;
+    final profile = _currentUserModel;
+    if (user == null || profile == null) {
+      return 'Your session has expired. Please log in again.';
+    }
+
+    final reauthenticationError = await confirmCurrentUserPassword(
+      currentPassword,
+    );
+    if (reauthenticationError != null) {
+      return reauthenticationError.replaceAll(
+        'No account was created.',
+        'Your account was not deleted.',
+      );
+    }
+
+    final profileRef = _firestore.collection('users').doc(user.uid);
+    final profileData = profile.toMap();
+    try {
+      await profileRef.delete();
+      try {
+        await user.delete();
+      } catch (error) {
+        // Restore the profile if Firebase Authentication deletion fails so the
+        // account is never left authenticated without its role record.
+        await profileRef.set(profileData);
+        rethrow;
+      }
+      _currentUserModel = null;
+      notifyListeners();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'Could not delete your account.';
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   /// Queries all staff/officer/captain accounts.
   Stream<QuerySnapshot> getStaffAccounts() {
     return _firestore

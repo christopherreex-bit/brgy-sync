@@ -23,6 +23,7 @@ import '../screens/dashboard/service_demand_screen.dart';
 import '../screens/dashboard/report_builder_screen.dart';
 import '../screens/dashboard/report_archive_screen.dart';
 import '../screens/dashboard/account_management_screen.dart';
+import '../screens/dashboard/user_management_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/login',
@@ -134,6 +135,10 @@ final appRouter = GoRouter(
         GoRoute(
           path: '/dashboard/account-management',
           builder: (context, state) => const AccountManagementScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/user-management',
+          builder: (context, state) => const UserManagementScreen(),
         ),
       ],
     ),

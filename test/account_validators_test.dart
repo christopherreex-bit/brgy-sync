@@ -19,4 +19,21 @@ void main() {
     expect(validateStaffPassword('123456'), isNull);
     expect(validateStaffPassword('abcdef'), isNull);
   });
+
+  test('changed password must differ from the current password', () {
+    expect(
+      validatePasswordChange(
+        currentPassword: 'secret1',
+        newPassword: 'secret1',
+      ),
+      isNotNull,
+    );
+    expect(
+      validatePasswordChange(
+        currentPassword: 'secret1',
+        newPassword: 'secret2',
+      ),
+      isNull,
+    );
+  });
 }
