@@ -406,6 +406,7 @@ List<FormFieldConfig> _bassFields() {
       key: 'assistanceAmount',
       label: 'Assistance Amount (₱)',
       type: FormFieldType.number,
+      required: true,
     ),
   ];
 }
