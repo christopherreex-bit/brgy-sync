@@ -467,6 +467,12 @@ List<FormFieldConfig> _beneficiaryFields(String subType) {
       hint: '09XXXXXXXXX',
     ),
     FormFieldConfig(
+      key: 'requesterRelationship',
+      label: 'Your Relationship to the Beneficiary',
+      type: FormFieldType.text,
+      required: true,
+    ),
+    FormFieldConfig(
       key: 'birthday',
       label: 'Birthday',
       type: FormFieldType.date,
@@ -549,13 +555,6 @@ List<FormFieldConfig> _educationFields() {
       label: 'Grade Level',
       type: FormFieldType.text,
       required: true,
-    ),
-    FormFieldConfig(
-      key: 'honorLevel',
-      label: 'Honor Level',
-      type: FormFieldType.dropdown,
-      required: true,
-      options: ['With Highest Honors', 'With High Honors', 'With Honors'],
     ),
     FormFieldConfig(
       key: 'guardianName',

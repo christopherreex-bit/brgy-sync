@@ -101,7 +101,6 @@ class _DistributionsScreenState extends State<DistributionsScreen> {
                     final programType = data['programType'] ?? '';
                     final age = data['age']?.toString() ?? '';
                     final gradeLevel = data['gradeLevel'] ?? '';
-                    final honorLevel = data['honorLevel'] ?? '';
                     final school = data['school'] ?? '';
 
                     return Container(
@@ -131,7 +130,7 @@ class _DistributionsScreenState extends State<DistributionsScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   programType == 'education_incentive'
-                                      ? '$gradeLevel · $honorLevel · $school'
+                                      ? '$gradeLevel · $school'
                                       : '$programType · Age: $age',
                                   style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                                 ),

@@ -40,7 +40,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   bool _loading = false;
   bool _submitted = false;
   String? _refNumber;
-  bool _isWalkIn = false;
   bool _requestingForSomeoneElse = false;
 
   final _firestore = FirestoreService();
@@ -72,6 +71,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
   void _loadForm() {
     if (_selectedCategoryId == null || _selectedSubType == null) return;
+    if (!{'bass', 'beneficiary'}.contains(_selectedCategoryId)) {
+      _requestingForSomeoneElse = false;
+    }
     _fields = formFieldsFor(_selectedCategoryId!, _selectedSubType!);
     _controllers.clear();
     _dropdownValues.clear();
@@ -104,9 +106,15 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   };
 
   bool _isFieldVisible(FormFieldConfig field) {
-    return !(!_requestingForSomeoneElse &&
-        _selectedCategoryId == 'bass' &&
-        field.key == 'relationship');
+    if (_requestingForSomeoneElse) return true;
+    if (_selectedCategoryId == 'bass' && field.key == 'relationship') {
+      return false;
+    }
+    if (_selectedCategoryId == 'beneficiary' &&
+        field.key == 'requesterRelationship') {
+      return false;
+    }
+    return true;
   }
 
   void _prefillLoggedInResident() {
@@ -164,6 +172,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _controllers['contact']?.clear();
       if (!value && _selectedCategoryId == 'bass') {
         _controllers['relationship']?.clear();
+      }
+      if (!value && _selectedCategoryId == 'beneficiary') {
+        _controllers['requesterRelationship']?.clear();
       }
 
       if (!value) {
@@ -355,7 +366,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         serviceCategory: _selectedCategoryId!,
         serviceSubType: _selectedSubType!,
         status: 'pending_review',
-        submissionChannel: _isWalkIn ? 'walkin' : 'portal',
+        submissionChannel: 'portal',
         submissionTimestamp: now,
         slaDeadline: deadline,
         slaStatus: 'on_time',
@@ -422,7 +433,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _radioValues.clear();
       _dateValues.clear();
       _bassDocs = null;
-      _isWalkIn = false;
       _requestingForSomeoneElse = false;
       _uploadedDatabasePaths.clear();
     });
@@ -584,20 +594,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             style: TextStyle(color: Colors.grey, fontSize: 14),
           ),
           const SizedBox(height: 24),
-          // Walk-in toggle
-          Row(
-            children: [
-              Checkbox(
-                value: _isWalkIn,
-                onChanged: (v) => setState(() => _isWalkIn = v ?? false),
-              ),
-              const Text(
-                'Encoding on behalf of resident (walk-in)',
-                style: TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -836,51 +832,56 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          Material(
-            color: Colors.blue.shade50,
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: Colors.blue.shade100),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Checkbox(
-                    value: _requestingForSomeoneElse,
-                    onChanged: _loading
-                        ? null
-                        : (value) =>
-                              _setRequestingForSomeoneElse(value ?? false),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'I am requesting for someone else',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _requestingForSomeoneElse
-                                ? 'Enter the beneficiary or applicant’s information below.'
-                                : 'Unchecked means this request is for yourself. Your name and mobile number are filled in automatically.',
-                          ),
-                        ],
+          if ({'bass', 'beneficiary'}.contains(_selectedCategoryId)) ...[
+            Material(
+              color: Colors.blue.shade50,
+              shape: RoundedRectangleBorder(
+                side: BorderSide(color: Colors.blue.shade100),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Checkbox(
+                      value: _requestingForSomeoneElse,
+                      onChanged: _loading
+                          ? null
+                          : (value) =>
+                                _setRequestingForSomeoneElse(value ?? false),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'I am requesting for someone else',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _requestingForSomeoneElse
+                                  ? 'Enter the beneficiary or applicant’s information below.'
+                                  : 'Unchecked means this request is for yourself. Your name and mobile number are filled in automatically.',
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
+          ],
           ..._fields.where(_isFieldVisible).map((f) => _buildField(f)),
           // BASS document checklist
           if (_bassDocs != null) ...[
