@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/case_status_service.dart';
 import '../../services/twilio_service.dart';
+import '../../widgets/budget_approval_preview_dialog.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
 
@@ -22,11 +23,32 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   String? _newStatus;
   bool _loading = false;
   String? _error;
+  bool _budgetApprovalConfirmed = false;
 
   final _twilio = TwilioService();
 
   List<String> _getValidNextStatuses(String currentStatus) {
     return validNextCaseStatuses(currentStatus);
+  }
+
+  Future<void> _selectStatus(String? status) async {
+    if (status != statusApproved) {
+      setState(() {
+        _newStatus = status;
+        _budgetApprovalConfirmed = false;
+      });
+      return;
+    }
+
+    final confirmed = await showBudgetApprovalPreviewDialog(
+      context,
+      caseId: widget.caseId,
+    );
+    if (!mounted) return;
+    setState(() {
+      _newStatus = confirmed ? statusApproved : null;
+      _budgetApprovalConfirmed = confirmed;
+    });
   }
 
   String _buildSmsPreview(
@@ -181,6 +203,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           refNumber,
           residentMobile,
         ),
+        budgetApprovalConfirmed: _budgetApprovalConfirmed,
       );
 
       if (mounted) {
@@ -375,7 +398,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (v) => setState(() => _newStatus = v),
+                          onChanged: _selectStatus,
                         ),
                       ],
                     ),

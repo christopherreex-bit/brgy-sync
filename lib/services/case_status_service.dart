@@ -21,6 +21,7 @@ class CaseStatusService {
     String? smsError,
     String smsBody = '',
     DateTime? changedAt,
+    bool budgetApprovalConfirmed = false,
   }) async {
     final effectiveDate = changedAt ?? DateTime.now();
     final caseRef = _db.collection('cases').doc(caseId);
@@ -67,6 +68,11 @@ class CaseStatusService {
           '${caseStatusLabel(previousStatus)} to ${caseStatusLabel(newStatus)}.',
         );
       }
+      if (newStatus == statusApproved && !budgetApprovalConfirmed) {
+        throw StateError(
+          'Review and confirm the budget impact before approving this case.',
+        );
+      }
       final updates = <String, dynamic>{
         'status': newStatus,
         'lastUpdated': FieldValue.serverTimestamp(),
@@ -86,6 +92,12 @@ class CaseStatusService {
         final programData = programSnapshot.data()!;
         final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
         final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
+        if (allocated - utilized < amount) {
+          throw StateError(
+            'The applicable budget no longer has enough remaining balance '
+            'for this case.',
+          );
+        }
         final newUtilized = utilized + amount;
         final quarter = quarterForDate(effectiveDate);
         final budgetStatus = calculateBudgetHealth(
@@ -145,6 +157,55 @@ class CaseStatusService {
     });
   }
 
+  Future<BudgetApprovalPreview> getBudgetApprovalPreview({
+    required String caseId,
+    DateTime? asOf,
+  }) async {
+    final effectiveDate = asOf ?? DateTime.now();
+    final caseSnapshot = await _db.collection('cases').doc(caseId).get();
+    if (!caseSnapshot.exists) throw StateError('Case not found.');
+
+    final caseData = caseSnapshot.data()!;
+    final amount = (caseData['assistanceAmount'] as num?)?.toDouble() ?? 0;
+    final programName = budgetProgramNameForCase(
+      (caseData['serviceCategory'] ?? '').toString(),
+      (caseData['serviceSubType'] ?? '').toString(),
+    );
+    if (amount <= 0 || programName == null) {
+      return BudgetApprovalPreview(
+        fiscalYear: effectiveDate.year,
+        quarter: quarterForDate(effectiveDate),
+        assistanceAmount: amount,
+      );
+    }
+
+    final programRef = await _findQuarterlyProgram(programName, effectiveDate);
+    if (programRef == null) {
+      throw StateError(
+        'No $programName allocation exists for '
+        'FY ${effectiveDate.year} Q${quarterForDate(effectiveDate)}.',
+      );
+    }
+    final programSnapshot = await programRef.get();
+    final programData = programSnapshot.data()!;
+    final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
+    final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
+    final remaining = allocated - utilized;
+
+    return BudgetApprovalPreview(
+      programId: programRef.id,
+      programName: programName,
+      fiscalYear: effectiveDate.year,
+      quarter: quarterForDate(effectiveDate),
+      allocated: allocated,
+      utilized: utilized,
+      currentRemaining: remaining,
+      assistanceAmount: amount,
+      projectedRemaining: remaining - amount,
+      currentStatus: (programData['status'] ?? '').toString(),
+    );
+  }
+
   bool _requiresBudgetDeduction(
     Map<String, dynamic> caseData,
     String newStatus,
@@ -186,6 +247,35 @@ class CaseStatusService {
   int _lastUpdated(Map<String, dynamic> data) {
     return (data['lastUpdated'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
   }
+}
+
+class BudgetApprovalPreview {
+  final String? programId;
+  final String? programName;
+  final int fiscalYear;
+  final int quarter;
+  final double allocated;
+  final double utilized;
+  final double currentRemaining;
+  final double assistanceAmount;
+  final double projectedRemaining;
+  final String currentStatus;
+
+  const BudgetApprovalPreview({
+    this.programId,
+    this.programName,
+    required this.fiscalYear,
+    required this.quarter,
+    this.allocated = 0,
+    this.utilized = 0,
+    this.currentRemaining = 0,
+    this.assistanceAmount = 0,
+    this.projectedRemaining = 0,
+    this.currentStatus = '',
+  });
+
+  bool get hasBudgetImpact => programId != null && assistanceAmount > 0;
+  bool get hasSufficientBalance => !hasBudgetImpact || projectedRemaining >= 0;
 }
 
 int quarterForDate(DateTime date) => ((date.month - 1) ~/ 3) + 1;

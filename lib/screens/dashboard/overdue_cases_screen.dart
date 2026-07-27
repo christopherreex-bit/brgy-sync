@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../services/case_status_service.dart';
 import '../../widgets/sla_bar.dart';
 import '../../widgets/status_badge.dart';
+import '../../widgets/budget_approval_preview_dialog.dart';
 
 class OverdueCasesScreen extends StatefulWidget {
   const OverdueCasesScreen({super.key});
@@ -332,6 +333,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
     String? newStatus;
     String? notes;
     String? notesError;
+    bool budgetApprovalConfirmed = false;
 
     showDialog(
       context: context,
@@ -365,7 +367,23 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                               ),
                             )
                             .toList(),
-                    onChanged: (v) => setState(() => newStatus = v),
+                    onChanged: (value) async {
+                      if (value != statusApproved) {
+                        setState(() {
+                          newStatus = value;
+                          budgetApprovalConfirmed = false;
+                        });
+                        return;
+                      }
+                      final confirmed = await showBudgetApprovalPreviewDialog(
+                        dialogCtx,
+                        caseId: c['id'] as String,
+                      );
+                      setState(() {
+                        newStatus = confirmed ? statusApproved : null;
+                        budgetApprovalConfirmed = confirmed;
+                      });
+                    },
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -409,6 +427,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                             reason,
                             currentUser,
                             referenceNumber: c['ref'],
+                            budgetApprovalConfirmed: budgetApprovalConfirmed,
                           );
                         },
                   style: ElevatedButton.styleFrom(
@@ -431,6 +450,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
     String notes,
     user, {
     String? referenceNumber,
+    bool budgetApprovalConfirmed = false,
   }) async {
     try {
       await CaseStatusService().updateStatus(
@@ -440,6 +460,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
         staffId: user?.uid ?? '',
         staffName: user?.name ?? 'Unknown',
         referenceNumber: referenceNumber,
+        budgetApprovalConfirmed: budgetApprovalConfirmed,
       );
 
       if (mounted) {
