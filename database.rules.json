@@ -1,0 +1,17 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "caseDocuments": {
+      "$residentId": {
+        "$requestId": {
+          "$documentId": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid === $residentId && ((!data.exists() && newData.exists()) || (data.exists() && !newData.exists()))",
+            ".validate": "newData.hasChildren(['ownerId', 'cipherText', 'nonce', 'mac', 'contentType', 'size']) && newData.child('ownerId').val() === $residentId && newData.child('cipherText').isString() && newData.child('cipherText').val().length <= 3000000 && newData.child('nonce').isString() && newData.child('mac').isString() && newData.child('contentType').val().matches(/^(application\\/pdf|image\\/jpeg|image\\/png)$/) && newData.child('size').isNumber() && newData.child('size').val() <= 2097152"
+          }
+        }
+      }
+    }
+  }
+}

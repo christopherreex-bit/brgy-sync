@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 /// Defines all 7 service categories, their subtypes, SLA mappings,
@@ -627,17 +629,29 @@ List<FormFieldConfig> _genericFields() {
 // ─── BASS Document Checklist ───────────────────────────────────────
 class BassDocument {
   final String name;
-  final bool required;
+  bool required;
+  final bool requiredWhenRequestingForSomeoneElse;
   bool uploaded;
+  String? fileName;
+  String? contentType;
+  int? size;
+  Uint8List? bytes;
 
   BassDocument({
     required this.name,
     this.required = true,
+    this.requiredWhenRequestingForSomeoneElse = false,
     this.uploaded = false,
+    this.fileName,
+    this.contentType,
+    this.size,
+    this.bytes,
   });
 }
 
-List<BassDocument> kBassDocuments() => [
+List<BassDocument> kBassDocuments(String subType) => [
+  if (slaKeyFor('bass', subType) == 'bass_medical')
+    BassDocument(name: 'Certificate of Admission', required: true),
   BassDocument(
     name: "Medical Abstract / Doctor's Certificate / Death Certificate",
     required: true,
@@ -655,7 +669,8 @@ List<BassDocument> kBassDocuments() => [
   BassDocument(name: "Valid ID (claimant)", required: true),
   BassDocument(
     name: "Proof of relationship to patient / demised",
-    required: true,
+    required: false,
+    requiredWhenRequestingForSomeoneElse: true,
   ),
   BassDocument(name: "Picture of patient (Whole Body)", required: true),
   BassDocument(name: "House sketch (for medical cases)", required: false),

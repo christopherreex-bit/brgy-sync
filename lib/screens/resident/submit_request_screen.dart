@@ -1,7 +1,12 @@
-import 'package:flutter/foundation.dart';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cryptography/cryptography.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/service_category.dart';
 import '../../models/case_model.dart';
 import '../../services/auth_service.dart';
@@ -36,9 +41,14 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   bool _submitted = false;
   String? _refNumber;
   bool _isWalkIn = false;
+  bool _requestingForSomeoneElse = false;
 
   final _firestore = FirestoreService();
   final _twilio = TwilioService();
+  final _database = FirebaseDatabase.instance;
+  final _encryption = AesGcm.with256bits();
+  final _uuid = const Uuid();
+  final List<String> _uploadedDatabasePaths = [];
 
   // BASS documents
   List<BassDocument>? _bassDocs;
@@ -51,9 +61,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     super.initState();
     if (widget.initialCategoryId != null) {
       _selectedCategoryId = widget.initialCategoryId;
-      final cat = kServiceCategories.firstWhere(
-        (c) => c.id == _selectedCategoryId,
-      );
       if (widget.initialSubType != null) {
         _selectedSubType = widget.initialSubType;
       }
@@ -77,12 +84,109 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       if (f.type == FormFieldType.radio) _radioValues[f.key] = null;
       if (f.type == FormFieldType.date) _dateValues[f.key] = null;
     }
+    if (!_requestingForSomeoneElse) {
+      _prefillLoggedInResident();
+    }
     // BASS doc checklist
     if (_selectedCategoryId == 'bass') {
-      _bassDocs = kBassDocuments();
+      _bassDocs = kBassDocuments(_selectedSubType!);
     } else {
       _bassDocs = null;
     }
+  }
+
+  static const _personNameKeys = {
+    'fullName',
+    'patientName',
+    'beneficiaryName',
+    'studentName',
+    'reporterName',
+  };
+
+  bool _isFieldVisible(FormFieldConfig field) {
+    return !(!_requestingForSomeoneElse &&
+        _selectedCategoryId == 'bass' &&
+        field.key == 'relationship');
+  }
+
+  void _prefillLoggedInResident() {
+    final user = context.read<AuthService>().currentUserModel;
+    if (user == null) return;
+
+    final nameParts = user.name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (_controllers['firstName'] != null && nameParts.isNotEmpty) {
+      _controllers['firstName']!.text = nameParts.first;
+      if (_controllers['surname'] != null && nameParts.length > 1) {
+        _controllers['surname']!.text = nameParts.last;
+      }
+    }
+
+    for (final key in _personNameKeys) {
+      final controller = _controllers[key];
+      if (controller != null) {
+        controller.text = user.name;
+        break;
+      }
+    }
+    final contactController = _controllers['contact'];
+    if (contactController != null) {
+      contactController.text = user.mobile;
+    }
+  }
+
+  void _setRequestingForSomeoneElse(bool value) {
+    setState(() {
+      _requestingForSomeoneElse = value;
+      _fieldErrors.clear();
+      for (final document in _bassDocs ?? <BassDocument>[]) {
+        if (document.requiredWhenRequestingForSomeoneElse) {
+          document.required = value;
+          if (!value) {
+            document.uploaded = false;
+            document.fileName = null;
+            document.contentType = null;
+            document.size = null;
+            document.bytes = null;
+          }
+        }
+      }
+
+      for (final key in _personNameKeys) {
+        _controllers[key]?.clear();
+      }
+      _controllers['firstName']?.clear();
+      _controllers['surname']?.clear();
+      _controllers['middleInitial']?.clear();
+      _controllers['contact']?.clear();
+      if (!value && _selectedCategoryId == 'bass') {
+        _controllers['relationship']?.clear();
+      }
+
+      if (!value) {
+        _prefillLoggedInResident();
+      }
+    });
+  }
+
+  String _applicantName(Map<String, dynamic> formData, String fallbackName) {
+    for (final key in _personNameKeys) {
+      final value = formData[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+
+    final firstName = formData['firstName']?.toString().trim() ?? '';
+    final middleInitial = formData['middleInitial']?.toString().trim() ?? '';
+    final surname = formData['surname']?.toString().trim() ?? '';
+    final composedName = [
+      firstName,
+      middleInitial,
+      surname,
+    ].where((part) => part.isNotEmpty).join(' ');
+    return composedName.isNotEmpty ? composedName : fallbackName;
   }
 
   /// Validate a single field and update error state
@@ -98,7 +202,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       case FormFieldType.number:
       case FormFieldType.phone:
       case FormFieldType.textarea:
-      case FormFieldType.email:
         textValue = _controllers[f.key]?.text;
         break;
       case FormFieldType.dropdown:
@@ -129,7 +232,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   bool _validateAllFields() {
     bool isValid = true;
     for (final f in _fields) {
-      if (f.required) {
+      if (_isFieldVisible(f) && f.required) {
         final error = _validateField(f);
         if (error != null) isValid = false;
       }
@@ -166,28 +269,30 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     // Issue #3 fix: rate limiting — max 5 cases per resident per hour
     final auth = context.read<AuthService>();
     final user = auth.currentUserModel;
-    if (user != null) {
-      try {
-        final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
-        final recentCases = await FirebaseFirestore.instance
-            .collection('cases')
-            .where('residentId', isEqualTo: user.uid)
-            .where(
-              'submissionTimestamp',
-              isGreaterThan: Timestamp.fromDate(oneHourAgo),
-            )
-            .count()
-            .get();
-        if ((recentCases.count ?? 0) >= 5) {
-          _showError(
-            'Rate limit exceeded. You can submit up to 5 cases per hour.',
-          );
-          return;
-        }
-      } catch (e) {
-        // If rate limit check fails, allow submission (fail-open)
-        debugPrint('Rate limit check failed: $e');
+    if (user == null) {
+      _showError('Not logged in.');
+      return;
+    }
+    try {
+      final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
+      final recentCases = await FirebaseFirestore.instance
+          .collection('cases')
+          .where('residentId', isEqualTo: user.uid)
+          .where(
+            'submissionTimestamp',
+            isGreaterThan: Timestamp.fromDate(oneHourAgo),
+          )
+          .count()
+          .get();
+      if ((recentCases.count ?? 0) >= 5) {
+        _showError(
+          'Rate limit exceeded. You can submit up to 5 cases per hour.',
+        );
+        return;
       }
+    } catch (e) {
+      // If rate limit check fails, allow submission (fail-open)
+      debugPrint('Rate limit check failed: $e');
     }
 
     // Validate all fields using new validation
@@ -198,17 +303,10 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     setState(() => _loading = true);
 
     try {
-      final auth = context.read<AuthService>();
-      final user = auth.currentUserModel;
-      if (user == null) {
-        _showError('Not logged in.');
-        setState(() => _loading = false);
-        return;
-      }
-
       // Build form data
       final formData = <String, dynamic>{};
       for (final f in _fields) {
+        if (!_isFieldVisible(f)) continue;
         switch (f.type) {
           case FormFieldType.text:
           case FormFieldType.email:
@@ -229,19 +327,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         }
       }
 
-      // Documents
-      List<Map<String, dynamic>> documents = [];
-      if (_bassDocs != null) {
-        documents = _bassDocs!
-            .map(
-              (d) => {
-                'name': d.name,
-                'required': d.required,
-                'status': d.uploaded ? 'uploaded' : 'missing',
-              },
-            )
-            .toList();
-      }
+      final documents = await _uploadDocuments(user.uid);
 
       // Compute SLA
       final now = DateTime.now();
@@ -260,14 +346,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
       final caseData = CaseModel(
         residentId: user.uid,
-        residentName:
-            formData['fullName'] ??
-            formData['patientName'] ??
-            formData['studentName'] ??
-            formData['beneficiaryName'] ??
-            user.name,
+        residentName: _applicantName(formData, user.name),
         residentMobile: user.mobile,
         residentAddress: formData['address'] ?? '',
+        requestedForSelf: !_requestingForSomeoneElse,
+        requesterName: user.name,
+        requesterMobile: user.mobile,
         serviceCategory: _selectedCategoryId!,
         serviceSubType: _selectedSubType!,
         status: 'pending_review',
@@ -287,6 +371,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       );
 
       final refNumber = await _firestore.createCase(caseData);
+      _uploadedDatabasePaths.clear();
       final smsTo = user.isSeedData == true
           ? TwilioService.fallbackNumber
           : user.mobile;
@@ -311,6 +396,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         }
       }
     } catch (e) {
+      await _deletePendingUploads();
       if (mounted) {
         setState(() => _loading = false);
         _showError('Submission failed: $e');
@@ -337,7 +423,130 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _dateValues.clear();
       _bassDocs = null;
       _isWalkIn = false;
+      _requestingForSomeoneElse = false;
+      _uploadedDatabasePaths.clear();
     });
+  }
+
+  Future<void> _pickDocument(BassDocument document) async {
+    if (document.requiredWhenRequestingForSomeoneElse &&
+        !_requestingForSomeoneElse) {
+      return;
+    }
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.single;
+      if (file.bytes == null) {
+        _showError('Could not read the selected file.');
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        _showError('Files must not exceed 2 MB.');
+        return;
+      }
+
+      final extension = (file.extension ?? '').toLowerCase();
+      final contentType = switch (extension) {
+        'pdf' => 'application/pdf',
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        _ => null,
+      };
+      if (contentType == null) {
+        _showError('Only PDF, JPG, JPEG, and PNG files are allowed.');
+        return;
+      }
+
+      setState(() {
+        document.uploaded = true;
+        document.fileName = file.name;
+        document.contentType = contentType;
+        document.size = file.size;
+        document.bytes = file.bytes;
+      });
+    } catch (e) {
+      _showError('Could not select document: $e');
+    }
+  }
+
+  void _removeDocument(BassDocument document) {
+    setState(() {
+      document.uploaded = false;
+      document.fileName = null;
+      document.contentType = null;
+      document.size = null;
+      document.bytes = null;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> _uploadDocuments(String residentId) async {
+    if (_bassDocs == null) return [];
+
+    final requestId = _uuid.v4();
+    final documents = <Map<String, dynamic>>[];
+    for (var index = 0; index < _bassDocs!.length; index++) {
+      final document = _bassDocs![index];
+      if (!document.uploaded || document.bytes == null) {
+        documents.add({
+          'name': document.name,
+          'required': document.required,
+          'status':
+              document.requiredWhenRequestingForSomeoneElse &&
+                  !_requestingForSomeoneElse
+              ? 'not_applicable'
+              : 'missing',
+        });
+        continue;
+      }
+
+      final databasePath =
+          'caseDocuments/$residentId/$requestId/document_${index + 1}';
+      final secretKey = await _encryption.newSecretKey();
+      final secretKeyBytes = await secretKey.extractBytes();
+      final encrypted = await _encryption.encrypt(
+        document.bytes!,
+        secretKey: secretKey,
+      );
+      await _database.ref(databasePath).set({
+        'ownerId': residentId,
+        'cipherText': base64Encode(encrypted.cipherText),
+        'nonce': base64Encode(encrypted.nonce),
+        'mac': base64Encode(encrypted.mac.bytes),
+        'contentType': document.contentType,
+        'size': document.size,
+      });
+      _uploadedDatabasePaths.add(databasePath);
+      documents.add({
+        'name': document.name,
+        'required': document.required,
+        'status': 'uploaded',
+        'fileName': document.fileName,
+        'contentType': document.contentType,
+        'size': document.size,
+        'databasePath': databasePath,
+        'encryptionKey': base64Encode(secretKeyBytes),
+      });
+    }
+    return documents;
+  }
+
+  Future<void> _deletePendingUploads() async {
+    final paths = List<String>.from(_uploadedDatabasePaths);
+    _uploadedDatabasePaths.clear();
+    for (final path in paths) {
+      try {
+        await _database.ref(path).remove();
+      } catch (_) {
+        // Best-effort cleanup after an unsuccessful case submission.
+      }
+    }
   }
 
   @override
@@ -627,7 +836,52 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          ..._fields.map((f) => _buildField(f)),
+          Material(
+            color: Colors.blue.shade50,
+            shape: RoundedRectangleBorder(
+              side: BorderSide(color: Colors.blue.shade100),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: _requestingForSomeoneElse,
+                    onChanged: _loading
+                        ? null
+                        : (value) =>
+                              _setRequestingForSomeoneElse(value ?? false),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'I am requesting for someone else',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _requestingForSomeoneElse
+                                ? 'Enter the beneficiary or applicant’s information below.'
+                                : 'Unchecked means this request is for yourself. Your name and mobile number are filled in automatically.',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ..._fields.where(_isFieldVisible).map((f) => _buildField(f)),
           // BASS document checklist
           if (_bassDocs != null) ...[
             const SizedBox(height: 24),
@@ -641,33 +895,95 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Check off documents as they are provided.',
+              'Upload PDF, JPG, or PNG files. Maximum file size: 2 MB each.',
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
             const SizedBox(height: 12),
             ...(_bassDocs!).asMap().entries.map((entry) {
               final i = entry.key;
               final doc = entry.value;
-              return CheckboxListTile(
-                dense: true,
-                value: doc.uploaded,
-                onChanged: (v) => setState(() => doc.uploaded = v ?? false),
-                title: Text(
-                  '${i + 1}. ${doc.name}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: doc.required
-                        ? FontWeight.w600
-                        : FontWeight.normal,
+              final isApplicable =
+                  !doc.requiredWhenRequestingForSomeoneElse ||
+                  _requestingForSomeoneElse;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: doc.uploaded
+                        ? Colors.green.shade300
+                        : Colors.grey.shade300,
                   ),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                subtitle: doc.required
-                    ? const Text(
-                        'Required',
-                        style: TextStyle(color: Colors.red, fontSize: 11),
+                child: Row(
+                  children: [
+                    Icon(
+                      doc.uploaded
+                          ? Icons.check_circle
+                          : Icons.upload_file_outlined,
+                      color: doc.uploaded ? Colors.green : Colors.grey,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${i + 1}. ${doc.name}${doc.required ? ' *' : ''}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: doc.required
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                          if (doc.fileName != null)
+                            Text(
+                              '${doc.fileName} · ${_formatFileSize(doc.size ?? 0)}',
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontSize: 11,
+                              ),
+                            )
+                          else
+                            Text(
+                              !isApplicable
+                                  ? 'Not applicable when requesting for yourself'
+                                  : doc.required
+                                  ? 'Required'
+                                  : 'Optional',
+                              style: TextStyle(
+                                color: doc.required && isApplicable
+                                    ? Colors.red
+                                    : Colors.grey,
+                                fontSize: 11,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (doc.uploaded)
+                      IconButton(
+                        tooltip: 'Remove file',
+                        onPressed: () => _removeDocument(doc),
+                        icon: const Icon(Icons.close, color: Colors.red),
                       )
-                    : null,
-                controlAffinity: ListTileControlAffinity.leading,
+                    else
+                      OutlinedButton.icon(
+                        onPressed: isApplicable
+                            ? () => _pickDocument(doc)
+                            : null,
+                        icon: Icon(
+                          isApplicable ? Icons.attach_file : Icons.block,
+                          size: 16,
+                        ),
+                        label: Text(
+                          isApplicable ? 'Choose file' : 'Not applicable',
+                        ),
+                      ),
+                  ],
+                ),
               );
             }),
           ],
@@ -740,6 +1056,13 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
   bool _confirmChecked = false;
 
+  String _formatFileSize(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  }
+
   Widget _buildField(FormFieldConfig f) {
     Widget field;
     switch (f.type) {
@@ -747,7 +1070,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       case FormFieldType.email:
       case FormFieldType.number:
       case FormFieldType.phone:
-      case FormFieldType.email:
         field = TextField(
           controller: _controllers[f.key],
           keyboardType: f.type == FormFieldType.number

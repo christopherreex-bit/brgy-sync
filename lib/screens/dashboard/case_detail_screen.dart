@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cryptography/cryptography.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:go_router/go_router.dart';
+import 'package:universal_html/html.dart' as html;
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
 
@@ -120,6 +125,9 @@ class CaseDetailScreen extends StatelessWidget {
                           else
                             ...documents.map((d) {
                               final uploaded = d['status'] == 'uploaded';
+                              final databasePath = (d['databasePath'] ?? '')
+                                  .toString();
+                              final fileName = (d['fileName'] ?? '').toString();
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 6),
                                 child: Row(
@@ -136,7 +144,8 @@ class CaseDetailScreen extends StatelessWidget {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        '${d['name'] ?? ''} – ${uploaded ? 'uploaded' : 'missing'}',
+                                        '${d['name'] ?? ''}'
+                                        '${fileName.isEmpty ? '' : '\n$fileName'}',
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: uploaded
@@ -145,6 +154,16 @@ class CaseDetailScreen extends StatelessWidget {
                                         ),
                                       ),
                                     ),
+                                    if (uploaded && databasePath.isNotEmpty)
+                                      TextButton.icon(
+                                        onPressed: () =>
+                                            _openDocument(context, d),
+                                        icon: const Icon(
+                                          Icons.open_in_new,
+                                          size: 16,
+                                        ),
+                                        label: const Text('Open'),
+                                      ),
                                   ],
                                 ),
                               );
@@ -179,6 +198,52 @@ class CaseDetailScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _openDocument(
+    BuildContext context,
+    Map<String, dynamic> document,
+  ) async {
+    try {
+      final path = (document['databasePath'] ?? '').toString();
+      final encodedKey = (document['encryptionKey'] ?? '').toString();
+      if (path.isEmpty || encodedKey.isEmpty) {
+        throw StateError('This document has no downloadable file.');
+      }
+
+      final snapshot = await FirebaseDatabase.instance.ref(path).get();
+      if (!snapshot.exists || snapshot.value is! Map) {
+        throw StateError('The uploaded file could not be found.');
+      }
+      final raw = Map<Object?, Object?>.from(snapshot.value as Map);
+      final encrypted = SecretBox(
+        base64Decode(raw['cipherText'].toString()),
+        nonce: base64Decode(raw['nonce'].toString()),
+        mac: Mac(base64Decode(raw['mac'].toString())),
+      );
+      final clearBytes = await AesGcm.with256bits().decrypt(
+        encrypted,
+        secretKey: SecretKey(base64Decode(encodedKey)),
+      );
+      final contentType = (document['contentType'] ?? raw['contentType'] ?? '')
+          .toString();
+      final blob = html.Blob([clearBytes], contentType);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.window.open(url, '_blank');
+      Future<void>.delayed(
+        const Duration(minutes: 1),
+        () => html.Url.revokeObjectUrl(url),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open document: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _infoCard(String title, List<Widget> children) {

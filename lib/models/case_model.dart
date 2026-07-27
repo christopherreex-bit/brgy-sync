@@ -7,6 +7,9 @@ class CaseModel {
   final String residentName;
   final String residentMobile;
   final String residentAddress;
+  final bool requestedForSelf;
+  final String requesterName;
+  final String requesterMobile;
   final String serviceCategory;
   final String serviceSubType;
   final String status;
@@ -28,6 +31,9 @@ class CaseModel {
     required this.residentName,
     required this.residentMobile,
     required this.residentAddress,
+    this.requestedForSelf = true,
+    this.requesterName = '',
+    this.requesterMobile = '',
     required this.serviceCategory,
     required this.serviceSubType,
     this.status = 'pending_review',
@@ -51,6 +57,9 @@ class CaseModel {
       residentName: map['residentName'] ?? '',
       residentMobile: map['residentMobile'] ?? '',
       residentAddress: map['residentAddress'] ?? '',
+      requestedForSelf: map['requestedForSelf'] != false,
+      requesterName: map['requesterName'] ?? map['residentName'] ?? '',
+      requesterMobile: map['requesterMobile'] ?? map['residentMobile'] ?? '',
       serviceCategory: map['serviceCategory'] ?? '',
       serviceSubType: map['serviceSubType'] ?? '',
       status: map['status'] ?? 'pending_review',
@@ -80,6 +89,9 @@ class CaseModel {
       'residentName': residentName,
       'residentMobile': residentMobile,
       'residentAddress': residentAddress,
+      'requestedForSelf': requestedForSelf,
+      'requesterName': requesterName,
+      'requesterMobile': requesterMobile,
       'serviceCategory': serviceCategory,
       'serviceSubType': serviceSubType,
       'status': status,

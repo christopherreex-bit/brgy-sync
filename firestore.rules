@@ -78,6 +78,8 @@ service cloud.firestore {
                     && request.resource.data.eventType == 'case_deleted'
                     && request.resource.data.caseId == caseId
                     && request.resource.data.actorId == request.auth.uid
+                    && request.resource.data.deletionReason is string
+                    && request.resource.data.deletionReason.size() > 0
                     && request.resource.data.referenceNumber
                         == get(/databases/$(database)/documents/cases/$(caseId)).data.referenceNumber
                     && (get(/databases/$(database)/documents/cases/$(caseId)).data.residentId == request.auth.uid
@@ -96,7 +98,7 @@ service cloud.firestore {
 
     // ─── Budget Programs ─────────────────────────────────────────
     match /budgetPrograms/{doc} {
-      allow read: if isStaff();
+      allow read: if request.auth != null;
       allow create, delete: if isCaptain();
       allow update: if isCaptain()
                     || (isStaff()
@@ -106,6 +108,41 @@ service cloud.firestore {
                         && request.resource.data.utilized >= resource.data.utilized
                         && request.resource.data.remaining
                             == request.resource.data.allocated
+                               - request.resource.data.utilized)
+                    || (request.auth != null
+                        && request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasOnly([
+                              'utilized',
+                              'remaining',
+                              'status',
+                              'lastReversalCaseId',
+                              'lastUpdated'
+                            ])
+                        && request.resource.data.lastReversalCaseId is string
+                        && request.resource.data.utilized <= resource.data.utilized
+                        && request.resource.data.remaining
+                            == request.resource.data.allocated
+                               - request.resource.data.utilized
+                        && existsAfter(
+                             /databases/$(database)/documents/auditEvents/$(request.resource.data.lastReversalCaseId)
+                           )
+                        && getAfter(
+                             /databases/$(database)/documents/auditEvents/$(request.resource.data.lastReversalCaseId)
+                           ).data.actorId == request.auth.uid
+                        && getAfter(
+                             /databases/$(database)/documents/auditEvents/$(request.resource.data.lastReversalCaseId)
+                           ).data.budgetProgramId == doc
+                        && existsAfter(
+                             /databases/$(database)/documents/budgetReversals/$(request.resource.data.lastReversalCaseId)
+                           )
+                        && getAfter(
+                             /databases/$(database)/documents/budgetReversals/$(request.resource.data.lastReversalCaseId)
+                           ).data.programId == doc
+                        && getAfter(
+                             /databases/$(database)/documents/budgetReversals/$(request.resource.data.lastReversalCaseId)
+                           ).data.amount
+                            == resource.data.utilized
                                - request.resource.data.utilized);
     }
 
@@ -114,6 +151,27 @@ service cloud.firestore {
       allow read: if isOfficer();
       allow create: if isStaff();
       allow update, delete: if isCaptain();
+    }
+
+    // Immutable reversals created atomically when a released case is deleted.
+    match /budgetReversals/{caseId} {
+      allow read: if isOfficer();
+      allow create: if request.auth != null
+                    && request.resource.data.type == 'reversal'
+                    && request.resource.data.caseId == caseId
+                    && request.resource.data.actorId == request.auth.uid
+                    && request.resource.data.amount >= 0
+                    && existsAfter(
+                         /databases/$(database)/documents/auditEvents/$(caseId)
+                       )
+                    && getAfter(
+                         /databases/$(database)/documents/auditEvents/$(caseId)
+                       ).data.budgetReversalId == caseId
+                    && getAfter(
+                         /databases/$(database)/documents/auditEvents/$(caseId)
+                       ).data.budgetProgramId
+                        == request.resource.data.programId;
+      allow update, delete: if false;
     }
 
     // ─── Distributions ───────────────────────────────────────────

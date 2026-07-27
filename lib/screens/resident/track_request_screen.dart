@@ -182,27 +182,58 @@ class _CaseCard extends StatelessWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, String reference) async {
-    final confirmed = await showDialog<bool>(
+    final reasonController = TextEditingController();
+    String? reasonError;
+    final deletionReason = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete case?'),
-        content: Text(
-          'Permanently delete $reference and its action log? This cannot be undone.',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Delete case?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Permanently delete $reference and its action log? '
+                'Any recorded budget deduction will be reversed.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Reason for deletion *',
+                  border: const OutlineInputBorder(),
+                  errorText: reasonError,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final reason = reasonController.text.trim();
+                if (reason.isEmpty) {
+                  setDialogState(
+                    () => reasonError = 'Please enter a reason for deletion.',
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext, reason);
+              },
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    reasonController.dispose();
+    if (deletionReason == null || !context.mounted) return;
 
     try {
       final user = context.read<AuthService>().currentUserModel;
@@ -213,6 +244,7 @@ class _CaseCard extends StatelessWidget {
         actorName: user.name,
         actorRole: user.role,
         source: 'resident_my_cases',
+        deletionReason: deletionReason,
       );
       if (context.mounted) {
         ScaffoldMessenger.of(

@@ -7,6 +7,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '229954450560',
     projectId: 'brg-sync',
     authDomain: 'brg-sync.firebaseapp.com',
+    databaseURL:
+        'https://brg-sync-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'brg-sync.firebasestorage.app',
   );
 }

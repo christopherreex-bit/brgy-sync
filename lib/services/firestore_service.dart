@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/case_model.dart';
+import '../utils/budget_health.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -57,27 +60,106 @@ class FirestoreService {
     required String actorName,
     required String actorRole,
     required String source,
+    required String deletionReason,
   }) async {
+    final reason = deletionReason.trim();
+    if (reason.isEmpty) {
+      throw ArgumentError('A reason for deletion is required.');
+    }
+
     final caseRef = _db.collection('cases').doc(caseId);
     final caseSnapshot = await caseRef.get();
     if (!caseSnapshot.exists) throw StateError('Case no longer exists.');
 
-    final caseData = caseSnapshot.data() as Map<String, dynamic>;
-    final referenceNumber = (caseData['referenceNumber'] ?? '').toString();
     final actionLog = caseRef.collection('actionLog');
 
     while (true) {
       final logSnapshot = await actionLog.limit(400).get();
-      final batch = _db.batch();
-      for (final log in logSnapshot.docs) {
-        batch.delete(log.reference);
+      final isLastBatch = logSnapshot.docs.length < 400;
+      if (!isLastBatch) {
+        final batch = _db.batch();
+        for (final log in logSnapshot.docs) {
+          batch.delete(log.reference);
+        }
+        await batch.commit();
+        continue;
       }
 
-      final isLastBatch = logSnapshot.docs.length < 400;
-      if (isLastBatch) {
-        batch.set(_db.collection('auditEvents').doc(caseId), {
+      await _db.runTransaction((transaction) async {
+        final currentCase = await transaction.get(caseRef);
+        if (!currentCase.exists) throw StateError('Case no longer exists.');
+
+        final caseData = currentCase.data()!;
+        final referenceNumber = (caseData['referenceNumber'] ?? '').toString();
+        final auditRef = _db.collection('auditEvents').doc(caseId);
+        final reversalRef = _db.collection('budgetReversals').doc(caseId);
+        final budgetProgramId = (caseData['budgetProgramId'] ?? '').toString();
+        final deductedAmount =
+            (caseData['budgetDeductedAmount'] as num?)?.toDouble() ?? 0;
+        final shouldReverse =
+            caseData['status'] == 'released' &&
+            caseData['budgetDeductedAt'] != null &&
+            budgetProgramId.isNotEmpty &&
+            deductedAmount > 0;
+
+        var restoredAmount = 0.0;
+        if (shouldReverse) {
+          final programRef = _db
+              .collection('budgetPrograms')
+              .doc(budgetProgramId);
+          final programSnapshot = await transaction.get(programRef);
+          if (!programSnapshot.exists) {
+            throw StateError(
+              'Cannot delete this case because its linked budget no longer exists.',
+            );
+          }
+
+          final programData = programSnapshot.data()!;
+          final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
+          final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
+          restoredAmount = math.min(deductedAmount, utilized);
+          final newUtilized = utilized - restoredAmount;
+          final fiscalYear =
+              (caseData['budgetDeductedFiscalYear'] as num?)?.toInt() ??
+              DateTime.now().year;
+          final quarter =
+              (caseData['budgetDeductedQuarter'] as num?)?.toInt() ?? 1;
+
+          transaction.update(programRef, {
+            'utilized': newUtilized,
+            'remaining': allocated - newUtilized,
+            'status': calculateBudgetHealth(
+              allocated: allocated,
+              utilized: newUtilized,
+              fiscalYear: fiscalYear,
+              quarter: quarter,
+              asOf: DateTime.now(),
+            ),
+            'lastReversalCaseId': caseId,
+            'lastUpdated': FieldValue.serverTimestamp(),
+          });
+          transaction.set(reversalRef, {
+            'type': 'reversal',
+            'caseId': caseId,
+            'referenceNumber': referenceNumber,
+            'programId': budgetProgramId,
+            'amount': restoredAmount,
+            'originalDeductionAmount': deductedAmount,
+            'fiscalYear': fiscalYear,
+            'quarter': quarter,
+            'actorId': actorId,
+            'actorName': actorName,
+            'actorRole': actorRole,
+            'reason': reason,
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+        }
+
+        transaction.set(auditRef, {
           'eventType': 'case_deleted',
-          'action': 'Case deleted',
+          'action': shouldReverse
+              ? 'Case deleted and budget deduction reversed'
+              : 'Case deleted',
           'caseId': caseId,
           'referenceNumber': referenceNumber,
           'actorId': actorId,
@@ -89,17 +171,28 @@ class FirestoreService {
           'serviceCategory': caseData['serviceCategory'] ?? '',
           'serviceSubType': caseData['serviceSubType'] ?? '',
           'previousStatus': caseData['status'] ?? '',
-          'notes': actorRole == 'resident'
-              ? 'Permanently deleted by the resident from My Cases.'
-              : 'Permanently deleted by the Barangay Captain from Case Queue.',
+          'deletionReason': reason,
+          'notes': shouldReverse
+              ? '$reason Budget reversal: '
+                    '₱${restoredAmount.toStringAsFixed(2)} restored.'
+              : reason,
+          'budgetReversed': shouldReverse,
+          if (shouldReverse) ...{
+            'budgetProgramId': budgetProgramId,
+            'budgetReversalAmount': restoredAmount,
+            'budgetReversalId': caseId,
+            'budgetDeductedFiscalYear': caseData['budgetDeductedFiscalYear'],
+            'budgetDeductedQuarter': caseData['budgetDeductedQuarter'],
+          },
           'smsSent': false,
           'timestamp': FieldValue.serverTimestamp(),
         });
-        batch.delete(caseRef);
-      }
-
-      await batch.commit();
-      if (isLastBatch) break;
+        for (final log in logSnapshot.docs) {
+          transaction.delete(log.reference);
+        }
+        transaction.delete(caseRef);
+      });
+      break;
     }
   }
 

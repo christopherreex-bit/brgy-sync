@@ -18,12 +18,25 @@ class ResidentShellState extends State<ResidentShell> {
   int _currentIndex = 0;
   String? _pendingCategoryId;
   String? _pendingSubType;
+  int _submitSession = 0;
 
   void switchToSubmitTab({String? categoryId, String? subType}) {
     setState(() {
       _currentIndex = 1;
       _pendingCategoryId = categoryId;
       _pendingSubType = subType;
+      _submitSession++;
+    });
+  }
+
+  void _selectTab(int index) {
+    setState(() {
+      if (_currentIndex == 1 && index != 1) {
+        _pendingCategoryId = null;
+        _pendingSubType = null;
+        _submitSession++;
+      }
+      _currentIndex = index;
     });
   }
 
@@ -142,7 +155,11 @@ class ResidentShellState extends State<ResidentShell> {
                   )
                 : _currentIndex == 1
                 ? SubmitRequestScreen(
-                    key: ValueKey('submit_$_pendingCategoryId$_pendingSubType'),
+                    key: ValueKey(
+                      'submit_$_submitSession'
+                      '_$_pendingCategoryId'
+                      '_$_pendingSubType',
+                    ),
                     initialCategoryId: _pendingCategoryId,
                     initialSubType: _pendingSubType,
                   )
@@ -157,7 +174,7 @@ class ResidentShellState extends State<ResidentShell> {
     final isActive = _currentIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _currentIndex = index),
+        onTap: () => _selectTab(index),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
