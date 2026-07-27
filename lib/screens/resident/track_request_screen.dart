@@ -176,6 +176,30 @@ class _CaseCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 4),
+              leading: const Icon(Icons.history, color: kNavy, size: 20),
+              title: const Text(
+                'Status history',
+                style: TextStyle(
+                  color: kNavy,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              children: [
+                _StatusHistory(
+                  caseId: caseId,
+                  initialStatus: status.toString(),
+                  submittedAt: submitted,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -261,6 +285,184 @@ class _CaseCard extends StatelessWidget {
         );
       }
     }
+  }
+}
+
+class _StatusHistory extends StatelessWidget {
+  final String caseId;
+  final String initialStatus;
+  final DateTime? submittedAt;
+
+  const _StatusHistory({
+    required this.caseId,
+    required this.initialStatus,
+    required this.submittedAt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('cases')
+          .doc(caseId)
+          .collection('actionLog')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(12),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          );
+        }
+        if (snapshot.hasError) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Could not load status history.',
+              style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+            ),
+          );
+        }
+
+        final logs = [...?snapshot.data?.docs]
+            .map((doc) => doc.data() as Map<String, dynamic>)
+            .where((log) => (log['newStatus'] ?? '').toString().isNotEmpty)
+            .toList();
+        logs.sort((a, b) {
+          final aTimestamp = a['timestamp'] as Timestamp?;
+          final bTimestamp = b['timestamp'] as Timestamp?;
+          return (aTimestamp?.millisecondsSinceEpoch ?? 0).compareTo(
+            bTimestamp?.millisecondsSinceEpoch ?? 0,
+          );
+        });
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              _StatusHistoryEntry(
+                status: logs.isEmpty
+                    ? initialStatus
+                    : (logs.first['previousStatus'] ?? statusPendingReview)
+                          .toString(),
+                timestamp: submittedAt,
+                note: 'Request submitted',
+                isLast: logs.isEmpty,
+              ),
+              ...logs.asMap().entries.map((entry) {
+                final log = entry.value;
+                final timestamp = log['timestamp'] is Timestamp
+                    ? (log['timestamp'] as Timestamp).toDate()
+                    : null;
+                return _StatusHistoryEntry(
+                  status: log['newStatus'].toString(),
+                  timestamp: timestamp,
+                  note: (log['notes'] ?? '').toString().trim(),
+                  isLast: entry.key == logs.length - 1,
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatusHistoryEntry extends StatelessWidget {
+  final String status;
+  final DateTime? timestamp;
+  final String note;
+  final bool isLast;
+
+  const _StatusHistoryEntry({
+    required this.status,
+    required this.timestamp,
+    required this.note,
+    required this.isLast,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dateText = timestamp == null
+        ? 'Timestamp pending'
+        : '${timestamp!.month}/${timestamp!.day}/${timestamp!.year} '
+              '${timestamp!.hour.toString().padLeft(2, '0')}:'
+              '${timestamp!.minute.toString().padLeft(2, '0')}';
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 18,
+            child: Column(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.only(top: 5),
+                  decoration: const BoxDecoration(
+                    color: kNavy,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(width: 2, color: Colors.grey.shade300),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  StatusBadge(status: status),
+                  const SizedBox(height: 4),
+                  Text(
+                    dateText,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                  ),
+                  if (note.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: Colors.grey.shade200),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        note,
+                        style: TextStyle(
+                          color: Colors.grey.shade800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
