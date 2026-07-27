@@ -23,16 +23,17 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     'processing': 1,
     'awaiting_docs': 2,
     'approved': 3,
-    'released': 4,
-    'rejected': 5,
+    'for_claiming': 4,
+    'released': 5,
+    'rejected': 6,
   };
 
   static const _filters = [
     {'key': 'all', 'label': 'All'},
     {'key': 'pending_review', 'label': 'Pending'},
     {'key': 'processing', 'label': 'Processing'},
-    {'key': 'awaiting_docs', 'label': 'Awaiting Docs'},
     {'key': 'approved', 'label': 'Approved'},
+    {'key': 'for_claiming', 'label': 'For Claiming'},
     {'key': 'released', 'label': 'Released'},
     {'key': 'rejected', 'label': 'Rejected'},
   ];

@@ -18,8 +18,30 @@ const String statusPendingReview = 'pending_review';
 const String statusProcessing = 'processing';
 const String statusAwaitingDocs = 'awaiting_docs';
 const String statusApproved = 'approved';
+const String statusForClaiming = 'for_claiming';
 const String statusReleased = 'released';
 const String statusRejected = 'rejected';
+
+const Map<String, List<String>> validCaseStatusTransitions = {
+  statusPendingReview: [statusProcessing, statusRejected],
+  statusProcessing: [statusApproved, statusRejected],
+  // Legacy cases may still have this status and must remain actionable.
+  statusAwaitingDocs: [statusProcessing, statusApproved, statusRejected],
+  statusApproved: [statusForClaiming, statusRejected],
+  statusForClaiming: [statusReleased, statusRejected],
+  statusReleased: [],
+  statusRejected: [],
+};
+
+List<String> validNextCaseStatuses(String currentStatus) =>
+    validCaseStatusTransitions[currentStatus] ?? const [];
+
+String caseStatusLabel(String status) => status
+    .replaceAll('_', ' ')
+    .split(' ')
+    .where((word) => word.isNotEmpty)
+    .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+    .join(' ');
 
 // ─── SLA Statuses ───────────────────────────────────────────────
 const String slaOnTime = 'on_time';
@@ -46,6 +68,7 @@ const Map<String, Color> statusBadgeBg = {
   statusProcessing: Color(0xFFD1ECF1),
   statusAwaitingDocs: Color(0xFFFFE0CC),
   statusApproved: Color(0xFFD4EDDA),
+  statusForClaiming: Color(0xFFE8DDF8),
   statusReleased: Color(0xFFD1ECF1),
   statusRejected: Color(0xFFF8D7DA),
   slaOnTime: Color(0xFFDCFCE7),
@@ -70,6 +93,7 @@ const Map<String, Color> statusBadgeText = {
   statusProcessing: Color(0xFF0C5460),
   statusAwaitingDocs: Color(0xFF854A00),
   statusApproved: Color(0xFF155724),
+  statusForClaiming: Color(0xFF5B348B),
   statusReleased: Color(0xFF0C5460),
   statusRejected: Color(0xFF721C24),
   slaOnTime: Color(0xFF166534),

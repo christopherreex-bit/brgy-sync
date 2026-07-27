@@ -48,6 +48,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   'processing',
                   'awaiting_docs',
                   'approved',
+                  'for_claiming',
                 ],
               )
               .snapshots(),
@@ -353,32 +354,17 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                       labelText: 'New Status',
                       border: OutlineInputBorder(),
                     ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'pending_review',
-                        child: Text('Pending Review'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'processing',
-                        child: Text('Processing'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'awaiting_docs',
-                        child: Text('Awaiting Documents'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'approved',
-                        child: Text('Approved'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'released',
-                        child: Text('Released'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'rejected',
-                        child: Text('Rejected'),
-                      ),
-                    ],
+                    items:
+                        validNextCaseStatuses(
+                              (c['caseStatus'] ?? '').toString(),
+                            )
+                            .map(
+                              (status) => DropdownMenuItem(
+                                value: status,
+                                child: Text(caseStatusLabel(status)),
+                              ),
+                            )
+                            .toList(),
                     onChanged: (v) => setState(() => newStatus = v),
                   ),
                   const SizedBox(height: 16),

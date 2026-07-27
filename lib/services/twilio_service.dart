@@ -22,11 +22,11 @@ class TwilioService {
   final String? _twilioFrom;
 
   TwilioService()
-      : _mySmsGateKey = const String.fromEnvironment('MYSMSGATE_API_KEY'),
-        _easySendKey = const String.fromEnvironment('EASYSENDSMS_API_KEY'),
-        _twilioSid = const String.fromEnvironment('TWILIO_ACCOUNT_SID'),
-        _twilioToken = const String.fromEnvironment('TWILIO_AUTH_TOKEN'),
-        _twilioFrom = const String.fromEnvironment('TWILIO_FROM');
+    : _mySmsGateKey = const String.fromEnvironment('MYSMSGATE_API_KEY'),
+      _easySendKey = const String.fromEnvironment('EASYSENDSMS_API_KEY'),
+      _twilioSid = const String.fromEnvironment('TWILIO_ACCOUNT_SID'),
+      _twilioToken = const String.fromEnvironment('TWILIO_AUTH_TOKEN'),
+      _twilioFrom = const String.fromEnvironment('TWILIO_FROM');
 
   /// Converts a Philippine mobile (09XXXXXXXXX) to +63 format.
   String formatPhoneNumber(String number) {
@@ -68,10 +68,7 @@ class TwilioService {
       final response = await http.post(
         Uri.parse('https://brgy-sync.pages.dev/sms/send'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'to': to,
-          'message': message,
-        }),
+        body: jsonEncode({'to': to, 'message': message}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 202) {
@@ -130,11 +127,7 @@ class TwilioService {
           'Authorization':
               'Basic ${base64Encode(utf8.encode('$_twilioSid:$_twilioToken'))}',
         },
-        body: {
-          'From': _twilioFrom,
-          'To': to,
-          'Body': message,
-        },
+        body: {'From': _twilioFrom, 'To': to, 'Body': message},
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
@@ -159,33 +152,54 @@ class TwilioService {
   // ─── SMS Templates (6 types) ─────────────────────────────────────
 
   Future<String?> sendSubmissionAck(String mobile, String refNumber) async {
-    return sendSms(mobile,
-        'BrgySync: Your request has been submitted. Ref#: $refNumber. We will notify you on updates. Thank you!');
+    return sendSms(
+      mobile,
+      'BrgySync: Your request has been submitted. Ref#: $refNumber. We will notify you on updates. Thank you!',
+    );
   }
 
   Future<String?> sendStatusProcessing(String mobile, String refNumber) async {
-    return sendSms(mobile,
-        'BrgySync: Your case $refNumber is now being processed. Thank you for your patience.');
+    return sendSms(
+      mobile,
+      'BrgySync: Your case $refNumber is now being processed. Thank you for your patience.',
+    );
   }
 
   Future<String?> sendStatusAwaitingDocs(
-      String mobile, String refNumber) async {
-    return sendSms(mobile,
-        'BrgySync: Your case $refNumber requires additional documents. Please submit the missing items to the barangay hall.');
+    String mobile,
+    String refNumber,
+  ) async {
+    return sendSms(
+      mobile,
+      'BrgySync: Your case $refNumber requires additional documents. Please submit the missing items to the barangay hall.',
+    );
   }
 
   Future<String?> sendStatusApproved(String mobile, String refNumber) async {
-    return sendSms(mobile,
-        'BrgySync: Your case $refNumber has been approved. We will notify you when it is ready for release.');
+    return sendSms(
+      mobile,
+      'BrgySync: Your case $refNumber has been approved. We will notify you when it is ready for release.',
+    );
+  }
+
+  Future<String?> sendStatusForClaiming(String mobile, String refNumber) async {
+    return sendSms(
+      mobile,
+      'BrgySync: Your case $refNumber is ready for claiming. Please proceed to the barangay hall.',
+    );
   }
 
   Future<String?> sendStatusReleased(String mobile, String refNumber) async {
-    return sendSms(mobile,
-        'BrgySync: Your case $refNumber has been resolved/released. Please proceed to the barangay hall to claim.');
+    return sendSms(
+      mobile,
+      'BrgySync: Your case $refNumber has been released successfully.',
+    );
   }
 
   Future<String?> sendStatusRejected(String mobile, String refNumber) async {
-    return sendSms(mobile,
-        'BrgySync: Your case $refNumber has been reviewed and could not be approved. Please visit the barangay hall for details.');
+    return sendSms(
+      mobile,
+      'BrgySync: Your case $refNumber has been reviewed and could not be approved. Please visit the barangay hall for details.',
+    );
   }
 }

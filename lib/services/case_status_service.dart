@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../utils/budget_health.dart';
 import '../utils/budget_period.dart';
+import '../utils/constants.dart';
 
 class CaseStatusService {
   final FirebaseFirestore _db;
@@ -60,6 +61,12 @@ class CaseStatusService {
 
       final caseData = currentCase.data()!;
       final previousStatus = (caseData['status'] ?? '').toString();
+      if (!validNextCaseStatuses(previousStatus).contains(newStatus)) {
+        throw StateError(
+          'Cannot change status from '
+          '${caseStatusLabel(previousStatus)} to ${caseStatusLabel(newStatus)}.',
+        );
+      }
       final updates = <String, dynamic>{
         'status': newStatus,
         'lastUpdated': FieldValue.serverTimestamp(),

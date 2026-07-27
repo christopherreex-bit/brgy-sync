@@ -45,32 +45,17 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                       labelText: 'New Status',
                       border: OutlineInputBorder(),
                     ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'pending_review',
-                        child: Text('Pending Review'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'processing',
-                        child: Text('Processing'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'awaiting_docs',
-                        child: Text('Awaiting Documents'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'approved',
-                        child: Text('Approved'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'released',
-                        child: Text('Released'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'rejected',
-                        child: Text('Rejected'),
-                      ),
-                    ],
+                    items:
+                        validNextCaseStatuses(
+                              (c['caseStatus'] ?? '').toString(),
+                            )
+                            .map(
+                              (status) => DropdownMenuItem(
+                                value: status,
+                                child: Text(caseStatusLabel(status)),
+                              ),
+                            )
+                            .toList(),
                     onChanged: (v) => setState(() => newStatus = v),
                   ),
                   const SizedBox(height: 16),
@@ -185,6 +170,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                   'processing',
                   'awaiting_docs',
                   'approved',
+                  'for_claiming',
                 ],
               )
               .snapshots(),
@@ -403,32 +389,8 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          (c['caseStatus'] == 'processing'
-                                                  ? Colors.blue
-                                                  : Colors.orange)
-                                              .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      (c['caseStatus'] as String).replaceAll(
-                                        '_',
-                                        ' ',
-                                      ),
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        color: c['caseStatus'] == 'processing'
-                                            ? Colors.blue
-                                            : Colors.orange,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                  StatusBadge(
+                                    status: c['caseStatus'] as String,
                                   ),
                                   const Spacer(),
                                   StatusBadge(status: c['slaStatus']),

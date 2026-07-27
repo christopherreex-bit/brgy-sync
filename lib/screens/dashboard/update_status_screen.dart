@@ -23,20 +23,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   bool _loading = false;
   String? _error;
 
-  // Valid transitions — no skipping
-  static const Map<String, List<String>> _validTransitions = {
-    'pending_review': ['processing', 'rejected'],
-    'processing': ['awaiting_docs', 'approved', 'rejected'],
-    'awaiting_docs': ['processing', 'approved', 'rejected'],
-    'approved': ['released', 'rejected'],
-    'released': [], // terminal
-    'rejected': [], // terminal
-  };
-
   final _twilio = TwilioService();
 
   List<String> _getValidNextStatuses(String currentStatus) {
-    return _validTransitions[currentStatus] ?? [];
+    return validNextCaseStatuses(currentStatus);
   }
 
   String _buildSmsPreview(
@@ -52,8 +42,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         return 'BrgySync: Your case $refNumber requires additional documents. Please submit the missing items to the barangay hall.';
       case 'approved':
         return 'BrgySync: Your case $refNumber has been approved. We will notify you when it is ready for release.';
+      case 'for_claiming':
+        return 'BrgySync: Your case $refNumber is ready for claiming. Please proceed to the barangay hall.';
       case 'released':
-        return 'BrgySync: Your case $refNumber has been resolved/released. Please proceed to the barangay hall to claim.';
+        return 'BrgySync: Your case $refNumber has been released successfully.';
       case 'rejected':
         return 'BrgySync: Your case $refNumber has been reviewed and could not be approved. Please visit the barangay hall for details.';
       default:
@@ -162,6 +154,9 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           break;
         case 'approved':
           smsError = await _twilio.sendStatusApproved(smsTo, refNumber);
+          break;
+        case 'for_claiming':
+          smsError = await _twilio.sendStatusForClaiming(smsTo, refNumber);
           break;
         case 'released':
           smsError = await _twilio.sendStatusReleased(smsTo, refNumber);
