@@ -19,7 +19,9 @@ class BudgetProgramCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final remaining = allocated - utilized;
-    final progress = allocated > 0 ? (utilized / allocated).clamp(0.0, 1.0) : 0.0;
+    final progress = allocated > 0
+        ? (utilized / allocated).clamp(0.0, 1.0)
+        : 0.0;
 
     Color barColor;
     if (status == budgetCritical) {
@@ -51,10 +53,23 @@ class BudgetProgramCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text(programName,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kNavy)),
+                child: Text(
+                  programName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: kNavy,
+                  ),
+                ),
               ),
-              StatusBadge(status: status),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  StatusBadge(status: status),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -71,10 +86,18 @@ class BudgetProgramCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('₱${utilized.toStringAsFixed(0)} of ₱${allocated.toStringAsFixed(0)}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-              Text('₱${remaining.toStringAsFixed(0)} left',
-                  style: TextStyle(fontSize: 12, color: barColor, fontWeight: FontWeight.bold)),
+              Text(
+                '₱${utilized.toStringAsFixed(0)} of ₱${allocated.toStringAsFixed(0)}',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              Text(
+                '₱${remaining.toStringAsFixed(0)} left',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: barColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ],

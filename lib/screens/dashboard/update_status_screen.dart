@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import '../../services/case_status_service.dart';
 import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
@@ -44,7 +45,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
     String refNumber,
     String residentMobile,
   ) {
-    final name = 'resident'; // Could be looked up
     switch (nextStatus) {
       case 'processing':
         return 'BrgySync: Your case $refNumber is now being processed. Thank you for your patience.';
@@ -171,81 +171,22 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           break;
       }
 
-      // Commit the status and its audit entry together. This prevents a case
-      // update from succeeding without the corresponding action log.
-      final caseRef = db.collection('cases').doc(widget.caseId);
-      final logRef = caseRef.collection('actionLog').doc();
-      final batch = db.batch();
-      batch.update(caseRef, {
-        'status': _newStatus,
-        'lastUpdated': FieldValue.serverTimestamp(),
-      });
-      batch.set(logRef, {
-        'caseId': widget.caseId,
-        'referenceNumber': refNumber,
-        'timestamp': FieldValue.serverTimestamp(),
-        'staffId': user?.uid ?? '',
-        'staffName': user?.name ?? 'Staff',
-        'action':
-            'Status updated: ${_formatStatus(currentStatus)} → ${_formatStatus(_newStatus!)}',
-        'previousStatus': currentStatus,
-        'newStatus': _newStatus,
-        'notes': _actionNotesCtrl.text.trim(),
-        'smsSent': smsError == null,
-        'smsError': smsError,
-        'smsBody': _buildSmsPreview(
+      await CaseStatusService(firestore: db).updateStatus(
+        caseId: widget.caseId,
+        newStatus: _newStatus!,
+        notes: _actionNotesCtrl.text.trim(),
+        staffId: user?.uid ?? '',
+        staffName: user?.name ?? 'Staff',
+        referenceNumber: refNumber,
+        smsSent: smsError == null,
+        smsError: smsError,
+        smsBody: _buildSmsPreview(
           currentStatus,
           _newStatus,
           refNumber,
           residentMobile,
         ),
-      });
-      await batch.commit();
-
-      // If released with assistance amount, deduct from budget (atomic transaction)
-      if (_newStatus == 'released' &&
-          caseData['assistanceAmount'] != null &&
-          caseData['budgetProgramId'] != null) {
-        final programRef = db
-            .collection('budgetPrograms')
-            .doc(caseData['budgetProgramId']);
-        final amount = (caseData['assistanceAmount'] as num).toDouble();
-
-        await db.runTransaction((transaction) async {
-          final programDoc = await transaction.get(programRef);
-          if (!programDoc.exists) return;
-          final pData = programDoc.data()!;
-          final utilized = (pData['utilized'] as num?)?.toDouble() ?? 0;
-          final allocated = (pData['allocated'] as num?)?.toDouble() ?? 0;
-          final newUtilized = utilized + amount;
-          final threshold =
-              (pData['thresholdPercent'] as num?)?.toDouble() ?? 10;
-          final thresholdAmount = allocated * threshold / 100;
-          String budgetStatus = 'healthy';
-          if (allocated - newUtilized <= 0) {
-            budgetStatus = 'critical';
-          } else if (allocated - newUtilized <= thresholdAmount) {
-            budgetStatus = 'low';
-          }
-          transaction.update(programRef, {
-            'utilized': newUtilized,
-            'remaining': allocated - newUtilized,
-            'status': budgetStatus,
-            'lastUpdated': FieldValue.serverTimestamp(),
-          });
-
-          // Record transaction inside same transaction for atomicity
-          final txRef = db.collection('budgetTransactions').doc();
-          transaction.set(txRef, {
-            'programId': caseData['budgetProgramId'],
-            'caseId': widget.caseId,
-            'amount': amount,
-            'type': 'deduction',
-            'approvedBy': user?.uid ?? '',
-            'timestamp': FieldValue.serverTimestamp(),
-          });
-        });
-      }
+      );
 
       if (mounted) {
         final smsSuccess = smsError == null;

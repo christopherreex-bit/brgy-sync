@@ -7,6 +7,7 @@ import '../../widgets/sla_bar.dart';
 import '../../widgets/status_badge.dart';
 import '../../utils/sla_calculator.dart' as sla;
 import '../../services/auth_service.dart';
+import '../../services/case_status_service.dart';
 
 class SlaMonitoringScreen extends StatefulWidget {
   const SlaMonitoringScreen({super.key});
@@ -138,29 +139,14 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     String? referenceNumber,
   }) async {
     try {
-      final db = FirebaseFirestore.instance;
-      final now = FieldValue.serverTimestamp();
-      final caseRef = db.collection('cases').doc(caseId);
-      final currentCase = await caseRef.get();
-      final previousStatus = currentCase.data()?['status'] ?? '';
-      final logRef = caseRef.collection('actionLog').doc();
-      final batch = db.batch();
-
-      batch.update(caseRef, {'status': newStatus, 'lastUpdated': now});
-      batch.set(logRef, {
-        'caseId': caseId,
-        'referenceNumber': referenceNumber ?? '',
-        'timestamp': now,
-        'staffId': user?.uid ?? '',
-        'staffName': user?.name ?? 'Unknown',
-        'action': 'Status changed: $previousStatus → $newStatus',
-        'previousStatus': previousStatus,
-        'newStatus': newStatus,
-        'notes': notes,
-        'smsSent': false,
-        'smsBody': '',
-      });
-      await batch.commit();
+      await CaseStatusService().updateStatus(
+        caseId: caseId,
+        newStatus: newStatus,
+        notes: notes,
+        staffId: user?.uid ?? '',
+        staffName: user?.name ?? 'Unknown',
+        referenceNumber: referenceNumber,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -28,7 +28,10 @@ final appRouter = GoRouter(
   initialLocation: '/login',
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-    GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
+    GoRoute(
+      path: '/register',
+      builder: (context, state) => const RegisterScreen(),
+    ),
 
     // ─── Resident Portal ──────────────────────────────────────────
     GoRoute(
@@ -40,40 +43,107 @@ final appRouter = GoRouter(
     ShellRoute(
       builder: (context, state, child) => DashboardShell(child: child),
       routes: [
-        GoRoute(path: '/dashboard', builder: (context, state) => const CaseQueueScreen()),
-        GoRoute(path: '/dashboard/case/:caseId', builder: (context, state) {
-          final caseId = state.pathParameters['caseId']!;
-          return CaseDetailScreen(caseId: caseId);
-        }),
-        GoRoute(path: '/dashboard/case/:caseId/update-status', builder: (context, state) {
-          final caseId = state.pathParameters['caseId']!;
-          return UpdateStatusScreen(caseId: caseId);
-        }),
-        GoRoute(path: '/dashboard/distributions', builder: (context, state) => const DistributionsScreen()),
-        GoRoute(path: '/dashboard/audit', builder: (context, state) => const AuditTrailScreen()),
-        GoRoute(path: '/dashboard/sla-monitoring', builder: (context, state) => const SlaMonitoringScreen()),
-        GoRoute(path: '/dashboard/overdue', builder: (context, state) => const OverdueCasesScreen()),
-        GoRoute(path: '/dashboard/compliance-report', builder: (context, state) => const ComplianceReportScreen()),
-        GoRoute(path: '/dashboard/sla-config', builder: (context, state) => const SlaConfigScreen()),
-        GoRoute(path: '/dashboard/budget', builder: (context, state) => const BudgetOverviewScreen()),
-        GoRoute(path: '/dashboard/budget/:programId', builder: (context, state) {
-          final programId = state.pathParameters['programId']!;
-          return ProgramDetailScreen(programId: programId);
-        }),
-        GoRoute(path: '/dashboard/allocation-setup', builder: (context, state) => const AllocationSetupScreen()),
-        GoRoute(path: '/dashboard/expenditure', builder: (context, state) => const ExpenditureSummaryScreen()),
-        GoRoute(path: '/dashboard/analytics', builder: (context, state) => const AnalyticsDashboardScreen()),
-        GoRoute(path: '/dashboard/service-demand', builder: (context, state) => const ServiceDemandScreen()),
-        GoRoute(path: '/dashboard/report-builder', builder: (context, state) => const ReportBuilderScreen()),
-        GoRoute(path: '/dashboard/report-archive', builder: (context, state) => const ReportArchiveScreen()),
-        GoRoute(path: '/dashboard/account-management', builder: (context, state) => const AccountManagementScreen()),
+        GoRoute(
+          path: '/dashboard',
+          builder: (context, state) => const CaseQueueScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/case/:caseId',
+          builder: (context, state) {
+            final caseId = state.pathParameters['caseId']!;
+            return CaseDetailScreen(caseId: caseId);
+          },
+        ),
+        GoRoute(
+          path: '/dashboard/case/:caseId/update-status',
+          builder: (context, state) {
+            final caseId = state.pathParameters['caseId']!;
+            return UpdateStatusScreen(caseId: caseId);
+          },
+        ),
+        GoRoute(
+          path: '/dashboard/distributions',
+          builder: (context, state) => const DistributionsScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/audit',
+          builder: (context, state) => const AuditTrailScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/sla-monitoring',
+          builder: (context, state) => const SlaMonitoringScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/overdue',
+          builder: (context, state) => const OverdueCasesScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/compliance-report',
+          builder: (context, state) => const ComplianceReportScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/sla-config',
+          builder: (context, state) => const SlaConfigScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/budget',
+          builder: (context, state) => const BudgetOverviewScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/budget-details',
+          builder: (context, state) {
+            final query = state.uri.queryParameters;
+            return ProgramDetailScreen(
+              programName: query['program'],
+              fiscalYear: int.tryParse(query['year'] ?? ''),
+              quarter: int.tryParse(query['quarter'] ?? ''),
+            );
+          },
+        ),
+        GoRoute(
+          path: '/dashboard/budget/:programId',
+          builder: (context, state) {
+            final programId = state.pathParameters['programId']!;
+            return ProgramDetailScreen(programId: programId);
+          },
+        ),
+        GoRoute(
+          path: '/dashboard/allocation-setup',
+          builder: (context, state) => const AllocationSetupScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/expenditure',
+          builder: (context, state) => const ExpenditureSummaryScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/analytics',
+          builder: (context, state) => const AnalyticsDashboardScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/service-demand',
+          builder: (context, state) => const ServiceDemandScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/report-builder',
+          builder: (context, state) => const ReportBuilderScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/report-archive',
+          builder: (context, state) => const ReportArchiveScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/account-management',
+          builder: (context, state) => const AccountManagementScreen(),
+        ),
       ],
     ),
   ],
   redirect: (context, state) {
     final auth = context.read<AuthService>();
     final isLoggedIn = auth.isLoggedIn;
-    final isOnAuthScreen = state.matchedLocation == '/login' || state.matchedLocation == '/register';
+    final isOnAuthScreen =
+        state.matchedLocation == '/login' ||
+        state.matchedLocation == '/register';
 
     if (!isLoggedIn && !isOnAuthScreen) return '/login';
     if (isLoggedIn && isOnAuthScreen) {

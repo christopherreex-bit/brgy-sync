@@ -318,14 +318,19 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                 )
               else
                 ...programs.map((program) {
+                  final destination = Uri(
+                    path: '/dashboard/budget-details',
+                    queryParameters: {
+                      'program': program.name,
+                      if (fiscalYear != null) 'year': '$fiscalYear',
+                      if (!isAnnual && period?.quarter != null)
+                        'quarter': '${period!.quarter}',
+                    },
+                  ).toString();
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: InkWell(
-                      onTap: program.documentId == null
-                          ? null
-                          : () => context.go(
-                              '/dashboard/budget/${program.documentId}',
-                            ),
+                      onTap: () => context.go(destination),
                       child: BudgetProgramCard(
                         programName: program.name,
                         status: program.status,

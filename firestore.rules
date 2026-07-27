@@ -97,13 +97,23 @@ service cloud.firestore {
     // ─── Budget Programs ─────────────────────────────────────────
     match /budgetPrograms/{doc} {
       allow read: if isStaff();
-      allow write: if isCaptain();
+      allow create, delete: if isCaptain();
+      allow update: if isCaptain()
+                    || (isStaff()
+                        && request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasOnly(['utilized', 'remaining', 'status', 'lastUpdated'])
+                        && request.resource.data.utilized >= resource.data.utilized
+                        && request.resource.data.remaining
+                            == request.resource.data.allocated
+                               - request.resource.data.utilized);
     }
 
     // ─── Budget Transactions ─────────────────────────────────────
     match /budgetTransactions/{doc} {
       allow read: if isOfficer();
-      allow write: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isCaptain();
     }
 
     // ─── Distributions ───────────────────────────────────────────
