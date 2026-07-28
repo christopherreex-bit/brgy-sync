@@ -14,6 +14,16 @@ void main() {
     expect(validatePhilippineMobile('091234567890'), isNotNull);
   });
 
+  test('existing email is rejected case-insensitively while typing', () {
+    final existing = {'resident@example.com', 'Officer@Example.com'};
+
+    expect(
+      validateUniqueAccountEmail('officer@example.com', existing),
+      'This email is already in use.',
+    );
+    expect(validateUniqueAccountEmail('new@example.com', existing), isNull);
+  });
+
   test('password only requires six characters', () {
     expect(validateStaffPassword('12345'), isNotNull);
     expect(validateStaffPassword('123456'), isNull);

@@ -7,6 +7,19 @@ String? validateAccountEmail(String value) {
   return null;
 }
 
+String? validateUniqueAccountEmail(
+  String value,
+  Iterable<String> existingEmails,
+) {
+  final formatError = validateAccountEmail(value);
+  if (formatError != null) return formatError;
+  final normalized = value.trim().toLowerCase();
+  final alreadyExists = existingEmails.any(
+    (email) => email.trim().toLowerCase() == normalized,
+  );
+  return alreadyExists ? 'This email is already in use.' : null;
+}
+
 String? validatePhilippineMobile(String value) {
   final mobile = value.trim();
   if (mobile.isEmpty) return 'Mobile number is required.';

@@ -24,7 +24,25 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     super.dispose();
   }
 
-  void _showCreateAccountDialog() {
+  Future<void> _showCreateAccountDialog() async {
+    Set<String> existingEmails;
+    try {
+      existingEmails = await context
+          .read<AuthService>()
+          .getExistingAccountEmails();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not check existing emails: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final mobileCtrl = TextEditingController();
@@ -34,7 +52,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     String? mobileError;
     String? passwordError;
 
-    showDialog(
+    final shouldConfirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
@@ -68,7 +86,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     ),
                     keyboardType: TextInputType.emailAddress,
                     onChanged: (value) => setDialogState(
-                      () => emailError = validateAccountEmail(value),
+                      () => emailError = validateUniqueAccountEmail(
+                        value,
+                        existingEmails,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -143,7 +164,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                final nextEmailError = validateAccountEmail(emailCtrl.text);
+                final nextEmailError = validateUniqueAccountEmail(
+                  emailCtrl.text,
+                  existingEmails,
+                );
                 final nextMobileError = validatePhilippineMobile(
                   mobileCtrl.text,
                 );
@@ -164,14 +188,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     nextPasswordError != null) {
                   return;
                 }
-                Navigator.pop(ctx);
-                _showConfirmPasswordDialog(
-                  name: nameCtrl.text.trim(),
-                  email: emailCtrl.text.trim().toLowerCase(),
-                  mobile: mobileCtrl.text.trim(),
-                  password: passCtrl.text,
-                  role: selectedRole,
-                );
+                Navigator.pop(ctx, true);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: kNavy,
@@ -183,20 +200,34 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         ),
       ),
     );
+    if (shouldConfirm == true && mounted) {
+      await _showConfirmPasswordDialog(
+        name: nameCtrl.text.trim(),
+        email: emailCtrl.text.trim().toLowerCase(),
+        mobile: mobileCtrl.text.trim(),
+        password: passCtrl.text,
+        role: selectedRole,
+      );
+    }
+    nameCtrl.dispose();
+    emailCtrl.dispose();
+    mobileCtrl.dispose();
+    passCtrl.dispose();
   }
 
-  void _showConfirmPasswordDialog({
+  Future<void> _showConfirmPasswordDialog({
     required String name,
     required String email,
     required String mobile,
     required String password,
     required String role,
-  }) {
+  }) async {
     final confirmPassCtrl = TextEditingController();
     bool loading = false;
 
-    showDialog(
+    await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Confirm Your Identity'),
@@ -299,6 +330,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         ),
       ),
     );
+    confirmPassCtrl.dispose();
   }
 
   void _showChangeRoleDialog(
@@ -372,22 +404,115 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     );
   }
 
-  void _toggleActive(
+  Future<void> _showDeleteAccountDialog(
     String userId,
-    bool currentlyActive,
     String userName,
+    String email,
   ) async {
-    final auth = context.read<AuthService>();
-    final err = currentlyActive
-        ? await auth.deactivateAccount(userId)
-        : await auth.activateAccount(userId);
-    if (mounted) {
+    final passwordController = TextEditingController();
+    String? passwordError;
+    var deleting = false;
+    final deleted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Permanently Delete Account?'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Delete $userName ($email) from Firebase Authentication '
+                  'and the user database? This cannot be undone.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  enabled: !deleting,
+                  decoration: InputDecoration(
+                    labelText: 'Your captain password',
+                    border: const OutlineInputBorder(),
+                    errorText: passwordError,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: deleting
+                  ? null
+                  : () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: deleting
+                  ? null
+                  : () async {
+                      final password = passwordController.text;
+                      if (password.isEmpty) {
+                        setDialogState(
+                          () => passwordError = 'Enter your password.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        deleting = true;
+                        passwordError = null;
+                      });
+                      final auth = context.read<AuthService>();
+                      final confirmationError = await auth
+                          .confirmCurrentUserPassword(password);
+                      if (confirmationError != null) {
+                        setDialogState(() {
+                          deleting = false;
+                          passwordError = confirmationError.replaceAll(
+                            'No account was created.',
+                            'The account was not deleted.',
+                          );
+                        });
+                        return;
+                      }
+                      final deletionError = await auth.deleteManagedAccount(
+                        userId,
+                      );
+                      if (deletionError != null) {
+                        setDialogState(() {
+                          deleting = false;
+                          passwordError = deletionError;
+                        });
+                        return;
+                      }
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext, true);
+                      }
+                    },
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: deleting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Delete Account'),
+            ),
+          ],
+        ),
+      ),
+    );
+    passwordController.dispose();
+    if (deleted == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            err ?? '${currentlyActive ? 'Deactivated' : 'Activated'} $userName',
-          ),
-          backgroundColor: err != null ? Colors.red : Colors.green,
+          content: Text('$userName was permanently deleted.'),
+          backgroundColor: Colors.green,
         ),
       );
     }
@@ -574,11 +699,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                             u['name'],
                                           );
                                           break;
-                                        case 'toggle':
-                                          _toggleActive(
+                                        case 'delete':
+                                          _showDeleteAccountDialog(
                                             u['uid'],
-                                            u['isActive'] == true,
                                             u['name'],
+                                            u['email'],
                                           );
                                           break;
                                         case 'reset':
@@ -591,12 +716,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                         value: 'role',
                                         child: Text('Change Role'),
                                       ),
-                                      PopupMenuItem(
-                                        value: 'toggle',
+                                      const PopupMenuItem(
+                                        value: 'delete',
                                         child: Text(
-                                          u['isActive'] == true
-                                              ? 'Deactivate'
-                                              : 'Activate',
+                                          'Delete Account',
+                                          style: TextStyle(color: Colors.red),
                                         ),
                                       ),
                                       const PopupMenuItem(

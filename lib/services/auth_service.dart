@@ -1,11 +1,18 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 import '../utils/account_validators.dart';
 
 class AuthService extends ChangeNotifier {
+  static const String _accountAdminUrl = String.fromEnvironment(
+    'ACCOUNT_ADMIN_URL',
+    defaultValue: 'https://brgy-sync-create-user.jasonleyva723.workers.dev',
+  );
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -242,6 +249,81 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<String?> deleteManagedAccount(String userId) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      return 'Your session has expired. Please log in again.';
+    }
+    if (_currentUserModel?.isCaptain != true) {
+      return 'Only the Barangay Captain can delete managed accounts.';
+    }
+    if (currentUser.uid == userId) {
+      return 'Use User Management to delete your own account.';
+    }
+    if (_accountAdminUrl.isEmpty) {
+      return 'Account deletion backend is not configured. '
+          'Build with ACCOUNT_ADMIN_URL.';
+    }
+
+    Object? lastConnectionError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        final token = await currentUser.getIdToken(attempt == 1);
+        final response = await http
+            .delete(
+              Uri.parse(_accountAdminUrl),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'uid': userId}),
+            )
+            .timeout(const Duration(seconds: 20));
+        Map<String, dynamic> body = {};
+        if (response.body.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) body = decoded;
+          } catch (_) {
+            body = {
+              'error':
+                  'Account service returned an invalid response '
+                  '(HTTP ${response.statusCode}).',
+            };
+          }
+        }
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return null;
+        }
+
+        // A previous request may have completed on the server even if its
+        // response was lost. In that case, the missing profile confirms the
+        // requested deletion completed and makes retries idempotent.
+        if (!await _managedAccountProfileExists(userId)) return null;
+
+        return (body['error'] ?? 'Could not delete the account.').toString();
+      } catch (error) {
+        lastConnectionError = error;
+        if (!await _managedAccountProfileExists(userId)) return null;
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
+        }
+      }
+    }
+    return 'The account service could not be reached after 3 attempts. '
+        'Please check your connection and try again. ($lastConnectionError)';
+  }
+
+  Future<bool> _managedAccountProfileExists(String userId) async {
+    try {
+      return (await _firestore.collection('users').doc(userId).get()).exists;
+    } catch (_) {
+      // If Firestore itself is temporarily unavailable, do not assume that
+      // deletion succeeded.
+      return true;
+    }
+  }
+
   /// Reactivates a user account.
   Future<String?> activateAccount(String userId) async {
     try {
@@ -341,5 +423,15 @@ class AuthService extends ChangeNotifier {
         .collection('users')
         .where('role', whereIn: ['staff', 'officer', 'captain'])
         .snapshots();
+  }
+
+  Future<Set<String>> getExistingAccountEmails() async {
+    final snapshot = await _firestore.collection('users').get();
+    return snapshot.docs
+        .map(
+          (doc) => (doc.data()['email'] ?? '').toString().trim().toLowerCase(),
+        )
+        .where((email) => email.isNotEmpty)
+        .toSet();
   }
 }
