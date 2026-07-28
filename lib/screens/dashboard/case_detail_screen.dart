@@ -5,7 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:universal_html/html.dart' as html;
+import '../../services/auth_service.dart';
+import '../../services/case_status_service.dart';
+import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
 
@@ -31,6 +35,10 @@ class CaseDetailScreen extends StatelessWidget {
         }
 
         final data = caseSnapshot.data!.data() as Map<String, dynamic>;
+        final isCaptain =
+            context.watch<AuthService>().currentUserModel?.role == roleCaptain;
+        final claimingApprovalPending =
+            data['claimingApprovalStatus'] == 'pending';
         final isConfidential = data['isConfidential'] ?? false;
         final residentName = isConfidential
             ? 'Confidential'
@@ -86,7 +94,7 @@ class CaseDetailScreen extends StatelessWidget {
                 '$dateStr · via ${channel == 'walkin' ? 'Walk-in' : 'Resident Portal'}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
-              if (data['claimingApprovalStatus'] == 'pending') ...[
+              if (claimingApprovalPending) ...[
                 const SizedBox(height: 12),
                 Container(
                   width: double.infinity,
@@ -96,22 +104,92 @@ class CaseDetailScreen extends StatelessWidget {
                     border: Border.all(color: Colors.amber.shade300),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.approval_outlined,
-                        color: Colors.amber.shade900,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.admin_panel_settings_outlined,
+                            color: Colors.amber.shade900,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Pending Barangay Captain approval',
+                                  style: TextStyle(
+                                    color: Colors.amber.shade900,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Requested by '
+                                  '${data['claimingRequestedByName'] ?? 'Staff'} '
+                                  'to move this case to For Claiming.',
+                                  style: TextStyle(
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                                if ((data['claimingRequestReason'] ?? '')
+                                    .toString()
+                                    .trim()
+                                    .isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Reason: ${data['claimingRequestReason']}',
+                                    style: TextStyle(
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'For Claiming approval requested by '
-                          '${data['claimingRequestedByName'] ?? 'Staff'}'
-                          '${(data['claimingRequestReason'] ?? '').toString().trim().isEmpty ? '' : '\nReason: ${data['claimingRequestReason']}'}',
-                          style: TextStyle(color: Colors.amber.shade900),
+                      if (isCaptain) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () =>
+                                  _approveForClaiming(context, data),
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('Approve for Claiming'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.green.shade700,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  _rejectForClaiming(context, data),
+                              icon: const Icon(Icons.close_rounded),
+                              label: const Text('Reject for Claiming'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red.shade700,
+                                side: BorderSide(color: Colors.red.shade300),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -215,25 +293,202 @@ class CaseDetailScreen extends StatelessWidget {
 
               const SizedBox(height: 24),
               // Action buttons
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton.icon(
-                  onPressed: () =>
-                      context.go('/dashboard/case/$caseId/update-status'),
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Update status'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kNavy,
-                    foregroundColor: Colors.white,
+              if (!(claimingApprovalPending && isCaptain))
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: () =>
+                        context.go('/dashboard/case/$caseId/update-status'),
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Update status'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kNavy,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         );
       },
     );
+  }
+
+  Future<void> _approveForClaiming(
+    BuildContext context,
+    Map<String, dynamic> caseData,
+  ) async {
+    final user = context.read<AuthService>().currentUserModel;
+    if (user?.role != roleCaptain) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the Barangay Captain can approve this request.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final referenceNumber = (caseData['referenceNumber'] ?? '').toString();
+      final residentMobile = (caseData['residentMobile'] ?? '').toString();
+      final smsTo = caseData['isSeedData'] == true || residentMobile.isEmpty
+          ? TwilioService.fallbackNumber
+          : residentMobile;
+      final smsError = await TwilioService().sendStatusForClaiming(
+        smsTo,
+        referenceNumber,
+      );
+      await CaseStatusService().updateStatus(
+        caseId: caseId,
+        newStatus: statusForClaiming,
+        notes: 'Barangay Captain approved the For Claiming request.',
+        staffId: user!.uid,
+        staffName: user.name,
+        staffRole: user.role,
+        referenceNumber: referenceNumber,
+        smsSent: smsError == null,
+        smsError: smsError,
+        smsBody:
+            'BrgySync: Your case $referenceNumber is ready for claiming. '
+            'Please proceed to the barangay hall.',
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              smsError == null
+                  ? 'For Claiming approved and resident notified.'
+                  : 'For Claiming approved. SMS was not sent: $smsError',
+            ),
+            backgroundColor: smsError == null ? Colors.green : Colors.orange,
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not approve For Claiming: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectForClaiming(
+    BuildContext context,
+    Map<String, dynamic> caseData,
+  ) async {
+    final user = context.read<AuthService>().currentUserModel;
+    if (user?.role != roleCaptain) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the Barangay Captain can reject this request.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final reasonController = TextEditingController();
+    String? errorText;
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          icon: Icon(
+            Icons.cancel_outlined,
+            color: Colors.red.shade700,
+            size: 34,
+          ),
+          title: const Text('Reject For Claiming request?'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'The case will return to Processing and its reserved '
+                  'assistance amount will be returned to the available budget.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reasonController,
+                  autofocus: true,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: InputDecoration(
+                    labelText: 'Reason for rejection *',
+                    hintText: 'Explain why the request is being returned…',
+                    border: const OutlineInputBorder(),
+                    errorText: errorText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                final value = reasonController.text.trim();
+                if (value.isEmpty) {
+                  setDialogState(() {
+                    errorText = 'A rejection reason is required.';
+                  });
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              },
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('Reject Request'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    reasonController.dispose();
+    if (reason == null || !context.mounted) return;
+
+    try {
+      await CaseStatusService().rejectForClaimingApproval(
+        caseId: caseId,
+        reason: reason,
+        captainId: user!.uid,
+        captainName: user.name,
+        captainRole: user.role,
+        referenceNumber: (caseData['referenceNumber'] ?? '').toString(),
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'For Claiming request rejected. The case is back in Processing.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not reject For Claiming: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _openDocument(

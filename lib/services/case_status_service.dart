@@ -33,7 +33,7 @@ class CaseStatusService {
     final initialData = initialCase.data()!;
     DocumentReference<Map<String, dynamic>>? programRef;
 
-    if (_requiresBudgetDeduction(initialData, newStatus)) {
+    if (newStatus == statusApproved && _requiresBudgetReview(initialData)) {
       final programName = budgetProgramNameForCase(
         (initialData['serviceCategory'] ?? '').toString(),
         (initialData['serviceSubType'] ?? '').toString(),
@@ -51,6 +51,19 @@ class CaseStatusService {
           'FY ${effectiveDate.year} Q$quarter.',
         );
       }
+    } else if ((newStatus == statusReleased || newStatus == statusRejected) &&
+        (initialData['budgetReservedProgramId'] ?? '').toString().isNotEmpty) {
+      programRef = _db
+          .collection('budgetPrograms')
+          .doc(initialData['budgetReservedProgramId'].toString());
+    } else if (_requiresBudgetDeduction(initialData, newStatus)) {
+      final programName = budgetProgramNameForCase(
+        (initialData['serviceCategory'] ?? '').toString(),
+        (initialData['serviceSubType'] ?? '').toString(),
+      );
+      programRef = programName == null
+          ? null
+          : await _findQuarterlyProgram(programName, effectiveDate);
     }
 
     final logRef = caseRef.collection('actionLog').doc();
@@ -119,12 +132,54 @@ class CaseStatusService {
         updates['assistanceAmount'] = approvedAssistanceAmount;
       }
 
-      if (_requiresBudgetDeduction(caseData, newStatus)) {
+      if (newStatus == statusApproved && _requiresBudgetReview(caseData)) {
+        if (programRef == null || approvedAssistanceAmount == null) {
+          throw StateError('The applicable quarterly budget was not found.');
+        }
+        final programSnapshot = await transaction.get(programRef);
+        if (!programSnapshot.exists) {
+          throw StateError('The applicable quarterly budget was not found.');
+        }
+        final programData = programSnapshot.data()!;
+        final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
+        final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
+        final reserved = (programData['reserved'] as num?)?.toDouble() ?? 0;
+        if (allocated - utilized - reserved < approvedAssistanceAmount) {
+          throw StateError(
+            'The applicable budget does not have enough available balance.',
+          );
+        }
+        final newReserved = reserved + approvedAssistanceAmount;
+        final quarter = quarterForDate(effectiveDate);
+        transaction.update(programRef, {
+          'reserved': newReserved,
+          'remaining': allocated - utilized - newReserved,
+          'status': calculateBudgetHealth(
+            allocated: allocated,
+            utilized: utilized + newReserved,
+            fiscalYear: effectiveDate.year,
+            quarter: quarter,
+            asOf: effectiveDate,
+          ),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        updates.addAll({
+          'budgetReservedProgramId': programRef.id,
+          'budgetReservedAmount': approvedAssistanceAmount,
+          'budgetReservedFiscalYear': effectiveDate.year,
+          'budgetReservedQuarter': quarter,
+          'budgetReservedAt': FieldValue.serverTimestamp(),
+        });
+      } else if (newStatus == statusReleased &&
+          (caseData['budgetReservedAt'] != null ||
+              _requiresBudgetDeduction(caseData, newStatus))) {
         if (programRef == null) {
           throw StateError('The applicable quarterly budget was not found.');
         }
 
-        final amount = budgetDeductionAmountForCase(caseData);
+        final amount =
+            (caseData['budgetReservedAmount'] as num?)?.toDouble() ??
+            budgetDeductionAmountForCase(caseData);
         final programSnapshot = await transaction.get(programRef);
         if (!programSnapshot.exists) {
           throw StateError('The applicable quarterly budget was not found.');
@@ -133,25 +188,36 @@ class CaseStatusService {
         final programData = programSnapshot.data()!;
         final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
         final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
-        if (allocated - utilized < amount) {
+        final reserved = (programData['reserved'] as num?)?.toDouble() ?? 0;
+        final hasReservation = caseData['budgetReservedAt'] != null;
+        if (!hasReservation && allocated - utilized - reserved < amount) {
           throw StateError(
             'The applicable budget no longer has enough remaining balance '
             'for this case.',
           );
         }
         final newUtilized = utilized + amount;
-        final quarter = quarterForDate(effectiveDate);
+        final newReserved = hasReservation
+            ? (reserved - amount).clamp(0, double.infinity).toDouble()
+            : reserved;
+        final quarter =
+            (caseData['budgetReservedQuarter'] as num?)?.toInt() ??
+            quarterForDate(effectiveDate);
+        final fiscalYear =
+            (caseData['budgetReservedFiscalYear'] as num?)?.toInt() ??
+            effectiveDate.year;
         final budgetStatus = calculateBudgetHealth(
           allocated: allocated,
-          utilized: newUtilized,
-          fiscalYear: effectiveDate.year,
+          utilized: newUtilized + newReserved,
+          fiscalYear: fiscalYear,
           quarter: quarter,
           asOf: effectiveDate,
         );
 
         transaction.update(programRef, {
           'utilized': newUtilized,
-          'remaining': allocated - newUtilized,
+          'reserved': newReserved,
+          'remaining': allocated - newUtilized - newReserved,
           'status': budgetStatus,
           'lastUpdated': FieldValue.serverTimestamp(),
         });
@@ -164,7 +230,7 @@ class CaseStatusService {
           'serviceSubType': caseData['serviceSubType'] ?? '',
           'amount': amount,
           'type': 'deduction',
-          'fiscalYear': effectiveDate.year,
+          'fiscalYear': fiscalYear,
           'quarter': quarter,
           'approvedBy': staffId,
           'releasedBy': staffId,
@@ -174,9 +240,51 @@ class CaseStatusService {
         updates.addAll({
           'budgetProgramId': programRef.id,
           'budgetDeductedAmount': amount,
-          'budgetDeductedFiscalYear': effectiveDate.year,
+          'budgetDeductedFiscalYear': fiscalYear,
           'budgetDeductedQuarter': quarter,
           'budgetDeductedAt': FieldValue.serverTimestamp(),
+          'budgetReservedAt': FieldValue.delete(),
+        });
+      } else if (newStatus == statusRejected &&
+          caseData['budgetReservedAt'] != null) {
+        if (programRef == null) {
+          throw StateError('The reserved budget program was not found.');
+        }
+        final programSnapshot = await transaction.get(programRef);
+        if (!programSnapshot.exists) {
+          throw StateError('The reserved budget program was not found.');
+        }
+        final programData = programSnapshot.data()!;
+        final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
+        final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
+        final reserved = (programData['reserved'] as num?)?.toDouble() ?? 0;
+        final amount =
+            (caseData['budgetReservedAmount'] as num?)?.toDouble() ?? 0;
+        final newReserved = (reserved - amount)
+            .clamp(0, double.infinity)
+            .toDouble();
+        final fiscalYear =
+            (caseData['budgetReservedFiscalYear'] as num?)?.toInt() ??
+            effectiveDate.year;
+        final quarter =
+            (caseData['budgetReservedQuarter'] as num?)?.toInt() ??
+            quarterForDate(effectiveDate);
+        transaction.update(programRef, {
+          'reserved': newReserved,
+          'remaining': allocated - utilized - newReserved,
+          'status': calculateBudgetHealth(
+            allocated: allocated,
+            utilized: utilized + newReserved,
+            fiscalYear: fiscalYear,
+            quarter: quarter,
+            asOf: effectiveDate,
+          ),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        updates.addAll({
+          'budgetReservedAt': FieldValue.delete(),
+          'budgetReservedAmount': FieldValue.delete(),
+          'budgetReservedProgramId': FieldValue.delete(),
         });
       }
 
@@ -255,6 +363,119 @@ class CaseStatusService {
     });
   }
 
+  Future<void> rejectForClaimingApproval({
+    required String caseId,
+    required String reason,
+    required String captainId,
+    required String captainName,
+    required String captainRole,
+    String? referenceNumber,
+  }) async {
+    if (captainRole != roleCaptain) {
+      throw StateError(
+        'Only the Barangay Captain can reject a For Claiming request.',
+      );
+    }
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw StateError('Enter a reason for rejecting this request.');
+    }
+    final effectiveDate = DateTime.now();
+
+    final caseRef = _db.collection('cases').doc(caseId);
+    final initialCase = await caseRef.get();
+    if (!initialCase.exists) throw StateError('Case not found.');
+    final initialData = initialCase.data()!;
+    final reservedProgramId = (initialData['budgetReservedProgramId'] ?? '')
+        .toString();
+    final programRef = reservedProgramId.isEmpty
+        ? null
+        : _db.collection('budgetPrograms').doc(reservedProgramId);
+    final logRef = caseRef.collection('actionLog').doc();
+
+    await _db.runTransaction((transaction) async {
+      final caseSnapshot = await transaction.get(caseRef);
+      if (!caseSnapshot.exists) throw StateError('Case not found.');
+      final caseData = caseSnapshot.data()!;
+      final currentStatus = normalizeCaseStatus(
+        (caseData['status'] ?? '').toString(),
+      );
+      if (currentStatus != statusApproved ||
+          caseData['claimingApprovalStatus'] != 'pending') {
+        throw StateError(
+          'This case is not awaiting Barangay Captain approval.',
+        );
+      }
+
+      final updates = <String, dynamic>{
+        'status': statusProcessing,
+        'claimingApprovalStatus': 'rejected',
+        'claimingRejectedBy': captainId,
+        'claimingRejectedByName': captainName,
+        'claimingRejectedAt': FieldValue.serverTimestamp(),
+        'claimingRejectionReason': trimmedReason,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      };
+
+      if (caseData['budgetReservedAt'] != null && programRef != null) {
+        final programSnapshot = await transaction.get(programRef);
+        if (!programSnapshot.exists) {
+          throw StateError('The reserved budget program was not found.');
+        }
+        final programData = programSnapshot.data()!;
+        final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
+        final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
+        final reserved = (programData['reserved'] as num?)?.toDouble() ?? 0;
+        final amount =
+            (caseData['budgetReservedAmount'] as num?)?.toDouble() ?? 0;
+        final newReserved = (reserved - amount)
+            .clamp(0, double.infinity)
+            .toDouble();
+        final fiscalYear =
+            (caseData['budgetReservedFiscalYear'] as num?)?.toInt() ??
+            effectiveDate.year;
+        final quarter =
+            (caseData['budgetReservedQuarter'] as num?)?.toInt() ??
+            quarterForDate(effectiveDate);
+
+        transaction.update(programRef, {
+          'reserved': newReserved,
+          'remaining': allocated - utilized - newReserved,
+          'status': calculateBudgetHealth(
+            allocated: allocated,
+            utilized: utilized + newReserved,
+            fiscalYear: fiscalYear,
+            quarter: quarter,
+            asOf: effectiveDate,
+          ),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        updates.addAll({
+          'budgetReservedAt': FieldValue.delete(),
+          'budgetReservedAmount': FieldValue.delete(),
+          'budgetReservedProgramId': FieldValue.delete(),
+          'budgetReservedFiscalYear': FieldValue.delete(),
+          'budgetReservedQuarter': FieldValue.delete(),
+        });
+      }
+
+      transaction.update(caseRef, updates);
+      transaction.set(logRef, {
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? caseData['referenceNumber'] ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'staffId': captainId,
+        'staffName': captainName,
+        'action': 'For Claiming approval rejected',
+        'previousStatus': statusApproved,
+        'newStatus': statusProcessing,
+        'notes': trimmedReason,
+        'smsSent': false,
+        'smsBody': '',
+      });
+    });
+  }
+
   Future<BudgetApprovalPreview> getBudgetApprovalPreview({
     required String caseId,
     DateTime? asOf,
@@ -290,7 +511,8 @@ class CaseStatusService {
     final programData = programSnapshot.data()!;
     final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
     final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
-    final remaining = allocated - utilized;
+    final reserved = (programData['reserved'] as num?)?.toDouble() ?? 0;
+    final remaining = allocated - utilized - reserved;
 
     return BudgetApprovalPreview(
       programId: programRef.id,
@@ -299,6 +521,7 @@ class CaseStatusService {
       quarter: quarterForDate(effectiveDate),
       allocated: allocated,
       utilized: utilized,
+      reserved: reserved,
       currentRemaining: remaining,
       assistanceAmount: amount,
       projectedRemaining: remaining - amount,
@@ -369,6 +592,7 @@ class BudgetApprovalPreview {
   final int quarter;
   final double allocated;
   final double utilized;
+  final double reserved;
   final double currentRemaining;
   final double assistanceAmount;
   final double projectedRemaining;
@@ -381,6 +605,7 @@ class BudgetApprovalPreview {
     required this.quarter,
     this.allocated = 0,
     this.utilized = 0,
+    this.reserved = 0,
     this.currentRemaining = 0,
     this.assistanceAmount = 0,
     this.projectedRemaining = 0,

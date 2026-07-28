@@ -58,13 +58,20 @@ class ProgramDetailScreen extends StatelessWidget {
           (total, doc) =>
               total + ((doc.data()['utilized'] as num?)?.toDouble() ?? 0),
         );
-        final remaining = allocated - utilized;
+        final reserved = programs.fold<double>(
+          0,
+          (total, doc) =>
+              total + ((doc.data()['reserved'] as num?)?.toDouble() ?? 0),
+        );
+        final remaining = allocated - utilized - reserved;
         final statuses = programs.map((doc) {
           final data = doc.data();
           final period = BudgetPeriod.fromData(data);
           return calculateBudgetHealth(
             allocated: (data['allocated'] as num?)?.toDouble() ?? 0,
-            utilized: (data['utilized'] as num?)?.toDouble() ?? 0,
+            utilized:
+                ((data['utilized'] as num?)?.toDouble() ?? 0) +
+                ((data['reserved'] as num?)?.toDouble() ?? 0),
             fiscalYear: period.fiscalYear ?? fiscalYear ?? DateTime.now().year,
             quarter: period.quarter ?? quarter ?? 1,
             asOf: DateTime.now(),
@@ -123,13 +130,45 @@ class ProgramDetailScreen extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: KpiCard(
-                      label: 'Remaining',
+                      label: 'Reserved for Release',
+                      value: '₱${reserved.toStringAsFixed(0)}',
+                      accentColor: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: KpiCard(
+                      label: 'Available',
                       value: '₱${remaining.toStringAsFixed(0)}',
                       accentColor: remaining < 0 ? Colors.red : Colors.green,
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 24),
+              const Text(
+                'Reserved for Release',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: kNavy,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Approved assistance amounts held for cases that have not yet '
+                'been released.',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              if (programs.isEmpty)
+                const _EmptyTransactions(
+                  message: 'No allocation is configured for this period.',
+                )
+              else
+                _ReservationList(
+                  programIds: programs.map((doc) => doc.id).toList(),
+                ),
               const SizedBox(height: 24),
               const Text(
                 'Budget Deductions',
@@ -200,6 +239,95 @@ class ProgramDetailScreen extends StatelessWidget {
 
   int _lastUpdated(Map<String, dynamic> data) {
     return (data['lastUpdated'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+  }
+}
+
+class _ReservationList extends StatelessWidget {
+  final List<String> programIds;
+
+  const _ReservationList({required this.programIds});
+
+  @override
+  Widget build(BuildContext context) {
+    if (programIds.isEmpty) return const SizedBox.shrink();
+    final query = FirebaseFirestore.instance
+        .collection('cases')
+        .where('budgetReservedProgramId', whereIn: programIds);
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: query.snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Text(
+            'Could not load reserved assistance: ${snapshot.error}',
+            style: const TextStyle(color: Colors.red),
+          );
+        }
+        final cases = (snapshot.data?.docs ?? [])
+            .where((doc) => doc.data()['budgetReservedAt'] != null)
+            .toList();
+        if (cases.isEmpty) {
+          return const _EmptyTransactions(
+            message: 'No assistance amounts are currently reserved.',
+          );
+        }
+        return Column(
+          children: cases.map((doc) {
+            final data = doc.data();
+            final amount =
+                (data['budgetReservedAmount'] as num?)?.toDouble() ?? 0;
+            return InkWell(
+              onTap: () => context.go('/dashboard/case/${doc.id}'),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  border: Border.all(color: Colors.blue.shade100),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_clock, color: Colors.blue),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            (data['referenceNumber'] ?? doc.id).toString(),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: kNavy,
+                            ),
+                          ),
+                          Text(
+                            (data['residentName'] ?? 'Name unavailable')
+                                .toString(),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '₱${amount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.grey),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
   }
 }
 

@@ -108,16 +108,18 @@ service cloud.firestore {
                     || (isStaff()
                         && request.resource.data.diff(resource.data)
                             .affectedKeys()
-                            .hasOnly(['utilized', 'remaining', 'status', 'lastUpdated'])
+                            .hasOnly(['utilized', 'reserved', 'remaining', 'status', 'lastUpdated'])
                         && request.resource.data.utilized >= resource.data.utilized
                         && request.resource.data.remaining
                             == request.resource.data.allocated
-                               - request.resource.data.utilized)
+                               - request.resource.data.utilized
+                               - request.resource.data.reserved)
                     || (request.auth != null
                         && request.resource.data.diff(resource.data)
                             .affectedKeys()
                             .hasOnly([
                               'utilized',
+                              'reserved',
                               'remaining',
                               'status',
                               'lastReversalCaseId',
@@ -128,6 +130,7 @@ service cloud.firestore {
                         && request.resource.data.remaining
                             == request.resource.data.allocated
                                - request.resource.data.utilized
+                               - request.resource.data.reserved
                         && existsAfter(
                              /databases/$(database)/documents/auditEvents/$(request.resource.data.lastReversalCaseId)
                            )
@@ -143,11 +146,16 @@ service cloud.firestore {
                         && getAfter(
                              /databases/$(database)/documents/budgetReversals/$(request.resource.data.lastReversalCaseId)
                            ).data.programId == doc
-                        && getAfter(
-                             /databases/$(database)/documents/budgetReversals/$(request.resource.data.lastReversalCaseId)
-                           ).data.amount
-                            == resource.data.utilized
-                               - request.resource.data.utilized);
+                        && (getAfter(
+                              /databases/$(database)/documents/budgetReversals/$(request.resource.data.lastReversalCaseId)
+                            ).data.amount
+                             == resource.data.utilized
+                                - request.resource.data.utilized
+                            || getAfter(
+                                 /databases/$(database)/documents/budgetReversals/$(request.resource.data.lastReversalCaseId)
+                               ).data.amount
+                                == resource.data.reserved
+                                   - request.resource.data.reserved));
     }
 
     // ─── Budget Transactions ─────────────────────────────────────
@@ -161,7 +169,8 @@ service cloud.firestore {
     match /budgetReversals/{caseId} {
       allow read: if isOfficer();
       allow create: if request.auth != null
-                    && request.resource.data.type == 'reversal'
+                    && request.resource.data.type
+                        in ['deduction_reversal', 'reservation_release']
                     && request.resource.data.caseId == caseId
                     && request.resource.data.actorId == request.auth.uid
                     && request.resource.data.amount >= 0

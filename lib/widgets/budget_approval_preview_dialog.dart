@@ -264,6 +264,10 @@ class _BudgetPreviewContent extends StatelessWidget {
         _AmountRow(label: 'Allocated budget', amount: preview.allocated),
         _AmountRow(label: 'Already utilized', amount: preview.utilized),
         _AmountRow(
+          label: 'Already reserved for release',
+          amount: preview.reserved,
+        ),
+        _AmountRow(
           label: 'Current remaining balance',
           amount: preview.currentRemaining,
         ),

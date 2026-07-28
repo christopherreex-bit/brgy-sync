@@ -96,16 +96,28 @@ class FirestoreService {
         final budgetProgramId = (caseData['budgetProgramId'] ?? '').toString();
         final deductedAmount =
             (caseData['budgetDeductedAmount'] as num?)?.toDouble() ?? 0;
-        final shouldReverse =
+        final shouldReverseDeduction =
             caseData['budgetDeductedAt'] != null &&
             budgetProgramId.isNotEmpty &&
             deductedAmount > 0;
+        final reservedProgramId = (caseData['budgetReservedProgramId'] ?? '')
+            .toString();
+        final reservedAmount =
+            (caseData['budgetReservedAmount'] as num?)?.toDouble() ?? 0;
+        final shouldReleaseReservation =
+            caseData['budgetReservedAt'] != null &&
+            reservedProgramId.isNotEmpty &&
+            reservedAmount > 0;
+        final shouldReverse =
+            shouldReverseDeduction || shouldReleaseReservation;
 
         var restoredAmount = 0.0;
         if (shouldReverse) {
           final programRef = _db
               .collection('budgetPrograms')
-              .doc(budgetProgramId);
+              .doc(
+                shouldReverseDeduction ? budgetProgramId : reservedProgramId,
+              );
           final programSnapshot = await transaction.get(programRef);
           if (!programSnapshot.exists) {
             throw StateError(
@@ -116,8 +128,16 @@ class FirestoreService {
           final programData = programSnapshot.data()!;
           final allocated = (programData['allocated'] as num?)?.toDouble() ?? 0;
           final utilized = (programData['utilized'] as num?)?.toDouble() ?? 0;
-          restoredAmount = math.min(deductedAmount, utilized);
-          final newUtilized = utilized - restoredAmount;
+          final reserved = (programData['reserved'] as num?)?.toDouble() ?? 0;
+          restoredAmount = shouldReverseDeduction
+              ? math.min(deductedAmount, utilized)
+              : math.min(reservedAmount, reserved);
+          final newUtilized = shouldReverseDeduction
+              ? utilized - restoredAmount
+              : utilized;
+          final newReserved = shouldReleaseReservation
+              ? reserved - restoredAmount
+              : reserved;
           final fiscalYear =
               (caseData['budgetDeductedFiscalYear'] as num?)?.toInt() ??
               DateTime.now().year;
@@ -126,10 +146,11 @@ class FirestoreService {
 
           transaction.update(programRef, {
             'utilized': newUtilized,
-            'remaining': allocated - newUtilized,
+            'reserved': newReserved,
+            'remaining': allocated - newUtilized - newReserved,
             'status': calculateBudgetHealth(
               allocated: allocated,
-              utilized: newUtilized,
+              utilized: newUtilized + newReserved,
               fiscalYear: fiscalYear,
               quarter: quarter,
               asOf: DateTime.now(),
@@ -138,12 +159,17 @@ class FirestoreService {
             'lastUpdated': FieldValue.serverTimestamp(),
           });
           transaction.set(reversalRef, {
-            'type': 'reversal',
+            'type': shouldReverseDeduction
+                ? 'deduction_reversal'
+                : 'reservation_release',
             'caseId': caseId,
             'referenceNumber': referenceNumber,
-            'programId': budgetProgramId,
+            'programId': shouldReverseDeduction
+                ? budgetProgramId
+                : reservedProgramId,
             'amount': restoredAmount,
             'originalDeductionAmount': deductedAmount,
+            'originalReservedAmount': reservedAmount,
             'fiscalYear': fiscalYear,
             'quarter': quarter,
             'actorId': actorId,
@@ -156,8 +182,10 @@ class FirestoreService {
 
         transaction.set(auditRef, {
           'eventType': 'case_deleted',
-          'action': shouldReverse
+          'action': shouldReverseDeduction
               ? 'Case deleted and budget deduction reversed'
+              : shouldReleaseReservation
+              ? 'Case deleted and reserved budget released'
               : 'Case deleted',
           'caseId': caseId,
           'referenceNumber': referenceNumber,
@@ -177,7 +205,9 @@ class FirestoreService {
               : reason,
           'budgetReversed': shouldReverse,
           if (shouldReverse) ...{
-            'budgetProgramId': budgetProgramId,
+            'budgetProgramId': shouldReverseDeduction
+                ? budgetProgramId
+                : reservedProgramId,
             'budgetReversalAmount': restoredAmount,
             'budgetReversalId': caseId,
             'budgetDeductedFiscalYear': caseData['budgetDeductedFiscalYear'],

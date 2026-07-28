@@ -30,6 +30,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
   List<Map<String, dynamic>> _programData = [];
   double _totalAllocated = 0;
   double _totalUtilized = 0;
+  double _totalReserved = 0;
   double _totalRemaining = 0;
 
   @override
@@ -112,11 +113,13 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
           final key = name.toLowerCase();
           final allocated = (data['allocated'] as num?)?.toDouble() ?? 0;
           final utilized = (data['utilized'] as num?)?.toDouble() ?? 0;
+          final reserved = (data['reserved'] as num?)?.toDouble() ?? 0;
           final existing = totalsByProgram[key];
           totalsByProgram[key] = {
             'name': name,
             'allocated': (existing?['allocated'] as double? ?? 0) + allocated,
             'utilized': (existing?['utilized'] as double? ?? 0) + utilized,
+            'reserved': (existing?['reserved'] as double? ?? 0) + reserved,
           };
         }
 
@@ -125,7 +128,12 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
         )) {
           totalsByProgram.putIfAbsent(
             name.toLowerCase(),
-            () => {'name': name, 'allocated': 0.0, 'utilized': 0.0},
+            () => {
+              'name': name,
+              'allocated': 0.0,
+              'utilized': 0.0,
+              'reserved': 0.0,
+            },
           );
         }
 
@@ -133,7 +141,8 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
             totalsByProgram.values.map((program) {
               final allocated = program['allocated'] as double;
               final utilized = program['utilized'] as double;
-              return {...program, 'remaining': allocated - utilized};
+              final reserved = program['reserved'] as double;
+              return {...program, 'remaining': allocated - utilized - reserved};
             }).toList()..sort(
               (a, b) => (a['name'] as String).compareTo(b['name'] as String),
             );
@@ -146,7 +155,11 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
           0,
           (total, item) => total + (item['utilized'] as double),
         );
-        _totalRemaining = _totalAllocated - _totalUtilized;
+        _totalReserved = _programData.fold(
+          0,
+          (total, item) => total + (item['reserved'] as double),
+        );
+        _totalRemaining = _totalAllocated - _totalUtilized - _totalReserved;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -321,7 +334,8 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                 ),
                 Expanded(child: _TableHeading('Allocated')),
                 Expanded(child: _TableHeading('Utilized')),
-                Expanded(child: _TableHeading('Remaining')),
+                Expanded(child: _TableHeading('Reserved')),
+                Expanded(child: _TableHeading('Available')),
               ],
             ),
           ),
@@ -342,6 +356,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                   ),
                   Expanded(child: _moneyCell(program['allocated'] as double)),
                   Expanded(child: _moneyCell(program['utilized'] as double)),
+                  Expanded(child: _moneyCell(program['reserved'] as double)),
                   Expanded(child: _moneyCell(program['remaining'] as double)),
                 ],
               ),
@@ -360,6 +375,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
                 const Expanded(flex: 3, child: _TableHeading('TOTAL')),
                 Expanded(child: _moneyCell(_totalAllocated, bold: true)),
                 Expanded(child: _moneyCell(_totalUtilized, bold: true)),
+                Expanded(child: _moneyCell(_totalReserved, bold: true)),
                 Expanded(child: _moneyCell(_totalRemaining, bold: true)),
               ],
             ),
@@ -419,13 +435,20 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
 
   void _exportCsv() {
     ExportService.downloadCsv(
-      headers: ['Program', 'Allocated', 'Utilized', 'Remaining'],
+      headers: [
+        'Program',
+        'Allocated',
+        'Utilized',
+        'Reserved for Release',
+        'Available',
+      ],
       rows: _programData
           .map<List<String>>(
             (program) => [
               program['name'] as String,
               '₱${(program['allocated'] as double).toStringAsFixed(0)}',
               '₱${(program['utilized'] as double).toStringAsFixed(0)}',
+              '₱${(program['reserved'] as double).toStringAsFixed(0)}',
               '₱${(program['remaining'] as double).toStringAsFixed(0)}',
             ],
           )
@@ -448,6 +471,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
       programData: _programData,
       totalAllocated: _totalAllocated,
       totalUtilized: _totalUtilized,
+      totalReserved: _totalReserved,
       totalRemaining: _totalRemaining,
     );
   }

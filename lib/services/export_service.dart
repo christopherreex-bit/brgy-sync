@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -32,11 +31,15 @@ class ExportService {
   }
 
   /// Platform-aware download: uses blob URL on web, sharePdf on mobile/desktop.
-  static void _downloadBytes(List<int> bytes, String filename, String mimeType) {
+  static void _downloadBytes(
+    List<int> bytes,
+    String filename,
+    String mimeType,
+  ) {
     // Create a blob and trigger download via anchor element
     final blob = html.Blob([Uint8List.fromList(bytes)], mimeType);
     final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
+    html.AnchorElement(href: url)
       ..setAttribute('download', filename)
       ..click();
     html.Url.revokeObjectUrl(url);
@@ -101,22 +104,26 @@ class ExportService {
             pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey300),
               children: [
-                pw.TableRow(children: [
-                  _pdfCell('Total Received', bold: true),
-                  _pdfCell('Completed On Time', bold: true),
-                  _pdfCell('Overdue Cases', bold: true),
-                  _pdfCell('Compliance Rate', bold: true),
-                ]),
-                pw.TableRow(children: [
-                  _pdfCell('$totalReceived'),
-                  _pdfCell('$completedOnTime'),
-                  _pdfCell('$overdueCases'),
-                  _pdfCell(
-                    totalReceived > 0
-                        ? '${(completedOnTime / totalReceived * 100).toStringAsFixed(1)}%'
-                        : 'N/A',
-                  ),
-                ]),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('Total Received', bold: true),
+                    _pdfCell('Completed On Time', bold: true),
+                    _pdfCell('Overdue Cases', bold: true),
+                    _pdfCell('Compliance Rate', bold: true),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('$totalReceived'),
+                    _pdfCell('$completedOnTime'),
+                    _pdfCell('$overdueCases'),
+                    _pdfCell(
+                      totalReceived > 0
+                          ? '${(completedOnTime / totalReceived * 100).toStringAsFixed(1)}%'
+                          : 'N/A',
+                    ),
+                  ],
+                ),
               ],
             ),
             pw.SizedBox(height: 16),
@@ -151,13 +158,15 @@ class ExportService {
                   final rate = total > 0
                       ? (onTime / total * 100).toStringAsFixed(1)
                       : '0.0';
-                  return pw.TableRow(children: [
-                    _pdfCell((d['category'] as String).toUpperCase()),
-                    _pdfCell('$total'),
-                    _pdfCell('$onTime'),
-                    _pdfCell('${d['overdue']}'),
-                    _pdfCell('$rate%'),
-                  ]);
+                  return pw.TableRow(
+                    children: [
+                      _pdfCell((d['category'] as String).toUpperCase()),
+                      _pdfCell('$total'),
+                      _pdfCell('$onTime'),
+                      _pdfCell('${d['overdue']}'),
+                      _pdfCell('$rate%'),
+                    ],
+                  );
                 }),
               ],
             ),
@@ -178,6 +187,7 @@ class ExportService {
     required List<Map<String, dynamic>> programData,
     required double totalAllocated,
     required double totalUtilized,
+    required double totalReserved,
     required double totalRemaining,
   }) async {
     final pdf = pw.Document();
@@ -212,16 +222,22 @@ class ExportService {
             pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey300),
               children: [
-                pw.TableRow(children: [
-                  _pdfCell('Total Allocated', bold: true),
-                  _pdfCell('Total Utilized', bold: true),
-                  _pdfCell('Total Remaining', bold: true),
-                ]),
-                pw.TableRow(children: [
-                  _php(totalAllocated),
-                  _php(totalUtilized),
-                  _php(totalRemaining),
-                ]),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('Total Allocated', bold: true),
+                    _pdfCell('Total Utilized', bold: true),
+                    _pdfCell('Reserved', bold: true),
+                    _pdfCell('Available', bold: true),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _php(totalAllocated),
+                    _php(totalUtilized),
+                    _php(totalReserved),
+                    _php(totalRemaining),
+                  ],
+                ),
               ],
             ),
             pw.SizedBox(height: 16),
@@ -237,6 +253,7 @@ class ExportService {
                 1: const pw.FlexColumnWidth(2),
                 2: const pw.FlexColumnWidth(2),
                 3: const pw.FlexColumnWidth(2),
+                4: const pw.FlexColumnWidth(2),
               },
               children: [
                 pw.TableRow(
@@ -245,21 +262,28 @@ class ExportService {
                     _pdfCell('Program', bold: true),
                     _pdfCell('Allocated', bold: true),
                     _pdfCell('Utilized', bold: true),
-                    _pdfCell('Remaining', bold: true),
+                    _pdfCell('Reserved', bold: true),
+                    _pdfCell('Available', bold: true),
                   ],
                 ),
-                ...programData.map((p) => pw.TableRow(children: [
-                  _pdfCell(p['name'] ?? ''),
-                  _php(p['allocated'] as double),
-                  _php(p['utilized'] as double),
-                  _php(p['remaining'] as double),
-                ])),
+                ...programData.map(
+                  (p) => pw.TableRow(
+                    children: [
+                      _pdfCell(p['name'] ?? ''),
+                      _php(p['allocated'] as double),
+                      _php(p['utilized'] as double),
+                      _php(p['reserved'] as double),
+                      _php(p['remaining'] as double),
+                    ],
+                  ),
+                ),
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                   children: [
                     _pdfCell('TOTAL', bold: true),
                     _php(totalAllocated, bold: true),
                     _php(totalUtilized, bold: true),
+                    _php(totalReserved, bold: true),
                     _php(totalRemaining, bold: true),
                   ],
                 ),

@@ -359,9 +359,10 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
         // untouched and are ignored by overview/report screens.
         final existingData = existing?.data() as Map<String, dynamic>?;
         final utilized = (existingData?['utilized'] as num?)?.toDouble() ?? 0;
+        final reserved = (existingData?['reserved'] as num?)?.toDouble() ?? 0;
         final thresholdPercent =
             (existingData?['thresholdPercent'] as num?)?.toDouble() ?? 10;
-        final remaining = amount - utilized;
+        final remaining = amount - utilized - reserved;
         final thresholdAmount = amount * thresholdPercent / 100;
         final status = remaining <= amount * 0.10
             ? budgetCritical
@@ -376,6 +377,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
           ...periodInfo.firestoreFields,
           'allocated': amount,
           'utilized': utilized,
+          'reserved': reserved,
           'remaining': remaining,
           'thresholdPercent': thresholdPercent,
           'thresholdAmount': thresholdAmount,
