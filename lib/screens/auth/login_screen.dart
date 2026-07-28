@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import '../../utils/account_validators.dart';
 import '../../utils/constants.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -50,23 +51,35 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // Client-side validation before hitting Firebase.
     if (email.isEmpty && password.isEmpty) {
-      setState(() { _error = 'Please enter your email and password.'; });
+      setState(() {
+        _error = 'Please enter your email and password.';
+      });
       return;
     }
     if (email.isEmpty) {
-      setState(() { _error = 'Please enter your email.'; });
+      setState(() {
+        _error = 'Please enter your email.';
+      });
       return;
     }
     if (password.isEmpty) {
-      setState(() { _error = 'Please enter your password.'; });
+      setState(() {
+        _error = 'Please enter your password.';
+      });
       return;
     }
 
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     final auth = context.read<AuthService>();
     final result = await auth.login(email: email, password: password);
     if (mounted) {
-      setState(() { _loading = false; _error = result == null ? null : _friendlyError(result); });
+      setState(() {
+        _loading = false;
+        _error = result == null ? null : _friendlyError(result);
+      });
       if (result == null) {
         // Wait for Firestore user data to load, then route by role
         await auth.userDataLoaded;
@@ -78,6 +91,115 @@ class _LoginScreenState extends State<LoginScreen> {
           context.go('/dashboard');
         }
       }
+    }
+  }
+
+  Future<void> _showForgotPasswordDialog() async {
+    final emailController = TextEditingController(text: _emailCtrl.text.trim());
+    String? emailError;
+    var sending = false;
+    final sent = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Reset Password'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Enter the email address registered to your account. '
+                  'Firebase will send you a password-reset link.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: emailController,
+                  enabled: !sending,
+                  autofocus: true,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: const Icon(Icons.email),
+                    border: const OutlineInputBorder(),
+                    errorText: emailError,
+                  ),
+                  onChanged: (value) {
+                    if (emailError != null) {
+                      setDialogState(
+                        () => emailError = validateAccountEmail(value),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: sending
+                  ? null
+                  : () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: sending
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim().toLowerCase();
+                      final validationError = validateAccountEmail(email);
+                      if (validationError != null) {
+                        setDialogState(() => emailError = validationError);
+                        return;
+                      }
+                      setDialogState(() {
+                        sending = true;
+                        emailError = null;
+                      });
+                      final error = await context
+                          .read<AuthService>()
+                          .sendPasswordReset(email);
+                      if (!dialogContext.mounted) return;
+                      if (error != null) {
+                        setDialogState(() {
+                          sending = false;
+                          emailError = _friendlyError(error);
+                        });
+                        return;
+                      }
+                      Navigator.pop(dialogContext, true);
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kNavy,
+                foregroundColor: Colors.white,
+              ),
+              child: sending
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Send Reset Link'),
+            ),
+          ],
+        ),
+      ),
+    );
+    emailController.dispose();
+    if (sent == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Password-reset email sent. Please check your inbox and spam folder.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 
@@ -94,11 +216,19 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 const Icon(Icons.location_city, size: 48, color: kNavy),
                 const SizedBox(height: 12),
-                const Text('BrgySync',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: kNavy)),
+                const Text(
+                  'BrgySync',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: kNavy,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                const Text('Brgy. Calzada-Tipas, Taguig City',
-                    style: TextStyle(color: Colors.grey)),
+                const Text(
+                  'Brgy. Calzada-Tipas, Taguig City',
+                  style: TextStyle(color: Colors.grey),
+                ),
                 const SizedBox(height: 32),
 
                 // ─── Login Form ─────────────────────────────────
@@ -110,7 +240,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.red.shade50,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
                   ),
                 TextField(
                   controller: _emailCtrl,
@@ -131,7 +264,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   obscureText: true,
                 ),
-                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _loading ? null : _showForgotPasswordDialog,
+                    child: const Text('Forgot password?'),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   height: 48,
@@ -143,9 +283,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     child: _loading
                         ? const SizedBox(
-                            width: 20, height: 20,
+                            width: 20,
+                            height: 20,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2))
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
                         : const Text('Log In', style: TextStyle(fontSize: 16)),
                   ),
                 ),
