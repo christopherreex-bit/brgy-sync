@@ -26,6 +26,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     String? notes;
     String? notesError;
     bool budgetApprovalConfirmed = false;
+    double? approvedAssistanceAmount;
 
     showDialog(
       context: context,
@@ -64,16 +65,22 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                         setState(() {
                           newStatus = value;
                           budgetApprovalConfirmed = false;
+                          approvedAssistanceAmount = null;
                         });
                         return;
                       }
-                      final confirmed = await showBudgetApprovalPreviewDialog(
-                        dialogCtx,
-                        caseId: c['id'] as String,
-                      );
+                      final confirmation =
+                          await showBudgetApprovalPreviewDialog(
+                            dialogCtx,
+                            caseId: c['id'] as String,
+                          );
                       setState(() {
-                        newStatus = confirmed ? statusApproved : null;
-                        budgetApprovalConfirmed = confirmed;
+                        newStatus = confirmation != null
+                            ? statusApproved
+                            : null;
+                        budgetApprovalConfirmed = confirmation != null;
+                        approvedAssistanceAmount =
+                            confirmation?.assistanceAmount;
                       });
                     },
                   ),
@@ -120,6 +127,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                             currentUser,
                             referenceNumber: c['ref'],
                             budgetApprovalConfirmed: budgetApprovalConfirmed,
+                            approvedAssistanceAmount: approvedAssistanceAmount,
                           );
                         },
                   style: ElevatedButton.styleFrom(
@@ -143,16 +151,40 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     user, {
     String? referenceNumber,
     bool budgetApprovalConfirmed = false,
+    double? approvedAssistanceAmount,
   }) async {
     try {
+      if (newStatus == statusForClaiming && user?.role != roleCaptain) {
+        await CaseStatusService().requestForClaimingApproval(
+          caseId: caseId,
+          notes: notes,
+          staffId: user?.uid ?? '',
+          staffName: user?.name ?? 'Unknown',
+          staffRole: user?.role ?? '',
+          referenceNumber: referenceNumber,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'For Claiming approval was sent to the Barangay Captain.',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
       await CaseStatusService().updateStatus(
         caseId: caseId,
         newStatus: newStatus,
         notes: notes,
         staffId: user?.uid ?? '',
         staffName: user?.name ?? 'Unknown',
+        staffRole: user?.role ?? '',
         referenceNumber: referenceNumber,
         budgetApprovalConfirmed: budgetApprovalConfirmed,
+        approvedAssistanceAmount: approvedAssistanceAmount,
       );
 
       if (mounted) {

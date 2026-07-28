@@ -97,7 +97,6 @@ class FirestoreService {
         final deductedAmount =
             (caseData['budgetDeductedAmount'] as num?)?.toDouble() ?? 0;
         final shouldReverse =
-            caseData['status'] == 'released' &&
             caseData['budgetDeductedAt'] != null &&
             budgetProgramId.isNotEmpty &&
             deductedAmount > 0;

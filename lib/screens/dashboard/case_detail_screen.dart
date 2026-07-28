@@ -86,6 +86,36 @@ class CaseDetailScreen extends StatelessWidget {
                 '$dateStr · via ${channel == 'walkin' ? 'Walk-in' : 'Resident Portal'}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
+              if (data['claimingApprovalStatus'] == 'pending') ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    border: Border.all(color: Colors.amber.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.approval_outlined,
+                        color: Colors.amber.shade900,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'For Claiming approval requested by '
+                          '${data['claimingRequestedByName'] ?? 'Staff'}'
+                          '${(data['claimingRequestReason'] ?? '').toString().trim().isEmpty ? '' : '\nReason: ${data['claimingRequestReason']}'}',
+                          style: TextStyle(color: Colors.amber.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
 
               // Two-column layout

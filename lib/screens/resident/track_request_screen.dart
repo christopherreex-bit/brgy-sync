@@ -105,6 +105,7 @@ class _CaseCard extends StatelessWidget {
     final category = data['serviceCategory'] ?? '';
     final subType = data['serviceSubType'] ?? '';
     final status = data['status'] ?? statusPendingReview;
+    final assistanceAmount = (data['assistanceAmount'] as num?)?.toDouble();
     final timestamp = data['submissionTimestamp'];
     final submitted = timestamp is Timestamp ? timestamp.toDate() : null;
     final dateText = submitted == null
@@ -174,6 +175,11 @@ class _CaseCard extends StatelessWidget {
                 icon: Icons.calendar_today_outlined,
                 label: 'Submitted $dateText',
               ),
+              if (assistanceAmount != null && assistanceAmount > 0)
+                _DetailChip(
+                  icon: Icons.payments_outlined,
+                  label: 'Assistance ₱${_formatAmount(assistanceAmount)}',
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -203,6 +209,15 @@ class _CaseCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatAmount(double amount) {
+    final parts = amount.toStringAsFixed(2).split('.');
+    final grouped = parts.first.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
+    );
+    return '$grouped.${parts.last}';
   }
 
   Future<void> _confirmDelete(BuildContext context, String reference) async {

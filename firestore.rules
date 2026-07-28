@@ -28,7 +28,11 @@ service cloud.firestore {
                     && request.resource.data.sequenceNumber is int
                     && getAfter(/databases/$(database)/documents/caseCounters/$(request.resource.data.sequenceYear)).data.lastCaseId == caseId
                     && getAfter(/databases/$(database)/documents/caseCounters/$(request.resource.data.sequenceYear)).data.lastNumber == request.resource.data.sequenceNumber;
-      allow update: if isStaff();
+      // Staff and officers may update cases, but only the captain may perform
+      // the final transition into For Claiming.
+      allow update: if isStaff()
+                    && (request.resource.data.status != 'for_claiming'
+                        || isCaptain());
       allow delete: if request.auth != null
                     && (resource.data.residentId == request.auth.uid || isCaptain())
                     && existsAfter(/databases/$(database)/documents/auditEvents/$(caseId))

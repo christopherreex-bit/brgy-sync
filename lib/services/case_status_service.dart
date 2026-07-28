@@ -16,12 +16,14 @@ class CaseStatusService {
     required String notes,
     required String staffId,
     required String staffName,
+    required String staffRole,
     String? referenceNumber,
     bool smsSent = false,
     String? smsError,
     String smsBody = '',
     DateTime? changedAt,
     bool budgetApprovalConfirmed = false,
+    double? approvedAssistanceAmount,
   }) async {
     final effectiveDate = changedAt ?? DateTime.now();
     final caseRef = _db.collection('cases').doc(caseId);
@@ -68,7 +70,15 @@ class CaseStatusService {
           '${caseStatusLabel(previousStatus)} to ${caseStatusLabel(newStatus)}.',
         );
       }
-      if (newStatus == statusApproved && !budgetApprovalConfirmed) {
+      if (newStatus == statusForClaiming && staffRole != roleCaptain) {
+        throw StateError(
+          'Barangay Captain approval is required before a case can move to '
+          'For Claiming.',
+        );
+      }
+      if (newStatus == statusApproved &&
+          _requiresBudgetReview(caseData) &&
+          !budgetApprovalConfirmed) {
         throw StateError(
           'Review and confirm the budget impact before approving this case.',
         );
@@ -77,13 +87,44 @@ class CaseStatusService {
         'status': newStatus,
         'lastUpdated': FieldValue.serverTimestamp(),
       };
+      if (newStatus == statusForClaiming) {
+        updates.addAll({
+          'claimingApprovalStatus': 'approved',
+          'claimingApprovedBy': staffId,
+          'claimingApprovedByName': staffName,
+          'claimingApprovedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      final category = (caseData['serviceCategory'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (newStatus == statusApproved && category == 'education') {
+        if (approvedAssistanceAmount == null ||
+            !approvedAssistanceAmount.isFinite ||
+            approvedAssistanceAmount < 500 ||
+            approvedAssistanceAmount > 1000) {
+          throw StateError(
+            'Education Incentive assistance must be from ₱500 to ₱1,000.',
+          );
+        }
+        updates['assistanceAmount'] = approvedAssistanceAmount;
+      }
+      if (newStatus == statusApproved && category == 'bass') {
+        if (approvedAssistanceAmount == null ||
+            !approvedAssistanceAmount.isFinite ||
+            approvedAssistanceAmount <= 0) {
+          throw StateError('Enter a valid final BASS assistance amount.');
+        }
+        updates['assistanceAmount'] = approvedAssistanceAmount;
+      }
 
       if (_requiresBudgetDeduction(caseData, newStatus)) {
         if (programRef == null) {
           throw StateError('The applicable quarterly budget was not found.');
         }
 
-        final amount = (caseData['assistanceAmount'] as num).toDouble();
+        final amount = budgetDeductionAmountForCase(caseData);
         final programSnapshot = await transaction.get(programRef);
         if (!programSnapshot.exists) {
           throw StateError('The applicable quarterly budget was not found.');
@@ -157,16 +198,75 @@ class CaseStatusService {
     });
   }
 
+  Future<void> requestForClaimingApproval({
+    required String caseId,
+    required String notes,
+    required String staffId,
+    required String staffName,
+    required String staffRole,
+    String? referenceNumber,
+  }) async {
+    if (staffRole == roleCaptain) {
+      throw StateError('Captains should approve the case directly.');
+    }
+    if (staffRole != roleStaff && staffRole != roleOfficer) {
+      throw StateError(
+        'Only barangay staff or officers can submit this request.',
+      );
+    }
+
+    final caseRef = _db.collection('cases').doc(caseId);
+    final logRef = caseRef.collection('actionLog').doc();
+    await _db.runTransaction((transaction) async {
+      final snapshot = await transaction.get(caseRef);
+      if (!snapshot.exists) throw StateError('Case not found.');
+      final data = snapshot.data()!;
+      final status = normalizeCaseStatus((data['status'] ?? '').toString());
+      if (status != statusApproved) {
+        throw StateError(
+          'Only Approved cases can be submitted for claiming approval.',
+        );
+      }
+      if (data['claimingApprovalStatus'] == 'pending') {
+        throw StateError('This case is already awaiting captain approval.');
+      }
+
+      transaction.update(caseRef, {
+        'claimingApprovalStatus': 'pending',
+        'claimingRequestedBy': staffId,
+        'claimingRequestedByName': staffName,
+        'claimingRequestedAt': FieldValue.serverTimestamp(),
+        'claimingRequestReason': notes,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      transaction.set(logRef, {
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? data['referenceNumber'] ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'staffId': staffId,
+        'staffName': staffName,
+        'action': 'For Claiming approval requested',
+        'previousStatus': statusApproved,
+        'newStatus': '',
+        'notes': notes,
+        'smsSent': false,
+        'smsBody': '',
+      });
+    });
+  }
+
   Future<BudgetApprovalPreview> getBudgetApprovalPreview({
     required String caseId,
     DateTime? asOf,
+    double? assistanceAmountOverride,
   }) async {
     final effectiveDate = asOf ?? DateTime.now();
     final caseSnapshot = await _db.collection('cases').doc(caseId).get();
     if (!caseSnapshot.exists) throw StateError('Case not found.');
 
     final caseData = caseSnapshot.data()!;
-    final amount = (caseData['assistanceAmount'] as num?)?.toDouble() ?? 0;
+    final amount =
+        assistanceAmountOverride ?? budgetDeductionAmountForCase(caseData);
     final programName = budgetProgramNameForCase(
       (caseData['serviceCategory'] ?? '').toString(),
       (caseData['serviceSubType'] ?? '').toString(),
@@ -210,10 +310,23 @@ class CaseStatusService {
     Map<String, dynamic> caseData,
     String newStatus,
   ) {
-    final amount = (caseData['assistanceAmount'] as num?)?.toDouble() ?? 0;
+    final amount = budgetDeductionAmountForCase(caseData);
+    final programName = budgetProgramNameForCase(
+      (caseData['serviceCategory'] ?? '').toString(),
+      (caseData['serviceSubType'] ?? '').toString(),
+    );
     return newStatus == 'released' &&
         amount > 0 &&
+        programName != null &&
         caseData['budgetDeductedAt'] == null;
+  }
+
+  bool _requiresBudgetReview(Map<String, dynamic> caseData) {
+    return budgetProgramNameForCase(
+          (caseData['serviceCategory'] ?? '').toString(),
+          (caseData['serviceSubType'] ?? '').toString(),
+        ) !=
+        null;
   }
 
   Future<DocumentReference<Map<String, dynamic>>?> _findQuarterlyProgram(
@@ -280,6 +393,11 @@ class BudgetApprovalPreview {
 
 int quarterForDate(DateTime date) => ((date.month - 1) ~/ 3) + 1;
 
+/// All budget-linked cases use the final assistance amount stored on the case.
+double budgetDeductionAmountForCase(Map<String, dynamic> caseData) {
+  return (caseData['assistanceAmount'] as num?)?.toDouble() ?? 0;
+}
+
 String? budgetProgramNameForCase(String category, String subType) {
   final normalizedCategory = category.trim().toLowerCase();
   final normalizedSubType = subType.trim().toLowerCase();
@@ -301,12 +419,6 @@ String? budgetProgramNameForCase(String category, String subType) {
     if (normalizedSubType.contains('fire')) {
       return 'BASS – Fire Relief';
     }
-  }
-  if (normalizedCategory == 'beneficiary') {
-    if (normalizedSubType.contains('senior')) {
-      return 'Senior Citizen Birthday';
-    }
-    if (normalizedSubType.contains('pwd')) return 'PWD Birthday';
   }
   if (normalizedCategory == 'education') return 'Education Incentive';
   return null;

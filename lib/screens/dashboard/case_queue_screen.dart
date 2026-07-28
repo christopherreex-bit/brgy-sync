@@ -28,7 +28,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     'rejected': 6,
   };
 
-  static const _filters = [
+  static const _baseFilters = [
     {'key': 'all', 'label': 'All'},
     {'key': 'pending_review', 'label': 'Pending Review'},
     {'key': 'processing', 'label': 'Processing'},
@@ -40,8 +40,30 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canDelete =
-        context.watch<AuthService>().currentUserModel?.role == 'captain';
+    final currentUser = context.watch<AuthService>().currentUserModel;
+    final canDelete = currentUser?.role == roleCaptain;
+    final filters = [
+      ..._baseFilters,
+      if (canDelete)
+        const {'key': 'claiming_approval', 'label': 'Claiming Approvals'},
+    ];
+    final Query<Map<String, dynamic>> caseQuery;
+    if (_activeFilter == 'claiming_approval') {
+      caseQuery = FirebaseFirestore.instance
+          .collection('cases')
+          .where('claimingApprovalStatus', isEqualTo: 'pending');
+    } else if (_activeFilter == 'all' || _activeFilter == statusPendingReview) {
+      caseQuery = FirebaseFirestore.instance
+          .collection('cases')
+          .orderBy('submissionTimestamp', descending: true)
+          .limit(50);
+    } else {
+      caseQuery = FirebaseFirestore.instance
+          .collection('cases')
+          .where('status', isEqualTo: _activeFilter)
+          .orderBy('submissionTimestamp', descending: true)
+          .limit(50);
+    }
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -67,7 +89,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: _filters.map((f) {
+              children: filters.map((f) {
                 final isActive = _activeFilter == f['key'];
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -154,19 +176,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
           // Case list — simple stream with limit for performance
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream:
-                  _activeFilter == 'all' || _activeFilter == statusPendingReview
-                  ? FirebaseFirestore.instance
-                        .collection('cases')
-                        .orderBy('submissionTimestamp', descending: true)
-                        .limit(50)
-                        .snapshots()
-                  : FirebaseFirestore.instance
-                        .collection('cases')
-                        .where('status', isEqualTo: _activeFilter)
-                        .orderBy('submissionTimestamp', descending: true)
-                        .limit(50)
-                        .snapshots(),
+              stream: caseQuery.snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -188,6 +198,13 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                           (data['status'] ?? statusPendingReview).toString(),
                         ) ==
                         statusPendingReview;
+                  }).toList();
+                }
+                if (_activeFilter == 'claiming_approval') {
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return data['status'] == statusApproved &&
+                        data['claimingApprovalStatus'] == 'pending';
                   }).toList();
                 }
 

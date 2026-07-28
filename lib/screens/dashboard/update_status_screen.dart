@@ -24,6 +24,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   bool _loading = false;
   String? _error;
   bool _budgetApprovalConfirmed = false;
+  double? _approvedAssistanceAmount;
 
   final _twilio = TwilioService();
 
@@ -36,18 +37,20 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       setState(() {
         _newStatus = status;
         _budgetApprovalConfirmed = false;
+        _approvedAssistanceAmount = null;
       });
       return;
     }
 
-    final confirmed = await showBudgetApprovalPreviewDialog(
+    final confirmation = await showBudgetApprovalPreviewDialog(
       context,
       caseId: widget.caseId,
     );
     if (!mounted) return;
     setState(() {
-      _newStatus = confirmed ? statusApproved : null;
-      _budgetApprovalConfirmed = confirmed;
+      _newStatus = confirmation != null ? statusApproved : null;
+      _budgetApprovalConfirmed = confirmation != null;
+      _approvedAssistanceAmount = confirmation?.assistanceAmount;
     });
   }
 
@@ -160,6 +163,29 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         }
       }
 
+      if (_newStatus == statusForClaiming && user?.role != roleCaptain) {
+        await CaseStatusService(firestore: db).requestForClaimingApproval(
+          caseId: widget.caseId,
+          notes: _actionNotesCtrl.text.trim(),
+          staffId: user?.uid ?? '',
+          staffName: user?.name ?? 'Staff',
+          staffRole: user?.role ?? '',
+          referenceNumber: refNumber,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'For Claiming approval was sent to the Barangay Captain.',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+          context.go('/dashboard/case/${widget.caseId}');
+        }
+        return;
+      }
+
       // Send SMS — seed data goes to fallback, real residents get actual number
       String? smsError;
       final smsTo = (caseData['isSeedData'] == true)
@@ -194,6 +220,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         notes: _actionNotesCtrl.text.trim(),
         staffId: user?.uid ?? '',
         staffName: user?.name ?? 'Staff',
+        staffRole: user?.role ?? '',
         referenceNumber: refNumber,
         smsSent: smsError == null,
         smsError: smsError,
@@ -204,6 +231,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           residentMobile,
         ),
         budgetApprovalConfirmed: _budgetApprovalConfirmed,
+        approvedAssistanceAmount: _approvedAssistanceAmount,
       );
 
       if (mounted) {
