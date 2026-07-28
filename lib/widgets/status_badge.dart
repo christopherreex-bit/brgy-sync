@@ -8,8 +8,9 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = statusBadgeBg[status] ?? Colors.grey.shade200;
-    final fg = statusBadgeText[status] ?? Colors.grey.shade800;
+    final normalizedStatus = normalizeCaseStatus(status);
+    final bg = statusBadgeBg[normalizedStatus] ?? Colors.grey.shade200;
+    final fg = statusBadgeText[normalizedStatus] ?? Colors.grey.shade800;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -18,7 +19,7 @@ class StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        _formatLabel(status),
+        _formatLabel(normalizedStatus),
         style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
       ),
     );

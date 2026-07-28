@@ -30,7 +30,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
 
   static const _filters = [
     {'key': 'all', 'label': 'All'},
-    {'key': 'pending_review', 'label': 'Pending'},
+    {'key': 'pending_review', 'label': 'Pending Review'},
     {'key': 'processing', 'label': 'Processing'},
     {'key': 'approved', 'label': 'Approved'},
     {'key': 'for_claiming', 'label': 'For Claiming'},
@@ -154,7 +154,8 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
           // Case list — simple stream with limit for performance
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _activeFilter == 'all'
+              stream:
+                  _activeFilter == 'all' || _activeFilter == statusPendingReview
                   ? FirebaseFirestore.instance
                         .collection('cases')
                         .orderBy('submissionTimestamp', descending: true)
@@ -180,16 +181,27 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                 }
 
                 var docs = [...?snapshot.data?.docs];
+                if (_activeFilter == statusPendingReview) {
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return normalizeCaseStatus(
+                          (data['status'] ?? statusPendingReview).toString(),
+                        ) ==
+                        statusPendingReview;
+                  }).toList();
+                }
 
                 // Group the queue by workflow stage. Within each stage, show
                 // the most recently submitted cases first.
                 docs.sort((a, b) {
                   final aData = a.data() as Map<String, dynamic>;
                   final bData = b.data() as Map<String, dynamic>;
-                  final aStatus =
-                      aData['status'] as String? ?? 'pending_review';
-                  final bStatus =
-                      bData['status'] as String? ?? 'pending_review';
+                  final aStatus = normalizeCaseStatus(
+                    aData['status'] as String? ?? statusPendingReview,
+                  );
+                  final bStatus = normalizeCaseStatus(
+                    bData['status'] as String? ?? statusPendingReview,
+                  );
                   final statusComparison = (_statusOrder[aStatus] ?? 999)
                       .compareTo(_statusOrder[bStatus] ?? 999);
                   if (statusComparison != 0) return statusComparison;
@@ -259,7 +271,9 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     final ref = data['referenceNumber'] ?? '';
                     final category = data['serviceCategory'] ?? '';
                     final subType = data['serviceSubType'] ?? '';
-                    final status = data['status'] ?? 'pending_review';
+                    final status = normalizeCaseStatus(
+                      (data['status'] ?? statusPendingReview).toString(),
+                    );
                     final isConfidential = data['isConfidential'] ?? false;
                     final residentName = isConfidential
                         ? 'Confidential'

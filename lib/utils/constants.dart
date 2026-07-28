@@ -22,6 +22,10 @@ const String statusForClaiming = 'for_claiming';
 const String statusReleased = 'released';
 const String statusRejected = 'rejected';
 
+/// Treat cases created by older app versions with `pending` as pending review.
+String normalizeCaseStatus(String status) =>
+    status == 'pending' ? statusPendingReview : status;
+
 const Map<String, List<String>> validCaseStatusTransitions = {
   statusPendingReview: [statusProcessing, statusRejected],
   statusProcessing: [statusApproved, statusRejected],
@@ -34,9 +38,9 @@ const Map<String, List<String>> validCaseStatusTransitions = {
 };
 
 List<String> validNextCaseStatuses(String currentStatus) =>
-    validCaseStatusTransitions[currentStatus] ?? const [];
+    validCaseStatusTransitions[normalizeCaseStatus(currentStatus)] ?? const [];
 
-String caseStatusLabel(String status) => status
+String caseStatusLabel(String status) => normalizeCaseStatus(status)
     .replaceAll('_', ' ')
     .split(' ')
     .where((word) => word.isNotEmpty)

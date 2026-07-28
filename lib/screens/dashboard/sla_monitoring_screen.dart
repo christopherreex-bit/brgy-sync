@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
 import '../../widgets/kpi_card.dart';
@@ -188,6 +189,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                 'status',
                 whereIn: [
                   'pending_review',
+                  'pending',
                   'processing',
                   'awaiting_docs',
                   'approved',
@@ -237,7 +239,9 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                 'submitted': data['submissionTimestamp'],
                 'deadline': deadline,
                 'slaStatus': status,
-                'caseStatus': data['status'] ?? '',
+                'caseStatus': normalizeCaseStatus(
+                  (data['status'] ?? statusPendingReview).toString(),
+                ),
               });
             }
 
@@ -367,7 +371,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                       final timeStr = sla.timeRemainingString(c['deadline']);
 
                       return InkWell(
-                        onTap: () => _showUpdateStatusDialog(c),
+                        onTap: () => context.push('/dashboard/case/${c['id']}'),
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -434,21 +438,22 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                               ),
                               const SizedBox(height: 8),
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
-                                  Text(
-                                    'Tap to update status',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 11,
-                                      fontStyle: FontStyle.italic,
+                                  TextButton.icon(
+                                    onPressed: () => context.push(
+                                      '/dashboard/case/${c['id']}',
                                     ),
+                                    icon: const Icon(
+                                      Icons.visibility_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('View case'),
                                   ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.arrow_forward_ios,
-                                    size: 12,
-                                    color: Colors.grey.shade400,
+                                  const Spacer(),
+                                  OutlinedButton.icon(
+                                    onPressed: () => _showUpdateStatusDialog(c),
+                                    icon: const Icon(Icons.edit, size: 16),
+                                    label: const Text('Update status'),
                                   ),
                                 ],
                               ),

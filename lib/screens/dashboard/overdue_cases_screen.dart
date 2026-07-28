@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
@@ -20,7 +21,6 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
   final _notesCtrl = TextEditingController();
   String? _selectedCaseId;
   final _reasons = [
-    'Awaiting resident documents',
     'Budget constraints',
     'Pending barangay captain approval',
     'External agency coordination',
@@ -46,6 +46,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                 'status',
                 whereIn: [
                   'pending_review',
+                  'pending',
                   'processing',
                   'awaiting_docs',
                   'approved',
@@ -83,7 +84,9 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                       : (data['residentName'] ?? ''),
                   'submitted': submitted,
                   'deadline': deadline,
-                  'caseStatus': data['status'] ?? '',
+                  'caseStatus': normalizeCaseStatus(
+                    (data['status'] ?? statusPendingReview).toString(),
+                  ),
                 });
               }
             }
@@ -119,7 +122,8 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                         border: Border.all(color: Colors.red.shade200),
                       ),
                       child: Text(
-                        '${overdueCases.length} cases are overdue. Update their status or add a resolution note to clear the flag.',
+                        '${overdueCases.length} cases are overdue. Update their '
+                        'status or add a resolution note to document the delay.',
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
@@ -141,7 +145,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                       final deadline = c['deadline'] as DateTime;
                       final overdueDuration = sla.timeRemainingString(deadline);
                       return InkWell(
-                        onTap: () => _showUpdateStatusDialog(c),
+                        onTap: () => context.push('/dashboard/case/${c['id']}'),
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -216,22 +220,24 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                 deadline: deadline,
                               ),
                               const SizedBox(height: 8),
+                              _LatestResolutionNote(caseId: c['id'] as String),
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
-                                  Text(
-                                    'Tap to update status',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 11,
-                                      fontStyle: FontStyle.italic,
+                                  TextButton.icon(
+                                    onPressed: () => context.push(
+                                      '/dashboard/case/${c['id']}',
                                     ),
+                                    icon: const Icon(
+                                      Icons.visibility_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('View case'),
                                   ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.arrow_forward_ios,
-                                    size: 12,
-                                    color: Colors.grey.shade400,
+                                  const Spacer(),
+                                  OutlinedButton.icon(
+                                    onPressed: () => _showUpdateStatusDialog(c),
+                                    icon: const Icon(Icons.edit, size: 16),
+                                    label: const Text('Update status'),
                                   ),
                                 ],
                               ),
@@ -483,6 +489,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
   Future<void> _saveNote() async {
     if (_selectedCaseId == null || _selectedReason == null) return;
     try {
+      final currentUser = context.read<AuthService>().currentUserModel;
       await FirebaseFirestore.instance
           .collection('cases')
           .doc(_selectedCaseId)
@@ -491,8 +498,8 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
             'caseId': _selectedCaseId,
             'referenceNumber': _selectedCaseRef ?? '',
             'timestamp': FieldValue.serverTimestamp(),
-            'staffId': '',
-            'staffName': 'System',
+            'staffId': currentUser?.uid ?? '',
+            'staffName': currentUser?.name ?? 'Unknown',
             'action': 'Resolution note: $_selectedReason',
             'previousStatus': '',
             'newStatus': '',
@@ -527,5 +534,104 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
   void dispose() {
     _notesCtrl.dispose();
     super.dispose();
+  }
+}
+
+class _LatestResolutionNote extends StatelessWidget {
+  final String caseId;
+
+  const _LatestResolutionNote({required this.caseId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('cases')
+          .doc(caseId)
+          .collection('actionLog')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final notes =
+            [...?snapshot.data?.docs].where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return (data['action'] ?? '').toString().startsWith(
+                'Resolution note:',
+              );
+            }).toList()..sort((a, b) {
+              final aData = a.data() as Map<String, dynamic>;
+              final bData = b.data() as Map<String, dynamic>;
+              final aTime = aData['timestamp'] as Timestamp?;
+              final bTime = bData['timestamp'] as Timestamp?;
+              return (bTime?.millisecondsSinceEpoch ?? 0).compareTo(
+                aTime?.millisecondsSinceEpoch ?? 0,
+              );
+            });
+        if (notes.isEmpty) return const SizedBox.shrink();
+
+        final data = notes.first.data() as Map<String, dynamic>;
+        final action = (data['action'] ?? '').toString();
+        final reason = action.replaceFirst('Resolution note:', '').trim();
+        final details = (data['notes'] ?? '').toString().trim();
+        final staffName = (data['staffName'] ?? '').toString();
+        final timestamp = data['timestamp'] is Timestamp
+            ? (data['timestamp'] as Timestamp).toDate()
+            : null;
+        final dateText = timestamp == null
+            ? ''
+            : '${timestamp.month}/${timestamp.day}/${timestamp.year} '
+                  '${timestamp.hour.toString().padLeft(2, '0')}:'
+                  '${timestamp.minute.toString().padLeft(2, '0')}';
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.amber.shade50,
+            border: Border.all(color: Colors.amber.shade200),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.sticky_note_2_outlined,
+                    size: 16,
+                    color: Colors.amber.shade900,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Latest resolution note: $reason',
+                      style: TextStyle(
+                        color: Colors.amber.shade900,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (details.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(details, style: const TextStyle(fontSize: 12)),
+              ],
+              if (staffName.isNotEmpty || dateText.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    staffName,
+                    dateText,
+                  ].where((value) => value.isNotEmpty).join(' · '),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 10),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 }

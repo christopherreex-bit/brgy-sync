@@ -365,7 +365,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         requesterMobile: user.mobile,
         serviceCategory: _selectedCategoryId!,
         serviceSubType: _selectedSubType!,
-        status: 'pending_review',
+        status: statusPendingReview,
         submissionChannel: 'portal',
         submissionTimestamp: now,
         slaDeadline: deadline,

@@ -55,9 +55,15 @@ class CaseDetailScreen extends StatelessWidget {
             children: [
               // Back button
               TextButton.icon(
-                onPressed: () => context.go('/dashboard'),
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/dashboard');
+                  }
+                },
                 icon: const Icon(Icons.arrow_back, size: 18),
-                label: const Text('Back to case queue'),
+                label: const Text('Back'),
               ),
               const SizedBox(height: 8),
               // Header
