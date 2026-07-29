@@ -14,6 +14,7 @@ class CaseListItem extends StatelessWidget {
   final bool claimingApprovalRejected;
   final String claimingRejectionReason;
   final String claimingRejectedByName;
+  final String assignedStaffName;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
 
@@ -30,6 +31,7 @@ class CaseListItem extends StatelessWidget {
     this.claimingApprovalRejected = false,
     this.claimingRejectionReason = '',
     this.claimingRejectedByName = '',
+    this.assignedStaffName = '',
     this.onTap,
     this.onDelete,
   });
@@ -90,6 +92,27 @@ class CaseListItem extends StatelessWidget {
                     '$displayName · $subType · $dateStr',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                   ),
+                  if (assignedStaffName.trim().isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Assigned to $assignedStaffName',
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (awaitingCaptainApproval) ...[
                     const SizedBox(height: 7),
                     Container(

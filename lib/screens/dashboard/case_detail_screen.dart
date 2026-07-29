@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:universal_html/html.dart' as html;
 import '../../services/auth_service.dart';
 import '../../services/case_status_service.dart';
+import '../../services/case_workflow_service.dart';
 import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
@@ -219,6 +220,31 @@ class CaseDetailScreen extends StatelessWidget {
                               '₱${data['assistanceAmount']}',
                             ),
                         ]),
+                        const SizedBox(height: 16),
+                        _infoCard('Case ownership', [
+                          _row(
+                            'Assigned to',
+                            (data['assignedStaffName'] ?? 'Unassigned')
+                                .toString(),
+                          ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  _showAssignmentDialog(context, data),
+                              icon: const Icon(Icons.person_add_alt_1_outlined),
+                              label: const Text('Assign or reassign'),
+                            ),
+                          ),
+                        ]),
+                        if (data['residentFeedback'] is Map) ...[
+                          const SizedBox(height: 16),
+                          _feedbackCard(
+                            Map<String, dynamic>.from(
+                              data['residentFeedback'] as Map,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -237,47 +263,110 @@ class CaseDetailScreen extends StatelessWidget {
                               ),
                             )
                           else
-                            ...documents.map((d) {
+                            ...documents.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final d = entry.value;
                               final uploaded = d['status'] == 'uploaded';
                               final databasePath = (d['databasePath'] ?? '')
                                   .toString();
                               final fileName = (d['fileName'] ?? '').toString();
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
+                              final verification =
+                                  (d['verificationStatus'] ?? 'pending')
+                                      .toString();
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: verification == 'invalid'
+                                      ? Colors.red.shade50
+                                      : verification == 'valid'
+                                      ? Colors.green.shade50
+                                      : Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
                                   children: [
-                                    Icon(
-                                      uploaded
-                                          ? Icons.check_circle
-                                          : Icons.cancel,
-                                      color: uploaded
-                                          ? Colors.green
-                                          : Colors.red,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        '${d['name'] ?? ''}'
-                                        '${fileName.isEmpty ? '' : '\n$fileName'}',
-                                        style: TextStyle(
-                                          fontSize: 13,
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          uploaded
+                                              ? Icons.check_circle
+                                              : Icons.cancel,
                                           color: uploaded
-                                              ? Colors.green.shade700
-                                              : Colors.red.shade700,
+                                              ? Colors.green
+                                              : Colors.red,
+                                          size: 18,
                                         ),
-                                      ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${d['name'] ?? ''}'
+                                            '${fileName.isEmpty ? '' : '\n$fileName'}',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: uploaded
+                                                  ? Colors.green.shade700
+                                                  : Colors.red.shade700,
+                                            ),
+                                          ),
+                                        ),
+                                        if (uploaded && databasePath.isNotEmpty)
+                                          TextButton.icon(
+                                            onPressed: () =>
+                                                _openDocument(context, d),
+                                            icon: const Icon(
+                                              Icons.open_in_new,
+                                              size: 16,
+                                            ),
+                                            label: const Text('Open'),
+                                          ),
+                                      ],
                                     ),
-                                    if (uploaded && databasePath.isNotEmpty)
-                                      TextButton.icon(
-                                        onPressed: () =>
-                                            _openDocument(context, d),
-                                        icon: const Icon(
-                                          Icons.open_in_new,
-                                          size: 16,
-                                        ),
-                                        label: const Text('Open'),
+                                    if (uploaded) ...[
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              verification == 'valid'
+                                                  ? 'Verified as valid'
+                                                  : verification == 'invalid'
+                                                  ? 'Replacement required: ${d['verificationReason'] ?? ''}'
+                                                  : 'Not yet verified',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: verification == 'valid'
+                                                    ? Colors.green.shade800
+                                                    : verification == 'invalid'
+                                                    ? Colors.red.shade800
+                                                    : Colors.grey.shade700,
+                                              ),
+                                            ),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => _verifyDocument(
+                                              context,
+                                              index,
+                                              d,
+                                              true,
+                                            ),
+                                            child: const Text('Valid'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => _verifyDocument(
+                                              context,
+                                              index,
+                                              d,
+                                              false,
+                                            ),
+                                            style: TextButton.styleFrom(
+                                              foregroundColor: Colors.red,
+                                            ),
+                                            child: const Text('Invalid'),
+                                          ),
+                                        ],
                                       ),
+                                    ],
                                   ],
                                 ),
                               );
@@ -313,6 +402,240 @@ class CaseDetailScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _showAssignmentDialog(
+    BuildContext context,
+    Map<String, dynamic> caseData,
+  ) async {
+    final actor = context.read<AuthService>().currentUserModel;
+    if (actor == null) return;
+    try {
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('users').get(),
+        FirebaseFirestore.instance.collection('cases').get(),
+      ]);
+      final activeStatuses = {
+        statusPendingReview,
+        statusProcessing,
+        statusApproved,
+        statusForClaiming,
+      };
+      final workloads = <String, int>{};
+      for (final doc in results[1].docs) {
+        final data = doc.data();
+        final assignee = (data['assignedStaffId'] ?? '').toString();
+        final status = normalizeCaseStatus((data['status'] ?? '').toString());
+        if (assignee.isNotEmpty && activeStatuses.contains(status)) {
+          workloads[assignee] = (workloads[assignee] ?? 0) + 1;
+        }
+      }
+      final users =
+          results[0].docs.where((doc) {
+            final data = doc.data();
+            return data['isActive'] != false &&
+                [roleStaff, roleOfficer].contains(data['role']);
+          }).toList()..sort((a, b) {
+            final loadComparison = (workloads[a.id] ?? 0).compareTo(
+              workloads[b.id] ?? 0,
+            );
+            if (loadComparison != 0) return loadComparison;
+            return (a.data()['name'] ?? '').toString().compareTo(
+              (b.data()['name'] ?? '').toString(),
+            );
+          });
+      if (!context.mounted) return;
+      String? selectedId = (caseData['assignedStaffId'] ?? '').toString();
+      if (selectedId.isEmpty) {
+        selectedId = users.isEmpty ? null : users.first.id;
+      }
+      final reasonController = TextEditingController();
+      String? errorText;
+      final result = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Assign case'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: users.any((user) => user.id == selectedId)
+                        ? selectedId
+                        : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Officer or staff',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: users.map((user) {
+                      final data = user.data();
+                      return DropdownMenuItem(
+                        value: user.id,
+                        child: Text(
+                          '${data['name'] ?? 'Unnamed'} — '
+                          '${workloads[user.id] ?? 0} active cases',
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) =>
+                        setDialogState(() => selectedId = value),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: reasonController,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: 'Assignment reason *',
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Staff are ordered from the lightest to the heaviest '
+                    'active workload.',
+                    style: TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: selectedId == null
+                    ? null
+                    : () {
+                        final reason = reasonController.text.trim();
+                        if (reason.isEmpty) {
+                          setDialogState(
+                            () =>
+                                errorText = 'An assignment reason is required.',
+                          );
+                          return;
+                        }
+                        final selected = users.firstWhere(
+                          (user) => user.id == selectedId,
+                        );
+                        Navigator.pop(dialogContext, {
+                          'id': selected.id,
+                          'name': (selected.data()['name'] ?? '').toString(),
+                          'reason': reason,
+                        });
+                      },
+                child: const Text('Assign'),
+              ),
+            ],
+          ),
+        ),
+      );
+      reasonController.dispose();
+      if (result == null || !context.mounted) return;
+      await CaseWorkflowService().assignCase(
+        caseId: caseId,
+        assigneeId: result['id']!,
+        assigneeName: result['name']!,
+        actorId: actor.uid,
+        actorName: actor.name,
+        reason: result['reason']!,
+      );
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not assign case: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _verifyDocument(
+    BuildContext context,
+    int index,
+    Map<String, dynamic> document,
+    bool isValid,
+  ) async {
+    final user = context.read<AuthService>().currentUserModel;
+    if (user == null) return;
+    var reason = '';
+    if (!isValid) {
+      final controller = TextEditingController();
+      String? errorText;
+      final entered = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Request document replacement'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Why is this document invalid? *',
+                border: const OutlineInputBorder(),
+                errorText: errorText,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = controller.text.trim();
+                  if (value.isEmpty) {
+                    setDialogState(() => errorText = 'A reason is required.');
+                    return;
+                  }
+                  Navigator.pop(dialogContext, value);
+                },
+                child: const Text('Request replacement'),
+              ),
+            ],
+          ),
+        ),
+      );
+      controller.dispose();
+      if (entered == null) return;
+      reason = entered;
+    }
+    try {
+      await CaseWorkflowService().verifyDocument(
+        caseId: caseId,
+        documentIndex: index,
+        verificationStatus: isValid ? 'valid' : 'invalid',
+        reason: reason,
+        actorId: user.uid,
+        actorName: user.name,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isValid
+                  ? '${document['name'] ?? 'Document'} verified.'
+                  : 'Resident has been asked to replace the document.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not verify document: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _approveForClaiming(
@@ -559,6 +882,44 @@ class CaseDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackCard(Map<String, dynamic> feedback) {
+    final rating = (feedback['rating'] as num?)?.toInt() ?? 0;
+    final improper = feedback['improperRequestReported'] == true;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: improper ? Colors.red.shade50 : Colors.amber.shade50,
+        border: Border.all(
+          color: improper ? Colors.red.shade300 : Colors.amber.shade200,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Resident feedback',
+            style: TextStyle(fontWeight: FontWeight.bold, color: kNavy),
+          ),
+          const SizedBox(height: 8),
+          Text('Rating: $rating/5'),
+          if ((feedback['comment'] ?? '').toString().trim().isNotEmpty)
+            Text('Comment: ${feedback['comment']}'),
+          if (improper)
+            Text(
+              'Attention required: The resident reported a request for '
+              'money, a favor, or another improper action.',
+              style: TextStyle(
+                color: Colors.red.shade800,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
         ],
       ),
     );

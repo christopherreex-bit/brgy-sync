@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
+
+import '../utils/constants.dart';
 
 /// Shared export utilities for CSV downloads and PDF generation.
 class ExportService {
@@ -61,6 +64,91 @@ class ExportService {
       return '"${value.replaceAll('"', '""')}"';
     }
     return value;
+  }
+
+  static Future<void> generateCaseAcknowledgmentPdf({
+    required Map<String, dynamic> caseData,
+  }) async {
+    final pdf = pw.Document();
+    final documents = List<Map<String, dynamic>>.from(
+      caseData['documents'] ?? [],
+    );
+    final submitted = caseData['submissionTimestamp'] is Timestamp
+        ? (caseData['submissionTimestamp'] as Timestamp).toDate()
+        : DateTime.now();
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              'BrgySync Request Acknowledgment',
+              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text('Barangay Calzada-Tipas, Taguig City'),
+            pw.Divider(),
+            _pdfCell(
+              'Case Number: ${caseData['referenceNumber'] ?? ''}',
+              bold: true,
+            ),
+            _pdfCell('Resident: ${caseData['residentName'] ?? ''}'),
+            _pdfCell(
+              'Request: ${caseData['serviceCategory'] ?? ''} — '
+              '${caseData['serviceSubType'] ?? ''}',
+            ),
+            _pdfCell(
+              'Submitted: ${submitted.month}/${submitted.day}/${submitted.year} '
+              '${submitted.hour.toString().padLeft(2, '0')}:'
+              '${submitted.minute.toString().padLeft(2, '0')}',
+            ),
+            _pdfCell(
+              'Current Status: '
+              '${caseStatusLabel((caseData['status'] ?? '').toString())}',
+            ),
+            pw.SizedBox(height: 12),
+            pw.BarcodeWidget(
+              barcode: pw.Barcode.qrCode(),
+              data: (caseData['referenceNumber'] ?? '').toString(),
+              width: 90,
+              height: 90,
+            ),
+            pw.Text(
+              'Scan to verify the case number',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Document Checklist',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            if (documents.isEmpty)
+              pw.Text('No uploaded documents.')
+            else
+              ...documents.map(
+                (document) => pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 5),
+                  child: pw.Text(
+                    '• ${document['name'] ?? 'Document'} — '
+                    '${document['status'] == 'uploaded' ? 'Uploaded' : 'Not uploaded'}',
+                  ),
+                ),
+              ),
+            pw.Spacer(),
+            pw.Divider(),
+            pw.Text(
+              'Keep this acknowledgment and quote the case number when '
+              'following up with the barangay.',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+            ),
+          ],
+        ),
+      ),
+    );
+    final bytes = await pdf.save();
+    await Printing.layoutPdf(onLayout: (_) async => bytes);
   }
 
   // ─── Compliance Report PDF ───────────────────────────────────────

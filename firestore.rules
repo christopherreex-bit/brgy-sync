@@ -32,7 +32,25 @@ service cloud.firestore {
       // the final transition into For Claiming.
       allow update: if isStaff()
                     && (request.resource.data.status != 'for_claiming'
-                        || isCaptain());
+                        || isCaptain())
+                    || (request.auth != null
+                        && resource.data.residentId == request.auth.uid
+                        && request.resource.data.diff(resource.data)
+                            .affectedKeys()
+                            .hasOnly([
+                              'documents',
+                              'residentActionRequired',
+                              'status',
+                              'residentCancelled',
+                              'residentCancellationReason',
+                              'residentCancelledAt',
+                              'residentFeedback',
+                              'lastUpdated'
+                            ])
+                        && (request.resource.data.status == resource.data.status
+                            || (request.resource.data.status == 'rejected'
+                                && resource.data.status
+                                    in ['pending', 'pending_review', 'processing'])));
       allow delete: if request.auth != null
                     && (resource.data.residentId == request.auth.uid || isCaptain())
                     && existsAfter(/databases/$(database)/documents/auditEvents/$(caseId))
@@ -73,6 +91,24 @@ service cloud.firestore {
       allow read, delete: if request.auth != null
                           && (get(/databases/$(database)/documents/cases/$(caseId)).data.residentId == request.auth.uid
                               || isCaptain());
+      allow create: if request.auth != null
+                    && get(/databases/$(database)/documents/cases/$(caseId)).data.residentId
+                        == request.auth.uid
+                    && request.resource.data.staffId == request.auth.uid;
+    }
+
+    // ─── Resident Notifications ─────────────────────────────────
+    match /notifications/{notificationId} {
+      allow create: if isStaff()
+                    && request.resource.data.residentId is string;
+      allow read: if request.auth != null
+                  && resource.data.residentId == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.residentId == request.auth.uid
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys().hasOnly(['isRead']);
+      allow delete: if request.auth != null
+                    && resource.data.residentId == request.auth.uid;
     }
 
     // Immutable record required whenever a case is permanently deleted.

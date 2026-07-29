@@ -16,6 +16,7 @@ class CaseQueueScreen extends StatefulWidget {
 
 class _CaseQueueScreenState extends State<CaseQueueScreen> {
   String _activeFilter = 'all';
+  String _assigneeFilter = 'all';
   final _searchCtrl = TextEditingController();
 
   static const _statusOrder = {
@@ -44,6 +45,8 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     final canDelete = currentUser?.role == roleCaptain;
     final filters = [
       ..._baseFilters,
+      const {'key': 'assigned_to_me', 'label': 'Assigned to Me'},
+      const {'key': 'unassigned', 'label': 'Unassigned'},
       if (canDelete)
         const {'key': 'claiming_approval', 'label': 'Claiming Approvals'},
     ];
@@ -52,7 +55,10 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
           .where('claimingApprovalStatus', isEqualTo: 'pending');
-    } else if (_activeFilter == 'all' || _activeFilter == statusPendingReview) {
+    } else if (_activeFilter == 'all' ||
+        _activeFilter == statusPendingReview ||
+        _activeFilter == 'assigned_to_me' ||
+        _activeFilter == 'unassigned') {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
           .orderBy('submissionTimestamp', descending: true)
@@ -140,6 +146,49 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
+          const SizedBox(height: 10),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('users').snapshots(),
+            builder: (context, snapshot) {
+              final assignees =
+                  [...?snapshot.data?.docs].where((doc) {
+                    final data = doc.data();
+                    return data['isActive'] != false &&
+                        [roleStaff, roleOfficer].contains(data['role']);
+                  }).toList()..sort(
+                    (a, b) => (a.data()['name'] ?? '').toString().compareTo(
+                      (b.data()['name'] ?? '').toString(),
+                    ),
+                  );
+              return DropdownButtonFormField<String>(
+                initialValue:
+                    _assigneeFilter == 'all' ||
+                        assignees.any((doc) => doc.id == _assigneeFilter)
+                    ? _assigneeFilter
+                    : 'all',
+                decoration: const InputDecoration(
+                  labelText: 'Filter by assigned officer/staff',
+                  prefixIcon: Icon(Icons.person_search_outlined),
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: 'all',
+                    child: Text('All assignees'),
+                  ),
+                  ...assignees.map(
+                    (doc) => DropdownMenuItem(
+                      value: doc.id,
+                      child: Text((doc.data()['name'] ?? '').toString()),
+                    ),
+                  ),
+                ],
+                onChanged: (value) =>
+                    setState(() => _assigneeFilter = value ?? 'all'),
+              );
+            },
+          ),
           const SizedBox(height: 16),
 
           // Case list header
@@ -205,6 +254,23 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     final data = doc.data() as Map<String, dynamic>;
                     return data['status'] == statusApproved &&
                         data['claimingApprovalStatus'] == 'pending';
+                  }).toList();
+                }
+                if (_assigneeFilter != 'all') {
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return data['assignedStaffId'] == _assigneeFilter;
+                  }).toList();
+                }
+                if (_activeFilter == 'assigned_to_me') {
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return data['assignedStaffId'] == currentUser?.uid;
+                  }).toList();
+                } else if (_activeFilter == 'unassigned') {
+                  docs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return (data['assignedStaffId'] ?? '').toString().isEmpty;
                   }).toList();
                 }
 
@@ -314,6 +380,8 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                           (data['claimingRejectionReason'] ?? '').toString(),
                       claimingRejectedByName:
                           (data['claimingRejectedByName'] ?? '').toString(),
+                      assignedStaffName: (data['assignedStaffName'] ?? '')
+                          .toString(),
                       onTap: () =>
                           context.go('/dashboard/case/${docs[index].id}'),
                       onDelete: canDelete

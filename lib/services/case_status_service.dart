@@ -67,6 +67,7 @@ class CaseStatusService {
     }
 
     final logRef = caseRef.collection('actionLog').doc();
+    final notificationRef = _db.collection('notifications').doc();
     final budgetTransactionRef = _db
         .collection('budgetTransactions')
         .doc(caseId);
@@ -95,6 +96,26 @@ class CaseStatusService {
         throw StateError(
           'Review and confirm the budget impact before approving this case.',
         );
+      }
+      if (newStatus == statusApproved) {
+        final documents = List<Map<String, dynamic>>.from(
+          caseData['documents'] ?? [],
+        );
+        final unresolved = documents.where((document) {
+          final uploadStatus = (document['status'] ?? '').toString();
+          if (uploadStatus == 'not_applicable') return false;
+          final verification = (document['verificationStatus'] ?? 'pending')
+              .toString();
+          return verification == 'invalid' ||
+              (document['required'] == true &&
+                  (uploadStatus != 'uploaded' || verification != 'valid'));
+        }).toList();
+        if (unresolved.isNotEmpty) {
+          throw StateError(
+            'Verify every required document and resolve requested '
+            'replacements before approving this case.',
+          );
+        }
       }
       final updates = <String, dynamic>{
         'status': newStatus,
@@ -303,6 +324,18 @@ class CaseStatusService {
         'smsError': smsError,
         'smsBody': smsBody,
       });
+      transaction.set(notificationRef, {
+        'residentId': caseData['residentId'] ?? '',
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? caseData['referenceNumber'] ?? '',
+        'type': 'status_update',
+        'title': 'Case status updated',
+        'message':
+            'Your case is now ${caseStatusLabel(newStatus)}.'
+            '${notes.trim().isEmpty ? '' : ' Reason: ${notes.trim()}'}',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
@@ -392,6 +425,7 @@ class CaseStatusService {
         ? null
         : _db.collection('budgetPrograms').doc(reservedProgramId);
     final logRef = caseRef.collection('actionLog').doc();
+    final notificationRef = _db.collection('notifications').doc();
 
     await _db.runTransaction((transaction) async {
       final caseSnapshot = await transaction.get(caseRef);
@@ -472,6 +506,16 @@ class CaseStatusService {
         'notes': trimmedReason,
         'smsSent': false,
         'smsBody': '',
+      });
+      transaction.set(notificationRef, {
+        'residentId': caseData['residentId'] ?? '',
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? caseData['referenceNumber'] ?? '',
+        'type': 'claiming_rejected',
+        'title': 'For Claiming request was not approved',
+        'message': 'Your case returned to Processing. Reason: $trimmedReason',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
       });
     });
   }

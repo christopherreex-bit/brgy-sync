@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import 'home_screen.dart';
 import 'submit_request_screen.dart';
 import 'track_request_screen.dart';
+import 'notifications_screen.dart';
 
 class ResidentShell extends StatefulWidget {
   const ResidentShell({super.key});
@@ -142,6 +143,7 @@ class ResidentShellState extends State<ResidentShell> {
                 _tabButton('Home', 0),
                 _tabButton('Submit a Request', 1),
                 _tabButton('My Cases', 2),
+                _tabButton('Notifications', 3),
               ],
             ),
           ),
@@ -163,7 +165,9 @@ class ResidentShellState extends State<ResidentShell> {
                     initialCategoryId: _pendingCategoryId,
                     initialSubType: _pendingSubType,
                   )
-                : const TrackRequestScreen(),
+                : _currentIndex == 2
+                ? const TrackRequestScreen()
+                : const NotificationsScreen(),
           ),
         ],
       ),
