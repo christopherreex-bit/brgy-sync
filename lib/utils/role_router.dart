@@ -24,6 +24,7 @@ import '../screens/dashboard/report_builder_screen.dart';
 import '../screens/dashboard/report_archive_screen.dart';
 import '../screens/dashboard/account_management_screen.dart';
 import '../screens/dashboard/user_management_screen.dart';
+import '../screens/dashboard/staff_notifications_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/login',
@@ -65,6 +66,10 @@ final appRouter = GoRouter(
         GoRoute(
           path: '/dashboard/distributions',
           builder: (context, state) => const DistributionsScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/notifications',
+          builder: (context, state) => const StaffNotificationsScreen(),
         ),
         GoRoute(
           path: '/dashboard/audit',

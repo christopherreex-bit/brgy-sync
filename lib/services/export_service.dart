@@ -195,7 +195,7 @@ class ExportService {
                 pw.TableRow(
                   children: [
                     _pdfCell('Total Received', bold: true),
-                    _pdfCell('Completed On Time', bold: true),
+                    _pdfCell('On-Time Cases', bold: true),
                     _pdfCell('Overdue Cases', bold: true),
                     _pdfCell('Compliance Rate', bold: true),
                   ],

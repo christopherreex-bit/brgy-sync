@@ -228,11 +228,14 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                         isCompleted &&
                         completedAt != null &&
                         !completedAt.isAfter(deadline);
+                    final ongoingOnTime =
+                        !isCompleted && !DateTime.now().isAfter(deadline);
+                    final onTime = completedOnTime || ongoingOnTime;
                     final overdue = isCompleted
                         ? completedAt != null && completedAt.isAfter(deadline)
                         : DateTime.now().isAfter(deadline);
 
-                    if (completedOnTime) _completedOnTime++;
+                    if (onTime) _completedOnTime++;
                     if (overdue) _overdueCases++;
                     if (isCompleted &&
                         completedAt != null &&
@@ -249,7 +252,7 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                     );
                     categoryBreakdown[cat]!['total'] =
                         categoryBreakdown[cat]!['total']! + 1;
-                    if (completedOnTime) {
+                    if (onTime) {
                       categoryBreakdown[cat]!['onTime'] =
                           categoryBreakdown[cat]!['onTime']! + 1;
                     }
@@ -294,7 +297,7 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: KpiCard(
-                              label: 'Completed On Time',
+                              label: 'On-Time Cases',
                               value: '$_completedOnTime',
                               accentColor: Colors.green,
                               icon: Icons.check_circle,

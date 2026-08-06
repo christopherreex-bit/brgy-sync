@@ -32,4 +32,28 @@ void main() {
     expect(period.type, 'quarterly');
     expect(period.quarter, 2);
   });
+
+  test(
+    'past fiscal quarters are locked but current quarter remains editable',
+    () {
+      final asOf = DateTime(2026, 8, 6); // Q3
+
+      expect(
+        isPastBudgetQuarter(BudgetPeriod.parse('FY 2026 Q2'), asOf),
+        isTrue,
+      );
+      expect(
+        isPastBudgetQuarter(BudgetPeriod.parse('FY 2026 Q3'), asOf),
+        isFalse,
+      );
+      expect(
+        isPastBudgetQuarter(BudgetPeriod.parse('FY 2026 Q4'), asOf),
+        isFalse,
+      );
+      expect(
+        isPastBudgetQuarter(BudgetPeriod.parse('FY 2025 Q4'), asOf),
+        isTrue,
+      );
+    },
+  );
 }

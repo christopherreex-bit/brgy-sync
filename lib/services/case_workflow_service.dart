@@ -22,6 +22,7 @@ class CaseWorkflowService {
     }
     final caseRef = _db.collection('cases').doc(caseId);
     final logRef = caseRef.collection('actionLog').doc();
+    final notificationRef = _db.collection('staffNotifications').doc();
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(caseRef);
       if (!snapshot.exists) throw StateError('Case not found.');
@@ -47,6 +48,20 @@ class CaseWorkflowService {
         'notes': '$previousName → $assigneeName. $trimmedReason',
         'smsSent': false,
         'smsBody': '',
+      });
+      transaction.set(notificationRef, {
+        'caseId': caseId,
+        'referenceNumber': data['referenceNumber'] ?? '',
+        'type': 'case_assignment',
+        'title': 'Case assigned to you',
+        'message':
+            '${data['referenceNumber'] ?? 'A case'} was assigned to you by '
+            '$actorName. Reason: $trimmedReason',
+        'recipientId': assigneeId,
+        'targetRoles': <String>[],
+        'priority': 'normal',
+        'readBy': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
       });
     });
   }

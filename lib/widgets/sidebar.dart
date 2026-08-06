@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -122,6 +123,12 @@ class _SidebarState extends State<Sidebar> {
                           Icons.list_alt,
                           'Case Queue',
                           '/dashboard',
+                          currentLocation,
+                        ),
+                        _staffNotificationNavItem(
+                          context,
+                          user.uid,
+                          user.role,
                           currentLocation,
                         ),
                         _navItem(
@@ -275,6 +282,36 @@ class _SidebarState extends State<Sidebar> {
           letterSpacing: 1.2,
         ),
       ),
+    );
+  }
+
+  Widget _staffNotificationNavItem(
+    BuildContext context,
+    String uid,
+    String role,
+    String currentLocation,
+  ) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('staffNotifications')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final unread = [...?snapshot.data?.docs].where((doc) {
+          final data = doc.data();
+          final recipientId = (data['recipientId'] ?? '').toString();
+          final roles = List<String>.from(data['targetRoles'] ?? []);
+          final readBy = List<String>.from(data['readBy'] ?? []);
+          return (recipientId == uid || roles.contains(role)) &&
+              !readBy.contains(uid);
+        }).length;
+        return _navItem(
+          context,
+          Icons.notifications_outlined,
+          unread == 0 ? 'Notifications' : 'Notifications ($unread)',
+          '/dashboard/notifications',
+          currentLocation,
+        );
+      },
     );
   }
 

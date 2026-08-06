@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/constants.dart';
 import '../../utils/budget_period.dart';
+import '../../utils/budget_health.dart';
 
 class AllocationSetupScreen extends StatefulWidget {
   const AllocationSetupScreen({super.key});
@@ -12,10 +13,19 @@ class AllocationSetupScreen extends StatefulWidget {
 
 class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
   final Map<String, TextEditingController> _amountControllers = {};
+  final TextEditingController _periodBudgetController = TextEditingController(
+    text: '0',
+  );
+  final TextEditingController _transferAmountController =
+      TextEditingController();
+  final Map<String, double> _utilizedByProgram = {};
+  final Map<String, double> _reservedByProgram = {};
   bool _loading = false;
   late int _selectedFiscalYear;
   String? _selectedPeriod;
   List<String> _savedPeriods = [];
+  String? _transferFrom;
+  String? _transferTo;
 
   final _defaultPrograms = const [
     'BASS – Medical Assistance',
@@ -35,6 +45,8 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
         'FY $_selectedFiscalYear Q${((DateTime.now().month - 1) ~/ 3) + 1}';
     for (final p in _defaultPrograms) {
       _amountControllers[p] = TextEditingController(text: '0');
+      _utilizedByProgram[p] = 0;
+      _reservedByProgram[p] = 0;
     }
     _loadSavedPeriods();
     _loadAllocationForPeriod(_selectedPeriod!);
@@ -74,6 +86,11 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     final year = _selectedFiscalYear;
     return List.generate(4, (index) => 'FY $year Q${index + 1}');
   }
+
+  bool get _selectedPeriodIsLocked => isPastBudgetQuarter(
+    BudgetPeriod.parse(_selectedPeriod ?? ''),
+    DateTime.now(),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -183,6 +200,35 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
             '${BudgetPeriod.parse(_selectedPeriod ?? '').scopeLabel} allocation for FY $_selectedFiscalYear.',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           ),
+          if (_selectedPeriodIsLocked) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                border: Border.all(color: Colors.amber.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lock_outline, color: Colors.amber.shade900),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This fiscal quarter has already ended. Its allocations '
+                      'are read-only to preserve historical budget records.',
+                      style: TextStyle(
+                        color: Colors.amber.shade900,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
 
           const Text(
@@ -195,43 +241,73 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
           ),
           const SizedBox(height: 12),
 
-          ..._defaultPrograms.map(
-            (p) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: TextField(
-                controller: _amountControllers[p],
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: p,
-                  prefixText: '₱ ',
-                  border: const OutlineInputBorder(),
+          Builder(
+            builder: (context) {
+              final periodBudget =
+                  double.tryParse(_periodBudgetController.text) ?? 0;
+              final totalAllocated = _computeTotal();
+              final exceedsBudget = totalAllocated > periodBudget;
+              final hasUnallocated = totalAllocated < periodBudget;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: TextField(
+                  controller: _periodBudgetController,
+                  enabled: !_selectedPeriodIsLocked && !_loading,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Total budget for this fiscal period',
+                    prefixText: '₱ ',
+                    prefixIcon: const Icon(
+                      Icons.account_balance_wallet_outlined,
+                    ),
+                    suffixIcon: _selectedPeriodIsLocked
+                        ? const Icon(Icons.lock_outline, size: 18)
+                        : exceedsBudget
+                        ? const Icon(Icons.error_outline, color: Colors.red)
+                        : null,
+                    errorText: exceedsBudget
+                        ? 'Program allocations exceed this period budget by '
+                              '₱${(totalAllocated - periodBudget).toStringAsFixed(2)}.'
+                        : hasUnallocated
+                        ? 'Distribute the remaining '
+                              '₱${(periodBudget - totalAllocated).toStringAsFixed(2)} among the program funds.'
+                        : null,
+                    helperText:
+                        'Set the complete budget ceiling for ${BudgetPeriod.parse(_selectedPeriod ?? '').scopeLabel}, FY $_selectedFiscalYear.',
+                    border: const OutlineInputBorder(),
+                  ),
+                  onChanged: (_) => setState(() {}),
                 ),
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
+              );
+            },
           ),
 
+          ..._defaultPrograms.map(_buildAllocationField),
+
           const SizedBox(height: 8),
+          _buildTransferPanel(),
+
+          const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
               children: [
-                const Text(
-                  'Total Allocated:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Text(
-                  '₱${_computeTotal().toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    color: kNavy,
-                  ),
+                _summaryRow('Period Budget:', _periodBudget),
+                const SizedBox(height: 8),
+                _summaryRow('Total Allocated:', _computeTotal()),
+                const Divider(height: 20),
+                _summaryRow(
+                  'Unallocated Balance:',
+                  _periodBudget - _computeTotal(),
+                  valueColor: _periodBudget - _computeTotal() < 0
+                      ? Colors.red
+                      : Colors.green.shade700,
                 ),
               ],
             ),
@@ -242,7 +318,9 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: _loading ? null : _saveAllocation,
+              onPressed: _loading || _selectedPeriodIsLocked
+                  ? null
+                  : _saveAllocation,
               style: ElevatedButton.styleFrom(
                 backgroundColor: kNavy,
                 foregroundColor: Colors.white,
@@ -272,7 +350,12 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     try {
       final db = FirebaseFirestore.instance;
       final selectedPeriod = BudgetPeriod.parse(period);
-      final snap = await db.collection('budgetPrograms').get();
+      final results = await Future.wait([
+        db.collection('budgetPrograms').get(),
+        db.collection('budgetPeriods').doc(_periodDocumentId(period)).get(),
+      ]);
+      final snap = results[0] as QuerySnapshot<Map<String, dynamic>>;
+      final periodDoc = results[1] as DocumentSnapshot<Map<String, dynamic>>;
 
       // Ignore a slower request if the user selected another period while it
       // was loading.
@@ -280,6 +363,8 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
 
       for (final p in _defaultPrograms) {
         _amountControllers[p]?.text = '0';
+        _utilizedByProgram[p] = 0;
+        _reservedByProgram[p] = 0;
       }
 
       final latestByProgram = <String, QueryDocumentSnapshot>{};
@@ -305,8 +390,20 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
       for (final entry in latestByProgram.entries) {
         final data = entry.value.data() as Map<String, dynamic>;
         final allocated = (data['allocated'] as num?)?.toDouble() ?? 0;
+        final utilized = (data['utilized'] as num?)?.toDouble() ?? 0;
+        final reserved = (data['reserved'] as num?)?.toDouble() ?? 0;
         _amountControllers[entry.key]!.text = allocated.toStringAsFixed(0);
+        _utilizedByProgram[entry.key] = utilized;
+        _reservedByProgram[entry.key] = reserved;
       }
+      final savedPeriodBudget = (periodDoc.data()?['totalBudget'] as num?)
+          ?.toDouble();
+      // Existing installations have no budgetPeriods record. Starting with
+      // the currently allocated total preserves those allocations until the
+      // captain explicitly changes the new period ceiling.
+      _periodBudgetController.text = (savedPeriodBudget ?? _computeTotal())
+          .toStringAsFixed(0);
+      if (mounted) setState(() {});
     } catch (e) {
       debugPrint('Load allocation failed: $e');
     } finally {
@@ -322,13 +419,306 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
     return total;
   }
 
+  double get _periodBudget =>
+      double.tryParse(_periodBudgetController.text) ?? 0;
+
+  String _periodDocumentId(String period) =>
+      period.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_');
+
+  Widget _summaryRow(String label, double amount, {Color? valueColor}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        Text(
+          '₱${amount.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 17,
+            color: valueColor ?? kNavy,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAllocationField(String program) {
+    final proposed = double.tryParse(_amountControllers[program]!.text) ?? 0;
+    final utilized = _utilizedByProgram[program] ?? 0;
+    final reserved = _reservedByProgram[program] ?? 0;
+    final committed = utilized + reserved;
+    final belowCommitted = proposed < committed;
+    final period = BudgetPeriod.parse(_selectedPeriod ?? '');
+    final health = calculateBudgetHealth(
+      allocated: proposed,
+      utilized: committed,
+      fiscalYear: period.fiscalYear ?? _selectedFiscalYear,
+      quarter: period.quarter ?? 1,
+      asOf: DateTime.now(),
+    );
+    final isCritical =
+        !belowCommitted && proposed > 0 && health == budgetCritical;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: _amountControllers[program],
+        enabled: !_selectedPeriodIsLocked && !_loading,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          labelText: program,
+          prefixText: '₱ ',
+          suffixIcon: _selectedPeriodIsLocked
+              ? const Icon(Icons.lock_outline, size: 18)
+              : belowCommitted || isCritical
+              ? Icon(
+                  belowCommitted ? Icons.error_outline : Icons.warning_amber,
+                  color: belowCommitted ? Colors.red : Colors.orange,
+                )
+              : null,
+          errorText: belowCommitted
+              ? 'Must be at least ₱${committed.toStringAsFixed(2)} '
+                    '(₱${utilized.toStringAsFixed(2)} used + '
+                    '₱${reserved.toStringAsFixed(2)} on hold).'
+              : null,
+          helperText: isCritical
+              ? 'Warning: this allocation would be Critical after used and on-hold amounts.'
+              : 'Used: ₱${utilized.toStringAsFixed(2)}  •  On hold: ₱${reserved.toStringAsFixed(2)}',
+          helperStyle: isCritical
+              ? TextStyle(
+                  color: Colors.orange.shade800,
+                  fontWeight: FontWeight.w600,
+                )
+              : null,
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: (_) => setState(() {}),
+      ),
+    );
+  }
+
+  Widget _buildTransferPanel() {
+    final fromAllocation = _transferFrom == null
+        ? 0.0
+        : double.tryParse(_amountControllers[_transferFrom]!.text) ?? 0;
+    final fromCommitted = _transferFrom == null
+        ? 0.0
+        : (_utilizedByProgram[_transferFrom] ?? 0) +
+              (_reservedByProgram[_transferFrom] ?? 0);
+    final transferable = (fromAllocation - fromCommitted)
+        .clamp(0, double.infinity)
+        .toDouble();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade50,
+        border: Border.all(color: Colors.blueGrey.shade200),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.swap_horiz, color: kNavy),
+              SizedBox(width: 8),
+              Text(
+                'Transfer Between Program Funds',
+                style: TextStyle(
+                  color: kNavy,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Move available allocation without changing the total period budget. Used and on-hold funds cannot be transferred.',
+            style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 280,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _transferFrom,
+                  decoration: const InputDecoration(
+                    labelText: 'From fund',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _defaultPrograms
+                      .map(
+                        (program) => DropdownMenuItem(
+                          value: program,
+                          child: Text(program, overflow: TextOverflow.ellipsis),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _selectedPeriodIsLocked || _loading
+                      ? null
+                      : (value) => setState(() {
+                          _transferFrom = value;
+                          if (_transferTo == value) _transferTo = null;
+                        }),
+                ),
+              ),
+              const Icon(Icons.arrow_forward, color: kNavy),
+              SizedBox(
+                width: 280,
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('transfer_to_${_transferFrom ?? ''}'),
+                  initialValue: _transferTo,
+                  decoration: const InputDecoration(
+                    labelText: 'To fund',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _defaultPrograms
+                      .where((program) => program != _transferFrom)
+                      .map(
+                        (program) => DropdownMenuItem(
+                          value: program,
+                          child: Text(program, overflow: TextOverflow.ellipsis),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _selectedPeriodIsLocked || _loading
+                      ? null
+                      : (value) => setState(() => _transferTo = value),
+                ),
+              ),
+              SizedBox(
+                width: 190,
+                child: TextField(
+                  controller: _transferAmountController,
+                  enabled: !_selectedPeriodIsLocked && !_loading,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Transfer amount',
+                    prefixText: '₱ ',
+                    helperText: _transferFrom == null
+                        ? 'Select a source fund'
+                        : 'Available: ₱${transferable.toStringAsFixed(2)}',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _selectedPeriodIsLocked || _loading
+                    ? null
+                    : _applyTransfer,
+                icon: const Icon(Icons.swap_horiz),
+                label: const Text('Apply transfer'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kNavy,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _applyTransfer() {
+    final from = _transferFrom;
+    final to = _transferTo;
+    final amount = double.tryParse(_transferAmountController.text);
+    if (from == null || to == null || amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select both funds and enter a valid transfer amount.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final sourceAllocation =
+        double.tryParse(_amountControllers[from]!.text) ?? 0;
+    final destinationAllocation =
+        double.tryParse(_amountControllers[to]!.text) ?? 0;
+    final committed =
+        (_utilizedByProgram[from] ?? 0) + (_reservedByProgram[from] ?? 0);
+    final transferable = sourceAllocation - committed;
+    if (amount > transferable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Only ₱${transferable.clamp(0, double.infinity).toStringAsFixed(2)} '
+            'is available to transfer from $from.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _amountControllers[from]!.text = (sourceAllocation - amount)
+          .toStringAsFixed(2);
+      _amountControllers[to]!.text = (destinationAllocation + amount)
+          .toStringAsFixed(2);
+      _transferAmountController.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '₱${amount.toStringAsFixed(2)} moved from $from to $to. Save the allocation changes to confirm.',
+        ),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   Future<void> _saveAllocation() async {
+    if (_selectedPeriodIsLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Past fiscal quarters are locked and cannot be changed.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     setState(() => _loading = true);
     try {
       final db = FirebaseFirestore.instance;
       final period = _selectedPeriod!;
       final periodInfo = BudgetPeriod.parse(period);
+      final periodBudget = _periodBudget;
+      final totalAllocated = _computeTotal();
+      if (periodBudget < 0) {
+        throw StateError('The fiscal-period budget cannot be negative.');
+      }
+      if ((totalAllocated - periodBudget).abs() > 0.009) {
+        throw StateError(
+          'The entire fiscal-period budget must be distributed. Program '
+          'allocations must equal the period budget.',
+        );
+      }
       final batch = db.batch();
+      final criticalPrograms = <String>[];
+      var totalUtilized = 0.0;
+      var totalReserved = 0.0;
 
       for (final entry in _amountControllers.entries) {
         final amount = double.tryParse(entry.value.text) ?? 0;
@@ -362,13 +752,28 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
         final reserved = (existingData?['reserved'] as num?)?.toDouble() ?? 0;
         final thresholdPercent =
             (existingData?['thresholdPercent'] as num?)?.toDouble() ?? 10;
+        final committed = utilized + reserved;
+        totalUtilized += utilized;
+        totalReserved += reserved;
+        if (amount < committed) {
+          throw StateError(
+            '${entry.key} cannot be lower than '
+            '₱${committed.toStringAsFixed(2)} '
+            '(used + on hold).',
+          );
+        }
         final remaining = amount - utilized - reserved;
         final thresholdAmount = amount * thresholdPercent / 100;
-        final status = remaining <= amount * 0.10
-            ? budgetCritical
-            : remaining <= thresholdAmount
-            ? budgetLow
-            : budgetHealthy;
+        final health = calculateBudgetHealth(
+          allocated: amount,
+          utilized: committed,
+          fiscalYear: periodInfo.fiscalYear ?? _selectedFiscalYear,
+          quarter: periodInfo.quarter ?? 1,
+          asOf: DateTime.now(),
+        );
+        if (amount > 0 && health == budgetCritical) {
+          criticalPrograms.add(entry.key);
+        }
         final ref =
             existing?.reference ?? db.collection('budgetPrograms').doc();
         batch.set(ref, {
@@ -381,9 +786,62 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
           'remaining': remaining,
           'thresholdPercent': thresholdPercent,
           'thresholdAmount': thresholdAmount,
-          'status': status,
+          'status': health,
           'lastUpdated': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
+      }
+
+      if (periodBudget < totalUtilized + totalReserved) {
+        throw StateError(
+          'The fiscal-period budget cannot be lower than the total used and '
+          'on-hold amount of '
+          '₱${(totalUtilized + totalReserved).toStringAsFixed(2)}.',
+        );
+      }
+
+      batch.set(
+        db.collection('budgetPeriods').doc(_periodDocumentId(period)),
+        {
+          'fiscalPeriod': period,
+          ...periodInfo.firestoreFields,
+          'totalBudget': periodBudget,
+          'totalAllocated': totalAllocated,
+          'totalUtilized': totalUtilized,
+          'totalReserved': totalReserved,
+          'unallocatedBalance': periodBudget - totalAllocated,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (criticalPrograms.isNotEmpty && mounted) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Critical budget warning'),
+            content: Text(
+              'The proposed allocation will leave the following budget(s) '
+              'in Critical condition after used and on-hold amounts:\n\n'
+              '${criticalPrograms.map((name) => '• $name').join('\n')}\n\n'
+              'Do you still want to save these allocations?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Review amounts'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade800,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Save anyway'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
       }
 
       await batch.commit();
@@ -415,6 +873,8 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
 
   @override
   void dispose() {
+    _periodBudgetController.dispose();
+    _transferAmountController.dispose();
     for (final c in _amountControllers.values) {
       c.dispose();
     }

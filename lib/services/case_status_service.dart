@@ -358,6 +358,7 @@ class CaseStatusService {
 
     final caseRef = _db.collection('cases').doc(caseId);
     final logRef = caseRef.collection('actionLog').doc();
+    final staffNotificationRef = _db.collection('staffNotifications').doc();
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(caseRef);
       if (!snapshot.exists) throw StateError('Case not found.');
@@ -392,6 +393,20 @@ class CaseStatusService {
         'notes': notes,
         'smsSent': false,
         'smsBody': '',
+      });
+      transaction.set(staffNotificationRef, {
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? data['referenceNumber'] ?? '',
+        'type': 'claiming_approval',
+        'title': 'For Claiming approval requested',
+        'message':
+            '${referenceNumber ?? data['referenceNumber'] ?? 'A case'} is '
+            'waiting for Barangay Captain approval.',
+        'recipientId': '',
+        'targetRoles': [roleCaptain],
+        'priority': 'high',
+        'readBy': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
       });
     });
   }

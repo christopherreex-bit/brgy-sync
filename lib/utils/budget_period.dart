@@ -70,3 +70,17 @@ class BudgetPeriod {
     if (quarter != null) 'quarter': quarter,
   };
 }
+
+/// Returns true only after the selected fiscal quarter has ended.
+///
+/// The current quarter remains editable until its final day, while all
+/// quarters in an earlier fiscal year are locked.
+bool isPastBudgetQuarter(BudgetPeriod period, DateTime asOf) {
+  final year = period.fiscalYear;
+  final quarter = period.quarter;
+  if (year == null || period.type != 'quarterly' || quarter == null) {
+    return false;
+  }
+  final currentQuarter = ((asOf.month - 1) ~/ 3) + 1;
+  return year < asOf.year || (year == asOf.year && quarter < currentQuarter);
+}

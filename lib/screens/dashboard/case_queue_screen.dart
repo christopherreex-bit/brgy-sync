@@ -16,6 +16,7 @@ class CaseQueueScreen extends StatefulWidget {
 
 class _CaseQueueScreenState extends State<CaseQueueScreen> {
   String _activeFilter = 'all';
+  String _queueScope = 'all';
   String _assigneeFilter = 'all';
   final _searchCtrl = TextEditingController();
 
@@ -43,22 +44,12 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
   Widget build(BuildContext context) {
     final currentUser = context.watch<AuthService>().currentUserModel;
     final canDelete = currentUser?.role == roleCaptain;
-    final filters = [
-      ..._baseFilters,
-      const {'key': 'assigned_to_me', 'label': 'Assigned to Me'},
-      const {'key': 'unassigned', 'label': 'Unassigned'},
-      if (canDelete)
-        const {'key': 'claiming_approval', 'label': 'Claiming Approvals'},
-    ];
     final Query<Map<String, dynamic>> caseQuery;
-    if (_activeFilter == 'claiming_approval') {
+    if (_queueScope == 'claiming_approval') {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
           .where('claimingApprovalStatus', isEqualTo: 'pending');
-    } else if (_activeFilter == 'all' ||
-        _activeFilter == statusPendingReview ||
-        _activeFilter == 'assigned_to_me' ||
-        _activeFilter == 'unassigned') {
+    } else if (_activeFilter == 'all' || _activeFilter == statusPendingReview) {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
           .orderBy('submissionTimestamp', descending: true)
@@ -91,46 +82,6 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
           ),
           const SizedBox(height: 20),
 
-          // Filter tabs
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: filters.map((f) {
-                final isActive = _activeFilter == f['key'];
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _activeFilter = f['key']!),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isActive ? kNavy : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isActive ? kNavy : Colors.grey.shade300,
-                        ),
-                      ),
-                      child: Text(
-                        f['label']!,
-                        style: TextStyle(
-                          color: isActive ? Colors.white : Colors.grey.shade700,
-                          fontSize: 12,
-                          fontWeight: isActive
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
-
           // Search bar
           TextField(
             controller: _searchCtrl,
@@ -146,7 +97,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance.collection('users').snapshots(),
             builder: (context, snapshot) {
@@ -160,32 +111,95 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                       (b.data()['name'] ?? '').toString(),
                     ),
                   );
-              return DropdownButtonFormField<String>(
-                initialValue:
-                    _assigneeFilter == 'all' ||
-                        assignees.any((doc) => doc.id == _assigneeFilter)
-                    ? _assigneeFilter
-                    : 'all',
-                decoration: const InputDecoration(
-                  labelText: 'Filter by assigned officer/staff',
-                  prefixIcon: Icon(Icons.person_search_outlined),
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                items: [
-                  const DropdownMenuItem(
-                    value: 'all',
-                    child: Text('All assignees'),
+              final scopes = [
+                const {'key': 'all', 'label': 'All Cases'},
+                const {'key': 'assigned_to_me', 'label': 'Assigned to Me'},
+                const {'key': 'unassigned', 'label': 'Unassigned'},
+                if (canDelete)
+                  const {
+                    'key': 'claiming_approval',
+                    'label': 'Claiming Approvals',
+                  },
+              ];
+              return Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                children: [
+                  SizedBox(
+                    width: 210,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _activeFilter,
+                      decoration: const InputDecoration(
+                        labelText: 'Case status',
+                        prefixIcon: Icon(Icons.filter_alt_outlined),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: _baseFilters
+                          .map(
+                            (filter) => DropdownMenuItem(
+                              value: filter['key'],
+                              child: Text(filter['label']!),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _activeFilter = value ?? 'all'),
+                    ),
                   ),
-                  ...assignees.map(
-                    (doc) => DropdownMenuItem(
-                      value: doc.id,
-                      child: Text((doc.data()['name'] ?? '').toString()),
+                  SizedBox(
+                    width: 230,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _queueScope,
+                      decoration: const InputDecoration(
+                        labelText: 'Queue view',
+                        prefixIcon: Icon(Icons.view_list_outlined),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: scopes
+                          .map(
+                            (scope) => DropdownMenuItem(
+                              value: scope['key'],
+                              child: Text(scope['label']!),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _queueScope = value ?? 'all'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 290,
+                    child: DropdownButtonFormField<String>(
+                      initialValue:
+                          _assigneeFilter == 'all' ||
+                              assignees.any((doc) => doc.id == _assigneeFilter)
+                          ? _assigneeFilter
+                          : 'all',
+                      decoration: const InputDecoration(
+                        labelText: 'Assigned officer/staff',
+                        prefixIcon: Icon(Icons.person_search_outlined),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: [
+                        const DropdownMenuItem(
+                          value: 'all',
+                          child: Text('All assignees'),
+                        ),
+                        ...assignees.map(
+                          (doc) => DropdownMenuItem(
+                            value: doc.id,
+                            child: Text((doc.data()['name'] ?? '').toString()),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _assigneeFilter = value ?? 'all'),
                     ),
                   ),
                 ],
-                onChanged: (value) =>
-                    setState(() => _assigneeFilter = value ?? 'all'),
               );
             },
           ),
@@ -249,7 +263,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                         statusPendingReview;
                   }).toList();
                 }
-                if (_activeFilter == 'claiming_approval') {
+                if (_queueScope == 'claiming_approval') {
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     return data['status'] == statusApproved &&
@@ -262,12 +276,12 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     return data['assignedStaffId'] == _assigneeFilter;
                   }).toList();
                 }
-                if (_activeFilter == 'assigned_to_me') {
+                if (_queueScope == 'assigned_to_me') {
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     return data['assignedStaffId'] == currentUser?.uid;
                   }).toList();
-                } else if (_activeFilter == 'unassigned') {
+                } else if (_queueScope == 'unassigned') {
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     return (data['assignedStaffId'] ?? '').toString().isEmpty;
