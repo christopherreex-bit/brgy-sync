@@ -306,6 +306,14 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                       submittedAt: date,
                       status: status,
                       isConfidential: isConfidential,
+                      awaitingCaptainApproval:
+                          data['claimingApprovalStatus'] == 'pending',
+                      claimingApprovalRejected:
+                          data['claimingApprovalStatus'] == 'rejected',
+                      claimingRejectionReason:
+                          (data['claimingRejectionReason'] ?? '').toString(),
+                      claimingRejectedByName:
+                          (data['claimingRejectedByName'] ?? '').toString(),
                       onTap: () =>
                           context.go('/dashboard/case/${docs[index].id}'),
                       onDelete: canDelete

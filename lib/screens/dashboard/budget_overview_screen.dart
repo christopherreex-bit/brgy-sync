@@ -113,11 +113,13 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           final key = name.toLowerCase();
           final allocated = (data['allocated'] as num?)?.toDouble() ?? 0;
           final utilized = (data['utilized'] as num?)?.toDouble() ?? 0;
+          final reserved = (data['reserved'] as num?)?.toDouble() ?? 0;
           final existing = programsByName[key];
           programsByName[key] = _BudgetProgramView(
             name: name,
             allocated: (existing?.allocated ?? 0) + allocated,
             utilized: (existing?.utilized ?? 0) + utilized,
+            reserved: (existing?.reserved ?? 0) + reserved,
             documentId: isAnnual ? null : doc.id,
             quarterlyBudgets: [
               ...?existing?.quarterlyBudgets,
@@ -126,6 +128,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                 quarter: docPeriod.quarter!,
                 allocated: allocated,
                 utilized: utilized,
+                reserved: reserved,
               ),
             ],
           );
@@ -137,6 +140,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
               name: name,
               allocated: 0,
               utilized: 0,
+              reserved: 0,
               documentId: null,
               quarterlyBudgets: const [],
             ),
@@ -147,15 +151,17 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
 
         double totalAllocated = 0;
         double totalUtilized = 0;
+        double totalReserved = 0;
         int flagged = 0;
         for (final program in programs) {
           totalAllocated += program.allocated;
           totalUtilized += program.utilized;
+          totalReserved += program.reserved;
           if (program.status == budgetLow || program.status == budgetCritical) {
             flagged++;
           }
         }
-        final totalRemaining = totalAllocated - totalUtilized;
+        final totalRemaining = totalAllocated - totalUtilized - totalReserved;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -263,7 +269,16 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: KpiCard(
-                      label: 'Remaining',
+                      label: 'Reserved for Release',
+                      value: '₱${totalReserved.toStringAsFixed(0)}',
+                      accentColor: Colors.blue,
+                      icon: Icons.lock_clock,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: KpiCard(
+                      label: 'Available',
                       value: '₱${totalRemaining.toStringAsFixed(0)}',
                       accentColor: Colors.green,
                       icon: Icons.savings,
@@ -336,6 +351,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                         status: program.status,
                         allocated: program.allocated,
                         utilized: program.utilized,
+                        reserved: program.reserved,
                       ),
                     ),
                   );
@@ -381,6 +397,7 @@ class _BudgetProgramView {
   final String name;
   final double allocated;
   final double utilized;
+  final double reserved;
   final String? documentId;
   final List<_QuarterBudget> quarterlyBudgets;
 
@@ -388,6 +405,7 @@ class _BudgetProgramView {
     required this.name,
     required this.allocated,
     required this.utilized,
+    required this.reserved,
     required this.documentId,
     required this.quarterlyBudgets,
   });
@@ -398,7 +416,7 @@ class _BudgetProgramView {
       quarterlyBudgets.map(
         (budget) => calculateBudgetHealth(
           allocated: budget.allocated,
-          utilized: budget.utilized,
+          utilized: budget.utilized + budget.reserved,
           fiscalYear: budget.fiscalYear,
           quarter: budget.quarter,
           asOf: now,
@@ -413,11 +431,13 @@ class _QuarterBudget {
   final int quarter;
   final double allocated;
   final double utilized;
+  final double reserved;
 
   const _QuarterBudget({
     required this.fiscalYear,
     required this.quarter,
     required this.allocated,
     required this.utilized,
+    required this.reserved,
   });
 }

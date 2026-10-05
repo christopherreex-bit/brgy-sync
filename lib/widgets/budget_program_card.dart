@@ -7,6 +7,7 @@ class BudgetProgramCard extends StatelessWidget {
   final String status;
   final double allocated;
   final double utilized;
+  final double reserved;
 
   const BudgetProgramCard({
     super.key,
@@ -14,13 +15,14 @@ class BudgetProgramCard extends StatelessWidget {
     required this.status,
     required this.allocated,
     required this.utilized,
+    this.reserved = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    final remaining = allocated - utilized;
+    final remaining = allocated - utilized - reserved;
     final progress = allocated > 0
-        ? (utilized / allocated).clamp(0.0, 1.0)
+        ? ((utilized + reserved) / allocated).clamp(0.0, 1.0)
         : 0.0;
 
     Color barColor;
@@ -83,6 +85,18 @@ class BudgetProgramCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          if (reserved > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '₱${reserved.toStringAsFixed(0)} reserved for release',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.blue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -91,7 +105,7 @@ class BudgetProgramCard extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               Text(
-                '₱${remaining.toStringAsFixed(0)} left',
+                '₱${remaining.toStringAsFixed(0)} available',
                 style: TextStyle(
                   fontSize: 12,
                   color: barColor,
