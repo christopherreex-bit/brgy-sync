@@ -10,11 +10,33 @@ service cloud.firestore {
     function isStaff()   { return getRole() in ['staff', 'officer', 'captain']; }
     function isOfficer() { return getRole() in ['officer', 'captain']; }
     function isCaptain() { return getRole() == 'captain'; }
+    function canCreateCaseForResident(caseData) {
+      return caseData.residentId == request.auth.uid
+             || (isStaff()
+                 && caseData.submissionChannel == 'walk_in'
+                 && caseData.encodedById == request.auth.uid
+                 && exists(/databases/$(database)/documents/users/$(caseData.residentId))
+                 && get(/databases/$(database)/documents/users/$(caseData.residentId)).data.role == 'resident');
+    }
 
     // ─── Users ───────────────────────────────────────────────────
     match /users/{userId} {
       allow read: if request.auth.uid == userId || isStaff();
       allow write: if request.auth.uid == userId || isCaptain();
+    }
+
+    // Mobile numbers claimed by newly created accounts. Document IDs are the
+    // normalized 09XXXXXXXXX number, making concurrent duplicate claims fail.
+    match /mobileIdentifiers/{mobile} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null
+                    && mobile.matches('^09[0-9]{9}$')
+                    && request.resource.data.uid is string
+                    && (request.resource.data.uid == request.auth.uid || isCaptain());
+      allow update: if false;
+      allow delete: if request.auth != null
+                    && (resource.data.uid == request.auth.uid || isCaptain());
     }
 
     // ─── Cases ───────────────────────────────────────────────────
@@ -23,7 +45,7 @@ service cloud.firestore {
       // Residents reserve the globally next sequence number and create their
       // case together in one atomic transaction.
       allow create: if request.auth != null
-                    && request.resource.data.residentId == request.auth.uid
+                    && canCreateCaseForResident(request.resource.data)
                     && request.resource.data.sequenceYear is int
                     && request.resource.data.sequenceNumber is int
                     && getAfter(/databases/$(database)/documents/caseCounters/$(request.resource.data.sequenceYear)).data.lastCaseId == caseId
@@ -49,7 +71,7 @@ service cloud.firestore {
                     && request.resource.data.lastNumber == 1
                     && request.resource.data.lastCaseId is string
                     && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId))
-                    && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.residentId == request.auth.uid
+                    && canCreateCaseForResident(getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data)
                     && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.sequenceNumber == 1;
       allow update: if request.auth != null
                     && request.resource.data.diff(resource.data).affectedKeys()
@@ -57,7 +79,7 @@ service cloud.firestore {
                     && request.resource.data.lastNumber == resource.data.lastNumber + 1
                     && request.resource.data.lastCaseId is string
                     && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId))
-                    && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.residentId == request.auth.uid
+                    && canCreateCaseForResident(getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data)
                     && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastCaseId)).data.sequenceNumber == request.resource.data.lastNumber;
       allow delete: if false;
     }

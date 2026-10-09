@@ -29,6 +29,18 @@ String? validatePhilippineMobile(String value) {
   return null;
 }
 
+String? validateUniqueMobileNumber(
+  String value,
+  Iterable<String> existingMobileNumbers,
+) {
+  final formatError = validatePhilippineMobile(value);
+  if (formatError != null) return formatError;
+  final normalized = value.trim();
+  return existingMobileNumbers.any((mobile) => mobile.trim() == normalized)
+      ? 'This mobile number is already in use.'
+      : null;
+}
+
 String? validateStaffPassword(String value) {
   if (value.isEmpty) return 'Password is required.';
   if (value.length < 6) return 'Use at least 6 characters.';

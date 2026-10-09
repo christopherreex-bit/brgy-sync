@@ -126,6 +126,13 @@ class _SidebarState extends State<Sidebar> {
                         ),
                         _navItem(
                           context,
+                          Icons.person_add_alt_1,
+                          'Walk-in Intake',
+                          '/dashboard/walk-in',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
                           Icons.assignment,
                           'Distributions',
                           '/dashboard/distributions',

@@ -38,6 +38,40 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     {'key': 'rejected', 'label': 'Rejected'},
   ];
 
+  static String _normalizeSearchValue(Object? value) {
+    return (value ?? '')
+        .toString()
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+  }
+
+  static bool _matchesCaseSearch(Map<String, dynamic> data, String rawQuery) {
+    final tokens = _normalizeSearchValue(
+      rawQuery,
+    ).split(RegExp(r'\s+')).where((token) => token.isNotEmpty).toList();
+    if (tokens.isEmpty) return true;
+
+    // Search only resident/case information that identifies the row. Hidden
+    // workflow metadata (encoder, assigned staff, requester) is intentionally
+    // excluded because it produced visually unrelated results.
+    final searchableText = _normalizeSearchValue(
+      [
+        data['referenceNumber'],
+        data['residentName'],
+        data['residentMobile'],
+        data['residentAddress'],
+        data['serviceCategory'],
+        data['serviceSubType'],
+        normalizeCaseStatus((data['status'] ?? '').toString()),
+        data['submissionChannel'],
+      ].whereType<Object>().join(' '),
+    );
+
+    return tokens.every(searchableText.contains);
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = context.watch<AuthService>().currentUserModel;
@@ -47,6 +81,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       if (canDelete)
         const {'key': 'claiming_approval', 'label': 'Claiming Approvals'},
     ];
+    final hasSearch = _searchCtrl.text.trim().isNotEmpty;
     final Query<Map<String, dynamic>> caseQuery;
     if (_activeFilter == 'claiming_approval') {
       caseQuery = FirebaseFirestore.instance
@@ -56,13 +91,13 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
           .orderBy('submissionTimestamp', descending: true)
-          .limit(50);
+          .limit(hasSearch ? 500 : 50);
     } else {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
           .where('status', isEqualTo: _activeFilter)
           .orderBy('submissionTimestamp', descending: true)
-          .limit(50);
+          .limit(hasSearch ? 500 : 50);
     }
 
     return Padding(
@@ -129,8 +164,19 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
           TextField(
             controller: _searchCtrl,
             decoration: InputDecoration(
-              hintText: 'Search by name, reference number, or contact',
+              hintText:
+                  'Search cases using any combination of name, phone, reference, service, or status',
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
+              suffixIcon: _searchCtrl.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.close),
+                    ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: Colors.grey.shade300),
@@ -231,22 +277,11 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                 });
 
                 // Client-side search filter
-                final query = _searchCtrl.text.trim().toLowerCase();
-                if (query.isNotEmpty) {
+                final searchQuery = _searchCtrl.text.trim();
+                if (searchQuery.isNotEmpty) {
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final ref = (data['referenceNumber'] ?? '')
-                        .toString()
-                        .toLowerCase();
-                    final name = (data['residentName'] ?? '')
-                        .toString()
-                        .toLowerCase();
-                    final mobile = (data['residentMobile'] ?? '')
-                        .toString()
-                        .toLowerCase();
-                    return ref.contains(query) ||
-                        name.contains(query) ||
-                        mobile.contains(query);
+                    return _matchesCaseSearch(data, searchQuery);
                   }).toList();
                 }
 

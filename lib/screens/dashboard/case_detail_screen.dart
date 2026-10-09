@@ -91,7 +91,8 @@ class CaseDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                '$dateStr · via ${channel == 'walkin' ? 'Walk-in' : 'Resident Portal'}',
+                '$dateStr · via ${channel == 'walkin' || channel == 'walk_in' ? 'Walk-in Intake' : 'Resident Portal'}'
+                '${data['encodedByName'] != null ? ' · encoded by ${data['encodedByName']}' : ''}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
               if (claimingApprovalPending) ...[

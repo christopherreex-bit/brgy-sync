@@ -24,6 +24,16 @@ void main() {
     expect(validateUniqueAccountEmail('new@example.com', existing), isNull);
   });
 
+  test('existing mobile number is rejected while typing', () {
+    final existing = {'09123456789', '09987654321'};
+
+    expect(
+      validateUniqueMobileNumber('09123456789', existing),
+      'This mobile number is already in use.',
+    );
+    expect(validateUniqueMobileNumber('09111111111', existing), isNull);
+  });
+
   test('password only requires six characters', () {
     expect(validateStaffPassword('12345'), isNotNull);
     expect(validateStaffPassword('123456'), isNull);

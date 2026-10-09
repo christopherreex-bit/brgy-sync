@@ -6,6 +6,7 @@ class UserModel {
   final String role;
   final bool isSeedData;
   final bool isActive;
+  final bool mustChangePassword;
   final DateTime createdAt;
 
   UserModel({
@@ -16,6 +17,7 @@ class UserModel {
     required this.role,
     this.isSeedData = false,
     this.isActive = true,
+    this.mustChangePassword = false,
     required this.createdAt,
   });
 
@@ -28,6 +30,7 @@ class UserModel {
       role: map['role'] ?? 'resident',
       isSeedData: map['isSeedData'] == true,
       isActive: map['isActive'] != false,
+      mustChangePassword: map['mustChangePassword'] == true,
       createdAt: map['createdAt'] is DateTime
           ? map['createdAt']
           : DateTime.now(),
@@ -42,6 +45,7 @@ class UserModel {
       'role': role,
       'isSeedData': isSeedData,
       'isActive': isActive,
+      'mustChangePassword': mustChangePassword,
       'createdAt': createdAt,
     };
   }

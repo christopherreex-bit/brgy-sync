@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/service_category.dart';
 import '../../models/case_model.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/twilio_service.dart';
@@ -18,11 +19,15 @@ import '../../utils/sla_calculator.dart' as sla;
 class SubmitRequestScreen extends StatefulWidget {
   final String? initialCategoryId;
   final String? initialSubType;
+  final UserModel? residentOverride;
+  final VoidCallback? onExit;
 
   const SubmitRequestScreen({
     super.key,
     this.initialCategoryId,
     this.initialSubType,
+    this.residentOverride,
+    this.onExit,
   });
 
   @override
@@ -30,6 +35,9 @@ class SubmitRequestScreen extends StatefulWidget {
 }
 
 class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
+  bool get _isWalkIn => widget.residentOverride != null;
+  UserModel? get _resident =>
+      widget.residentOverride ?? context.read<AuthService>().currentUserModel;
   String? _selectedCategoryId;
   String? _selectedSubType;
   List<FormFieldConfig> _fields = [];
@@ -118,7 +126,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   }
 
   void _prefillLoggedInResident() {
-    final user = context.read<AuthService>().currentUserModel;
+    final user = _resident;
     if (user == null) return;
 
     final nameParts = user.name
@@ -279,16 +287,17 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   Future<void> _submit() async {
     // Issue #3 fix: rate limiting — max 5 cases per resident per hour
     final auth = context.read<AuthService>();
-    final user = auth.currentUserModel;
-    if (user == null) {
-      _showError('Not logged in.');
+    final resident = _resident;
+    final encoder = auth.currentUserModel;
+    if (resident == null || encoder == null) {
+      _showError('The resident or staff session is unavailable.');
       return;
     }
     try {
       final oneHourAgo = DateTime.now().subtract(const Duration(hours: 1));
       final recentCases = await FirebaseFirestore.instance
           .collection('cases')
-          .where('residentId', isEqualTo: user.uid)
+          .where('residentId', isEqualTo: resident.uid)
           .where(
             'submissionTimestamp',
             isGreaterThan: Timestamp.fromDate(oneHourAgo),
@@ -338,7 +347,11 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         }
       }
 
-      final documents = await _uploadDocuments(user.uid);
+      // Walk-in uploads are owned by the authenticated encoder in Realtime
+      // Database, while the case itself remains linked to the resident.
+      final documents = await _uploadDocuments(
+        _isWalkIn ? encoder.uid : resident.uid,
+      );
 
       // Compute SLA
       final now = DateTime.now();
@@ -356,17 +369,20 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       );
 
       final caseData = CaseModel(
-        residentId: user.uid,
-        residentName: _applicantName(formData, user.name),
-        residentMobile: user.mobile,
+        residentId: resident.uid,
+        residentName: _applicantName(formData, resident.name),
+        residentMobile: resident.mobile,
         residentAddress: formData['address'] ?? '',
         requestedForSelf: !_requestingForSomeoneElse,
-        requesterName: user.name,
-        requesterMobile: user.mobile,
+        requesterName: resident.name,
+        requesterMobile: resident.mobile,
         serviceCategory: _selectedCategoryId!,
         serviceSubType: _selectedSubType!,
         status: statusPendingReview,
-        submissionChannel: 'portal',
+        submissionChannel: _isWalkIn ? 'walk_in' : 'portal',
+        encodedById: _isWalkIn ? encoder.uid : null,
+        encodedByName: _isWalkIn ? encoder.name : null,
+        encodedByRole: _isWalkIn ? encoder.role : null,
         submissionTimestamp: now,
         slaDeadline: deadline,
         slaStatus: 'on_time',
@@ -383,9 +399,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
       final refNumber = await _firestore.createCase(caseData);
       _uploadedDatabasePaths.clear();
-      final smsTo = user.isSeedData == true
+      final smsTo = resident.isSeedData == true
           ? TwilioService.fallbackNumber
-          : user.mobile;
+          : resident.mobile;
       final smsResult = await _twilio.sendSubmissionAck(smsTo, refNumber);
 
       if (mounted) {
@@ -580,8 +596,8 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Submit a Request',
+          Text(
+            _isWalkIn ? 'Create Walk-in Case' : 'Submit a Request',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -589,8 +605,10 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Select a service category to begin.',
+          Text(
+            _isWalkIn
+                ? 'Creating a case for ${widget.residentOverride!.name}. Select a service category.'
+                : 'Select a service category to begin.',
             style: TextStyle(color: Colors.grey, fontSize: 14),
           ),
           const SizedBox(height: 24),
@@ -1218,7 +1236,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             const Icon(Icons.check_circle, color: Colors.green, size: 48),
             const SizedBox(height: 16),
             Text(
-              'Good day! Your request has been successfully submitted.',
+              _isWalkIn
+                  ? 'The walk-in case has been successfully created.'
+                  : 'Good day! Your request has been successfully submitted.',
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
@@ -1255,6 +1275,18 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 child: const Text('Submit Another Request'),
               ),
             ),
+            if (_isWalkIn && widget.onExit != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: FilledButton(
+                  onPressed: widget.onExit,
+                  style: FilledButton.styleFrom(backgroundColor: kNavy),
+                  child: const Text('Finish Walk-in Intake'),
+                ),
+              ),
+            ],
           ],
         ),
       ),

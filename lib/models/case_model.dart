@@ -14,6 +14,9 @@ class CaseModel {
   final String serviceSubType;
   final String status;
   final String submissionChannel;
+  final String? encodedById;
+  final String? encodedByName;
+  final String? encodedByRole;
   final DateTime submissionTimestamp;
   final DateTime? lastUpdated;
   final String? assignedStaffId;
@@ -38,6 +41,9 @@ class CaseModel {
     required this.serviceSubType,
     this.status = 'pending_review',
     this.submissionChannel = 'portal',
+    this.encodedById,
+    this.encodedByName,
+    this.encodedByRole,
     DateTime? submissionTimestamp,
     this.lastUpdated,
     this.assignedStaffId,
@@ -64,6 +70,9 @@ class CaseModel {
       serviceSubType: map['serviceSubType'] ?? '',
       status: map['status'] ?? 'pending_review',
       submissionChannel: map['submissionChannel'] ?? 'portal',
+      encodedById: map['encodedById'],
+      encodedByName: map['encodedByName'],
+      encodedByRole: map['encodedByRole'],
       submissionTimestamp: map['submissionTimestamp'] is Timestamp
           ? (map['submissionTimestamp'] as Timestamp).toDate()
           : DateTime.now(),
@@ -96,6 +105,9 @@ class CaseModel {
       'serviceSubType': serviceSubType,
       'status': status,
       'submissionChannel': submissionChannel,
+      if (encodedById != null) 'encodedById': encodedById,
+      if (encodedByName != null) 'encodedByName': encodedByName,
+      if (encodedByRole != null) 'encodedByRole': encodedByRole,
       'submissionTimestamp': FieldValue.serverTimestamp(),
       'lastUpdated': FieldValue.serverTimestamp(),
       'slaDeadline': slaDeadline,
