@@ -7,6 +7,7 @@ class CaseModel {
   final String residentName;
   final String residentMobile;
   final String residentAddress;
+  final Map<String, dynamic>? addressLocation;
   final bool requestedForSelf;
   final String requesterName;
   final String requesterMobile;
@@ -34,6 +35,7 @@ class CaseModel {
     required this.residentName,
     required this.residentMobile,
     required this.residentAddress,
+    this.addressLocation,
     this.requestedForSelf = true,
     this.requesterName = '',
     this.requesterMobile = '',
@@ -63,6 +65,9 @@ class CaseModel {
       residentName: map['residentName'] ?? '',
       residentMobile: map['residentMobile'] ?? '',
       residentAddress: map['residentAddress'] ?? '',
+      addressLocation: map['addressLocation'] is Map
+          ? Map<String, dynamic>.from(map['addressLocation'] as Map)
+          : null,
       requestedForSelf: map['requestedForSelf'] != false,
       requesterName: map['requesterName'] ?? map['residentName'] ?? '',
       requesterMobile: map['requesterMobile'] ?? map['residentMobile'] ?? '',
@@ -98,6 +103,13 @@ class CaseModel {
       'residentName': residentName,
       'residentMobile': residentMobile,
       'residentAddress': residentAddress,
+      if (addressLocation != null) ...{
+        'addressLocation': addressLocation,
+        'location': GeoPoint(
+          (addressLocation!['latitude'] as num).toDouble(),
+          (addressLocation!['longitude'] as num).toDouble(),
+        ),
+      },
       'requestedForSelf': requestedForSelf,
       'requesterName': requesterName,
       'requesterMobile': requesterMobile,

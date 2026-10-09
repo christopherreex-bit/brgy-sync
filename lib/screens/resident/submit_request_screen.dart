@@ -9,12 +9,14 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/service_category.dart';
 import '../../models/case_model.dart';
+import '../../models/address_location.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
+import '../../widgets/address_location_field.dart';
 
 class SubmitRequestScreen extends StatefulWidget {
   final String? initialCategoryId;
@@ -45,6 +47,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   final Map<String, String?> _dropdownValues = {};
   final Map<String, String?> _radioValues = {};
   final Map<String, DateTime?> _dateValues = {};
+  final Map<String, AddressLocation?> _addressLocations = {};
   bool _loading = false;
   bool _submitted = false;
   String? _refNumber;
@@ -87,12 +90,14 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     _dropdownValues.clear();
     _radioValues.clear();
     _dateValues.clear();
+    _addressLocations.clear();
     _fieldErrors.clear();
     for (final f in _fields) {
       _controllers[f.key] = TextEditingController();
       if (f.type == FormFieldType.dropdown) _dropdownValues[f.key] = null;
       if (f.type == FormFieldType.radio) _radioValues[f.key] = null;
       if (f.type == FormFieldType.date) _dateValues[f.key] = null;
+      if (f.key == 'address') _addressLocations[f.key] = null;
     }
     if (!_requestingForSomeoneElse) {
       _prefillLoggedInResident();
@@ -256,6 +261,17 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         if (error != null) isValid = false;
       }
     }
+    final hasVisibleAddress = _fields.any(
+      (field) =>
+          field.key == 'address' && field.required && _isFieldVisible(field),
+    );
+    if (hasVisibleAddress && _addressLocations['address'] == null) {
+      setState(() {
+        _fieldErrors['address'] =
+            'Select a suggestion or tap the map to confirm the location.';
+      });
+      isValid = false;
+    }
     // Validate BASS documents
     if (_bassDocs != null) {
       final missingRequired = _bassDocs!
@@ -373,6 +389,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         residentName: _applicantName(formData, resident.name),
         residentMobile: resident.mobile,
         residentAddress: formData['address'] ?? '',
+        addressLocation: _addressLocations['address']?.toMap(),
         requestedForSelf: !_requestingForSomeoneElse,
         requesterName: resident.name,
         requesterMobile: resident.mobile,
@@ -448,6 +465,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _dropdownValues.clear();
       _radioValues.clear();
       _dateValues.clear();
+      _addressLocations.clear();
       _bassDocs = null;
       _requestingForSomeoneElse = false;
       _uploadedDatabasePaths.clear();
@@ -1083,6 +1101,25 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   }
 
   Widget _buildField(FormFieldConfig f) {
+    if (f.key == 'address') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: AddressLocationField(
+          key: ValueKey('${_selectedCategoryId}_${_selectedSubType}_${f.key}'),
+          controller: _controllers[f.key]!,
+          label: f.label,
+          required: f.required,
+          errorText: _fieldErrors[f.key],
+          onTextChanged: (_) => _validateField(f),
+          onLocationChanged: (location) {
+            setState(() {
+              _addressLocations[f.key] = location;
+              if (location != null) _fieldErrors[f.key] = null;
+            });
+          },
+        ),
+      );
+    }
     Widget field;
     switch (f.type) {
       case FormFieldType.text:
