@@ -99,6 +99,7 @@ class CaseStatusService {
       final updates = <String, dynamic>{
         'status': newStatus,
         'lastUpdated': FieldValue.serverTimestamp(),
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
       };
       if (newStatus == statusForClaiming) {
         updates.addAll({
@@ -415,6 +416,7 @@ class CaseStatusService {
         'claimingRejectedAt': FieldValue.serverTimestamp(),
         'claimingRejectionReason': trimmedReason,
         'lastUpdated': FieldValue.serverTimestamp(),
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
       };
 
       if (caseData['budgetReservedAt'] != null && programRef != null) {

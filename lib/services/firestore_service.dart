@@ -232,6 +232,8 @@ class FirestoreService {
     await _db.collection('cases').doc(caseId).update({
       ...data,
       'lastUpdated': FieldValue.serverTimestamp(),
+      if (data.containsKey('status'))
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
     });
   }
 

@@ -20,7 +20,7 @@ class CaseModel {
   final String? encodedByRole;
   final DateTime submissionTimestamp;
   final DateTime? lastUpdated;
-  final String? assignedStaffId;
+  final DateTime? statusUpdatedAt;
   final DateTime? slaDeadline;
   final String slaStatus;
   final bool isConfidential;
@@ -48,7 +48,7 @@ class CaseModel {
     this.encodedByRole,
     DateTime? submissionTimestamp,
     this.lastUpdated,
-    this.assignedStaffId,
+    this.statusUpdatedAt,
     this.slaDeadline,
     this.slaStatus = 'on_time',
     this.isConfidential = false,
@@ -84,7 +84,9 @@ class CaseModel {
       lastUpdated: map['lastUpdated'] is Timestamp
           ? (map['lastUpdated'] as Timestamp).toDate()
           : null,
-      assignedStaffId: map['assignedStaffId'],
+      statusUpdatedAt: map['statusUpdatedAt'] is Timestamp
+          ? (map['statusUpdatedAt'] as Timestamp).toDate()
+          : null,
       slaDeadline: map['slaDeadline'] is Timestamp
           ? (map['slaDeadline'] as Timestamp).toDate()
           : null,
@@ -122,6 +124,7 @@ class CaseModel {
       if (encodedByRole != null) 'encodedByRole': encodedByRole,
       'submissionTimestamp': FieldValue.serverTimestamp(),
       'lastUpdated': FieldValue.serverTimestamp(),
+      'statusUpdatedAt': FieldValue.serverTimestamp(),
       'slaDeadline': slaDeadline,
       'slaStatus': slaStatus,
       'isConfidential': isConfidential,

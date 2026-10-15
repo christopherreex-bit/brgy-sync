@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/constants.dart';
+import '../../models/service_category.dart';
 import '../../widgets/case_list_item.dart';
 
 class CaseQueueScreen extends StatefulWidget {
@@ -17,19 +18,17 @@ class CaseQueueScreen extends StatefulWidget {
 class _CaseQueueScreenState extends State<CaseQueueScreen> {
   String _activeFilter = 'all';
   final _searchCtrl = TextEditingController();
+  String _categoryFilter = 'all';
+  String _dateFilter = 'all';
+  String _sortOrder = 'fifo';
 
-  static const _statusOrder = {
-    'pending_review': 0,
-    'processing': 1,
-    'awaiting_docs': 2,
-    'approved': 3,
-    'for_claiming': 4,
-    'released': 5,
-    'rejected': 6,
-  };
+  bool get _hasAdvancedFilters =>
+      _activeFilter != 'all' ||
+      _categoryFilter != 'all' ||
+      _dateFilter != 'all';
 
   static const _baseFilters = [
-    {'key': 'all', 'label': 'All'},
+    {'key': 'all', 'label': 'All statuses'},
     {'key': 'pending_review', 'label': 'Pending Review'},
     {'key': 'processing', 'label': 'Processing'},
     {'key': 'approved', 'label': 'Approved'},
@@ -81,7 +80,6 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       if (canDelete)
         const {'key': 'claiming_approval', 'label': 'Claiming Approvals'},
     ];
-    final hasSearch = _searchCtrl.text.trim().isNotEmpty;
     final Query<Map<String, dynamic>> caseQuery;
     if (_activeFilter == 'claiming_approval') {
       caseQuery = FirebaseFirestore.instance
@@ -90,14 +88,12 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     } else if (_activeFilter == 'all' || _activeFilter == statusPendingReview) {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
-          .orderBy('submissionTimestamp', descending: true)
-          .limit(hasSearch ? 500 : 50);
+          .orderBy('submissionTimestamp', descending: true);
     } else {
       caseQuery = FirebaseFirestore.instance
           .collection('cases')
           .where('status', isEqualTo: _activeFilter)
-          .orderBy('submissionTimestamp', descending: true)
-          .limit(hasSearch ? 500 : 50);
+          .orderBy('submissionTimestamp', descending: true);
     }
 
     return Padding(
@@ -119,46 +115,6 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             style: TextStyle(color: Colors.grey, fontSize: 13),
           ),
           const SizedBox(height: 20),
-
-          // Filter tabs
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: filters.map((f) {
-                final isActive = _activeFilter == f['key'];
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _activeFilter = f['key']!),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isActive ? kNavy : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isActive ? kNavy : Colors.grey.shade300,
-                        ),
-                      ),
-                      child: Text(
-                        f['label']!,
-                        style: TextStyle(
-                          color: isActive ? Colors.white : Colors.grey.shade700,
-                          fontSize: 12,
-                          fontWeight: isActive
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
 
           // Search bar
           TextField(
@@ -186,7 +142,103 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+
+          // Uniform dropdown filters keep the queue compact and predictable.
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _queueDropdown(
+                label: 'Status',
+                value: _activeFilter,
+                width: 180,
+                items: filters
+                    .map(
+                      (filter) => DropdownMenuItem(
+                        value: filter['key'],
+                        child: Text(filter['label']!),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() {
+                  _activeFilter = value ?? 'all';
+                }),
+              ),
+              _queueDropdown(
+                label: 'Category',
+                value: _categoryFilter,
+                width: 180,
+                items: [
+                  const DropdownMenuItem(
+                    value: 'all',
+                    child: Text('All categories'),
+                  ),
+                  ...kServiceCategories.map(
+                    (category) => DropdownMenuItem(
+                      value: category.id,
+                      child: Text(category.name),
+                    ),
+                  ),
+                ],
+                onChanged: (value) => setState(() {
+                  _categoryFilter = value ?? 'all';
+                }),
+              ),
+              _queueDropdown(
+                label: 'Submitted',
+                value: _dateFilter,
+                width: 160,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('Any time')),
+                  DropdownMenuItem(value: '7', child: Text('Last 7 days')),
+                  DropdownMenuItem(value: '30', child: Text('Last 30 days')),
+                  DropdownMenuItem(value: '90', child: Text('Last 90 days')),
+                ],
+                onChanged: (value) => setState(() {
+                  _dateFilter = value ?? 'all';
+                }),
+              ),
+              _queueDropdown(
+                label: 'Sort by',
+                value: _sortOrder,
+                width: 210,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'fifo',
+                    child: Text('FIFO — oldest submitted'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'longest_status',
+                    child: Text('Longest in current status'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'recent_status',
+                    child: Text('Recently changed status'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'newest',
+                    child: Text('Newest submitted'),
+                  ),
+                ],
+                onChanged: (value) => setState(() {
+                  _sortOrder = value ?? 'fifo';
+                }),
+              ),
+              if (_hasAdvancedFilters)
+                TextButton.icon(
+                  onPressed: () => setState(() {
+                    _activeFilter = 'all';
+                    _categoryFilter = 'all';
+                    _dateFilter = 'all';
+                  }),
+                  icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                  label: const Text('Clear filters'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
           // Case list header
           Container(
@@ -254,8 +306,9 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                   }).toList();
                 }
 
-                // Group the queue by workflow stage. Within each stage, show
-                // the most recently submitted cases first.
+                // FIFO queue: all unfinished cases come first, from oldest to
+                // newest. Completed cases remain available for reference but
+                // are moved to the end of the queue.
                 docs.sort((a, b) {
                   final aData = a.data() as Map<String, dynamic>;
                   final bData = b.data() as Map<String, dynamic>;
@@ -265,15 +318,39 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                   final bStatus = normalizeCaseStatus(
                     bData['status'] as String? ?? statusPendingReview,
                   );
-                  final statusComparison = (_statusOrder[aStatus] ?? 999)
-                      .compareTo(_statusOrder[bStatus] ?? 999);
-                  if (statusComparison != 0) return statusComparison;
+                  final aFinished =
+                      aStatus == statusReleased || aStatus == statusRejected;
+                  final bFinished =
+                      bStatus == statusReleased || bStatus == statusRejected;
+                  if (aFinished != bFinished) return aFinished ? 1 : -1;
 
-                  final aTimestamp = aData['submissionTimestamp'] as Timestamp?;
-                  final bTimestamp = bData['submissionTimestamp'] as Timestamp?;
-                  return (bTimestamp?.millisecondsSinceEpoch ?? 0).compareTo(
-                    aTimestamp?.millisecondsSinceEpoch ?? 0,
-                  );
+                  final aSubmitted =
+                      (aData['submissionTimestamp'] as Timestamp?)
+                          ?.millisecondsSinceEpoch ??
+                      0;
+                  final bSubmitted =
+                      (bData['submissionTimestamp'] as Timestamp?)
+                          ?.millisecondsSinceEpoch ??
+                      0;
+                  final aStatusUpdated =
+                      (aData['statusUpdatedAt'] as Timestamp?)
+                          ?.millisecondsSinceEpoch ??
+                      aSubmitted;
+                  final bStatusUpdated =
+                      (bData['statusUpdatedAt'] as Timestamp?)
+                          ?.millisecondsSinceEpoch ??
+                      bSubmitted;
+
+                  final comparison = switch (_sortOrder) {
+                    'longest_status' => aStatusUpdated.compareTo(
+                      bStatusUpdated,
+                    ),
+                    'recent_status' => bStatusUpdated.compareTo(aStatusUpdated),
+                    'newest' => bSubmitted.compareTo(aSubmitted),
+                    _ => aSubmitted.compareTo(bSubmitted),
+                  };
+                  if (comparison != 0) return comparison;
+                  return aSubmitted.compareTo(bSubmitted);
                 });
 
                 // Client-side search filter
@@ -284,6 +361,24 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     return _matchesCaseSearch(data, searchQuery);
                   }).toList();
                 }
+
+                docs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  if (_categoryFilter != 'all' &&
+                      data['serviceCategory'] != _categoryFilter) {
+                    return false;
+                  }
+                  if (_dateFilter != 'all') {
+                    final timestamp = data['submissionTimestamp'];
+                    if (timestamp is! Timestamp) return false;
+                    final days = int.tryParse(_dateFilter) ?? 0;
+                    final cutoff = DateTime.now().subtract(
+                      Duration(days: days),
+                    );
+                    if (timestamp.toDate().isBefore(cutoff)) return false;
+                  }
+                  return true;
+                }).toList();
 
                 if (docs.isEmpty) {
                   return Center(
@@ -316,54 +411,107 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                   );
                 }
 
-                return ListView.builder(
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    final ref = data['referenceNumber'] ?? '';
-                    final category = data['serviceCategory'] ?? '';
-                    final subType = data['serviceSubType'] ?? '';
-                    final status = normalizeCaseStatus(
-                      (data['status'] ?? statusPendingReview).toString(),
-                    );
-                    final isConfidential = data['isConfidential'] ?? false;
-                    final residentName = isConfidential
-                        ? 'Confidential'
-                        : (data['residentName'] ?? '');
-                    final ts = data['submissionTimestamp'];
-                    final date = ts is Timestamp ? ts.toDate() : DateTime.now();
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          docs.length == 1
+                              ? '1 case shown'
+                              : '${docs.length} cases shown',
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final doc = docs[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          final ref = data['referenceNumber'] ?? '';
+                          final category = data['serviceCategory'] ?? '';
+                          final subType = data['serviceSubType'] ?? '';
+                          final status = normalizeCaseStatus(
+                            (data['status'] ?? statusPendingReview).toString(),
+                          );
+                          final isConfidential =
+                              data['isConfidential'] ?? false;
+                          final residentName = isConfidential
+                              ? 'Confidential'
+                              : (data['residentName'] ?? '');
+                          final ts = data['submissionTimestamp'];
+                          final date = ts is Timestamp
+                              ? ts.toDate()
+                              : DateTime.now();
 
-                    return CaseListItem(
-                      referenceNumber: ref,
-                      category: category,
-                      residentName: residentName,
-                      subType: subType,
-                      submittedAt: date,
-                      status: status,
-                      isConfidential: isConfidential,
-                      awaitingCaptainApproval:
-                          data['claimingApprovalStatus'] == 'pending',
-                      claimingApprovalRejected:
-                          data['claimingApprovalStatus'] == 'rejected',
-                      claimingRejectionReason:
-                          (data['claimingRejectionReason'] ?? '').toString(),
-                      claimingRejectedByName:
-                          (data['claimingRejectedByName'] ?? '').toString(),
-                      onTap: () =>
-                          context.go('/dashboard/case/${docs[index].id}'),
-                      onDelete: canDelete
-                          ? () => _confirmDeleteCase(
-                              docs[index].id,
-                              ref.toString(),
-                            )
-                          : null,
-                    );
-                  },
+                          return CaseListItem(
+                            referenceNumber: ref,
+                            category: category,
+                            residentName: residentName,
+                            subType: subType,
+                            submittedAt: date,
+                            status: status,
+                            isConfidential: isConfidential,
+                            awaitingCaptainApproval:
+                                data['claimingApprovalStatus'] == 'pending',
+                            claimingApprovalRejected:
+                                data['claimingApprovalStatus'] == 'rejected',
+                            claimingRejectionReason:
+                                (data['claimingRejectionReason'] ?? '')
+                                    .toString(),
+                            claimingRejectedByName:
+                                (data['claimingRejectedByName'] ?? '')
+                                    .toString(),
+                            onTap: () =>
+                                context.go('/dashboard/case/${doc.id}'),
+                            onDelete: canDelete
+                                ? () =>
+                                      _confirmDeleteCase(doc.id, ref.toString())
+                                : null,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _queueDropdown({
+    required String label,
+    required String value,
+    required double width,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return SizedBox(
+      width: width,
+      child: DropdownButtonFormField<String>(
+        key: ValueKey('$label-$value'),
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        items: items,
+        onChanged: onChanged,
       ),
     );
   }
