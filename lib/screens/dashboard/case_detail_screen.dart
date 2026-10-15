@@ -12,6 +12,7 @@ import '../../services/case_status_service.dart';
 import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
+import '../../widgets/case_location_card.dart';
 
 class CaseDetailScreen extends StatelessWidget {
   final String caseId;
@@ -91,7 +92,8 @@ class CaseDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                '$dateStr · via ${channel == 'walkin' ? 'Walk-in' : 'Resident Portal'}',
+                '$dateStr · via ${channel == 'walkin' || channel == 'walk_in' ? 'Walk-in Intake' : 'Resident Portal'}'
+                '${data['encodedByName'] != null ? ' · encoded by ${data['encodedByName']}' : ''}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
               if (claimingApprovalPending) ...[
@@ -209,6 +211,14 @@ class CaseDetailScreen extends StatelessWidget {
                           _row('Address', data['residentAddress'] ?? ''),
                           _row('Contact', data['residentMobile'] ?? ''),
                         ]),
+                        if (data['addressLocation'] is Map) ...[
+                          const SizedBox(height: 16),
+                          CaseLocationCard(
+                            location: Map<String, dynamic>.from(
+                              data['addressLocation'] as Map,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         _infoCard('Service Request Details', [
                           _row('Service Type', category.toUpperCase()),

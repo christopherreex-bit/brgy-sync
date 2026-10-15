@@ -1,0 +1,7 @@
+name = "brgy-sync-maps-proxy"
+account_id = "105e8bda24de104b6e909360f74a7a7d"
+main = "index.js"
+compatibility_date = "2025-09-23"
+
+# Set GEOAPIFY_API_KEY with:
+# npx wrangler secret put GEOAPIFY_API_KEY --config workers/maps-proxy/wrangler.toml

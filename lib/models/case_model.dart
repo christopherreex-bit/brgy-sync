@@ -7,6 +7,7 @@ class CaseModel {
   final String residentName;
   final String residentMobile;
   final String residentAddress;
+  final Map<String, dynamic>? addressLocation;
   final bool requestedForSelf;
   final String requesterName;
   final String requesterMobile;
@@ -14,9 +15,12 @@ class CaseModel {
   final String serviceSubType;
   final String status;
   final String submissionChannel;
+  final String? encodedById;
+  final String? encodedByName;
+  final String? encodedByRole;
   final DateTime submissionTimestamp;
   final DateTime? lastUpdated;
-  final String? assignedStaffId;
+  final DateTime? statusUpdatedAt;
   final DateTime? slaDeadline;
   final String slaStatus;
   final bool isConfidential;
@@ -31,6 +35,7 @@ class CaseModel {
     required this.residentName,
     required this.residentMobile,
     required this.residentAddress,
+    this.addressLocation,
     this.requestedForSelf = true,
     this.requesterName = '',
     this.requesterMobile = '',
@@ -38,9 +43,12 @@ class CaseModel {
     required this.serviceSubType,
     this.status = 'pending_review',
     this.submissionChannel = 'portal',
+    this.encodedById,
+    this.encodedByName,
+    this.encodedByRole,
     DateTime? submissionTimestamp,
     this.lastUpdated,
-    this.assignedStaffId,
+    this.statusUpdatedAt,
     this.slaDeadline,
     this.slaStatus = 'on_time',
     this.isConfidential = false,
@@ -57,6 +65,9 @@ class CaseModel {
       residentName: map['residentName'] ?? '',
       residentMobile: map['residentMobile'] ?? '',
       residentAddress: map['residentAddress'] ?? '',
+      addressLocation: map['addressLocation'] is Map
+          ? Map<String, dynamic>.from(map['addressLocation'] as Map)
+          : null,
       requestedForSelf: map['requestedForSelf'] != false,
       requesterName: map['requesterName'] ?? map['residentName'] ?? '',
       requesterMobile: map['requesterMobile'] ?? map['residentMobile'] ?? '',
@@ -64,13 +75,18 @@ class CaseModel {
       serviceSubType: map['serviceSubType'] ?? '',
       status: map['status'] ?? 'pending_review',
       submissionChannel: map['submissionChannel'] ?? 'portal',
+      encodedById: map['encodedById'],
+      encodedByName: map['encodedByName'],
+      encodedByRole: map['encodedByRole'],
       submissionTimestamp: map['submissionTimestamp'] is Timestamp
           ? (map['submissionTimestamp'] as Timestamp).toDate()
           : DateTime.now(),
       lastUpdated: map['lastUpdated'] is Timestamp
           ? (map['lastUpdated'] as Timestamp).toDate()
           : null,
-      assignedStaffId: map['assignedStaffId'],
+      statusUpdatedAt: map['statusUpdatedAt'] is Timestamp
+          ? (map['statusUpdatedAt'] as Timestamp).toDate()
+          : null,
       slaDeadline: map['slaDeadline'] is Timestamp
           ? (map['slaDeadline'] as Timestamp).toDate()
           : null,
@@ -89,6 +105,13 @@ class CaseModel {
       'residentName': residentName,
       'residentMobile': residentMobile,
       'residentAddress': residentAddress,
+      if (addressLocation != null) ...{
+        'addressLocation': addressLocation,
+        'location': GeoPoint(
+          (addressLocation!['latitude'] as num).toDouble(),
+          (addressLocation!['longitude'] as num).toDouble(),
+        ),
+      },
       'requestedForSelf': requestedForSelf,
       'requesterName': requesterName,
       'requesterMobile': requesterMobile,
@@ -96,8 +119,12 @@ class CaseModel {
       'serviceSubType': serviceSubType,
       'status': status,
       'submissionChannel': submissionChannel,
+      if (encodedById != null) 'encodedById': encodedById,
+      if (encodedByName != null) 'encodedByName': encodedByName,
+      if (encodedByRole != null) 'encodedByRole': encodedByRole,
       'submissionTimestamp': FieldValue.serverTimestamp(),
       'lastUpdated': FieldValue.serverTimestamp(),
+      'statusUpdatedAt': FieldValue.serverTimestamp(),
       'slaDeadline': slaDeadline,
       'slaStatus': slaStatus,
       'isConfidential': isConfidential,

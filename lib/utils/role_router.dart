@@ -5,6 +5,7 @@ import '../screens/resident/resident_shell.dart';
 import '../screens/dashboard/dashboard_shell.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
+import '../screens/auth/change_temporary_password_screen.dart';
 import '../screens/dashboard/case_queue_screen.dart';
 import '../screens/dashboard/case_detail_screen.dart';
 import '../screens/dashboard/update_status_screen.dart';
@@ -24,6 +25,7 @@ import '../screens/dashboard/report_builder_screen.dart';
 import '../screens/dashboard/report_archive_screen.dart';
 import '../screens/dashboard/account_management_screen.dart';
 import '../screens/dashboard/user_management_screen.dart';
+import '../screens/dashboard/walk_in_intake_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/login',
@@ -32,6 +34,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/register',
       builder: (context, state) => const RegisterScreen(),
+    ),
+    GoRoute(
+      path: '/change-temporary-password',
+      builder: (context, state) => const ChangeTemporaryPasswordScreen(),
     ),
 
     // ─── Resident Portal ──────────────────────────────────────────
@@ -65,6 +71,10 @@ final appRouter = GoRouter(
         GoRoute(
           path: '/dashboard/distributions',
           builder: (context, state) => const DistributionsScreen(),
+        ),
+        GoRoute(
+          path: '/dashboard/walk-in',
+          builder: (context, state) => const WalkInIntakeScreen(),
         ),
         GoRoute(
           path: '/dashboard/audit',
@@ -149,10 +159,22 @@ final appRouter = GoRouter(
     final isOnAuthScreen =
         state.matchedLocation == '/login' ||
         state.matchedLocation == '/register';
+    final isChangingTemporaryPassword =
+        state.matchedLocation == '/change-temporary-password';
 
     if (!isLoggedIn && !isOnAuthScreen) return '/login';
+    final user = auth.currentUserModel;
+    if (isLoggedIn &&
+        user?.mustChangePassword == true &&
+        !isChangingTemporaryPassword) {
+      return '/change-temporary-password';
+    }
+    if (isLoggedIn &&
+        isChangingTemporaryPassword &&
+        user?.mustChangePassword != true) {
+      return user?.isResident == true ? '/resident' : '/dashboard';
+    }
     if (isLoggedIn && isOnAuthScreen) {
-      final user = auth.currentUserModel;
       if (user != null && user.role == 'resident') return '/resident';
       return '/dashboard';
     }

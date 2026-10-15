@@ -26,10 +26,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
 
   Future<void> _showCreateAccountDialog() async {
     Set<String> existingEmails;
+    Set<String> existingMobileNumbers;
+    final authService = context.read<AuthService>();
     try {
-      existingEmails = await context
-          .read<AuthService>()
-          .getExistingAccountEmails();
+      existingEmails = await authService.getExistingAccountEmails();
+      existingMobileNumbers = await authService.getExistingMobileNumbers();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -107,7 +108,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     ),
                     keyboardType: TextInputType.phone,
                     onChanged: (value) => setDialogState(
-                      () => mobileError = validatePhilippineMobile(value),
+                      () => mobileError = validateUniqueMobileNumber(
+                        value,
+                        existingMobileNumbers,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -168,8 +172,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   emailCtrl.text,
                   existingEmails,
                 );
-                final nextMobileError = validatePhilippineMobile(
+                final nextMobileError = validateUniqueMobileNumber(
                   mobileCtrl.text,
+                  existingMobileNumbers,
                 );
                 final nextPasswordError = validateStaffPassword(passCtrl.text);
                 setDialogState(() {

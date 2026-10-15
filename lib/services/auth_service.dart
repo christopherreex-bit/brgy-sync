@@ -54,11 +54,15 @@ class AuthService extends ChangeNotifier {
     required String mobile,
     required String password,
   }) async {
+    final mobileError = validatePhilippineMobile(mobile);
+    if (mobileError != null) return mobileError;
+    User? createdUser;
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+      createdUser = cred.user;
       if (cred.user != null) {
         final user = UserModel(
           uid: cred.user!.uid,
@@ -68,10 +72,23 @@ class AuthService extends ChangeNotifier {
           role: 'resident',
           createdAt: DateTime.now(),
         );
-        await _firestore
-            .collection('users')
-            .doc(cred.user!.uid)
-            .set(user.toMap());
+        final mobileRef = _firestore
+            .collection('mobileIdentifiers')
+            .doc(mobile);
+        await _firestore.runTransaction((transaction) async {
+          final existingMobile = await transaction.get(mobileRef);
+          if (existingMobile.exists) {
+            throw StateError('This mobile number is already in use.');
+          }
+          transaction.set(mobileRef, {
+            'uid': cred.user!.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          transaction.set(
+            _firestore.collection('users').doc(cred.user!.uid),
+            user.toMap(),
+          );
+        });
         _currentUserModel = user;
         notifyListeners();
       }
@@ -79,6 +96,14 @@ class AuthService extends ChangeNotifier {
     } on FirebaseAuthException catch (e) {
       return e.message;
     } catch (e) {
+      if (createdUser != null) {
+        try {
+          await createdUser.delete();
+        } catch (_) {}
+      }
+      if (e.toString().contains('mobile number is already in use')) {
+        return 'This mobile number is already in use.';
+      }
       return e.toString();
     }
   }
@@ -165,6 +190,10 @@ class AuthService extends ChangeNotifier {
     final passwordError = validateStaffPassword(password);
     if (passwordError != null) return passwordError;
 
+    if (await mobileNumberExists(mobile)) {
+      return 'This mobile number is already in use.';
+    }
+
     FirebaseAuth? secondaryAuth;
     User? createdUser;
     try {
@@ -199,10 +228,21 @@ class AuthService extends ChangeNotifier {
         isActive: true,
         createdAt: DateTime.now(),
       );
-      await _firestore
-          .collection('users')
-          .doc(createdUser.uid)
-          .set(user.toMap());
+      final mobileRef = _firestore.collection('mobileIdentifiers').doc(mobile);
+      await _firestore.runTransaction((transaction) async {
+        final existingMobile = await transaction.get(mobileRef);
+        if (existingMobile.exists) {
+          throw StateError('This mobile number is already in use.');
+        }
+        transaction.set(mobileRef, {
+          'uid': createdUser!.uid,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(
+          _firestore.collection('users').doc(createdUser.uid),
+          user.toMap(),
+        );
+      });
       return null;
     } on FirebaseAuthException catch (e) {
       if (createdUser != null) {
@@ -397,14 +437,25 @@ class AuthService extends ChangeNotifier {
 
     final profileRef = _firestore.collection('users').doc(user.uid);
     final profileData = profile.toMap();
+    final mobileRef = _firestore
+        .collection('mobileIdentifiers')
+        .doc(profile.mobile);
+    final mobileSnapshot = await mobileRef.get();
     try {
-      await profileRef.delete();
+      final batch = _firestore.batch()..delete(profileRef);
+      if (mobileSnapshot.exists && mobileSnapshot.data()?['uid'] == user.uid) {
+        batch.delete(mobileRef);
+      }
+      await batch.commit();
       try {
         await user.delete();
       } catch (error) {
         // Restore the profile if Firebase Authentication deletion fails so the
         // account is never left authenticated without its role record.
         await profileRef.set(profileData);
+        if (mobileSnapshot.exists) {
+          await mobileRef.set(mobileSnapshot.data()!);
+        }
         rethrow;
       }
       _currentUserModel = null;
@@ -433,5 +484,160 @@ class AuthService extends ChangeNotifier {
         )
         .where((email) => email.isNotEmpty)
         .toSet();
+  }
+
+  Future<bool> emailAddressExists(String email) async {
+    final normalized = email.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    final snapshot = await _firestore.collection('users').get();
+    return snapshot.docs.any(
+      (doc) =>
+          (doc.data()['email'] ?? '').toString().trim().toLowerCase() ==
+          normalized,
+    );
+  }
+
+  Future<Set<String>> getExistingMobileNumbers() async {
+    final snapshot = await _firestore.collection('users').get();
+    return snapshot.docs
+        .map((doc) => (doc.data()['mobile'] ?? '').toString().trim())
+        .where((mobile) => mobile.isNotEmpty)
+        .toSet();
+  }
+
+  Future<bool> mobileNumberExists(String mobile) async {
+    final normalized = mobile.trim();
+    if ((await _firestore.collection('mobileIdentifiers').doc(normalized).get())
+        .exists) {
+      return true;
+    }
+    final legacyMatch = await _firestore
+        .collection('users')
+        .where('mobile', isEqualTo: normalized)
+        .limit(1)
+        .get();
+    return legacyMatch.docs.isNotEmpty;
+  }
+
+  Future<List<UserModel>> searchResidents(String searchTerm) async {
+    final normalized = searchTerm.trim().toLowerCase();
+    if (normalized.isEmpty) return const [];
+    final snapshot = await _firestore
+        .collection('users')
+        .where('role', isEqualTo: 'resident')
+        .get();
+    final matches = <UserModel>[];
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final name = (data['name'] ?? '').toString().trim().toLowerCase();
+      final email = (data['email'] ?? '').toString().trim().toLowerCase();
+      final mobile = (data['mobile'] ?? '').toString().trim();
+      if (email == normalized ||
+          mobile == normalized ||
+          name.contains(normalized)) {
+        matches.add(UserModel.fromMap(data, doc.id));
+      }
+    }
+    matches.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
+    return matches.take(20).toList();
+  }
+
+  /// Creates a resident account for a walk-in without replacing the staff
+  /// member's current Firebase session. The temporary password is sent only
+  /// to the account service and is never stored in Firestore.
+  Future<({UserModel? resident, String? error})> createWalkInResident({
+    required String name,
+    required String email,
+    required String mobile,
+    required String temporaryPassword,
+  }) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || _currentUserModel?.canAccessDashboard != true) {
+      return (resident: null, error: 'Your staff session has expired.');
+    }
+    final emailError = validateAccountEmail(email);
+    if (emailError != null) return (resident: null, error: emailError);
+    final mobileError = validatePhilippineMobile(mobile);
+    if (mobileError != null) return (resident: null, error: mobileError);
+    final passwordError = validateStaffPassword(temporaryPassword);
+    if (passwordError != null) return (resident: null, error: passwordError);
+    if (await emailAddressExists(email)) {
+      return (resident: null, error: 'This email address is already in use.');
+    }
+    if (await mobileNumberExists(mobile)) {
+      return (resident: null, error: 'This mobile number is already in use.');
+    }
+
+    try {
+      final token = await currentUser.getIdToken(true);
+      final response = await http
+          .post(
+            Uri.parse(_accountAdminUrl),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'name': name.trim(),
+              'email': email.trim().toLowerCase(),
+              'mobile': mobile.trim(),
+              'password': temporaryPassword,
+              'role': 'resident',
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+      final decoded = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final backendError =
+            (decoded['error'] ?? 'Could not create resident account.')
+                .toString();
+        if (backendError.toUpperCase().contains('EMAIL_EXISTS')) {
+          return (
+            resident: null,
+            error: 'This email address is already in use.',
+          );
+        }
+        return (resident: null, error: backendError);
+      }
+      final uid = (decoded['uid'] ?? '').toString();
+      final resident = UserModel(
+        uid: uid,
+        name: name.trim(),
+        mobile: mobile.trim(),
+        email: email.trim().toLowerCase(),
+        role: 'resident',
+        mustChangePassword: true,
+        createdAt: DateTime.now(),
+      );
+      return (resident: resident, error: null);
+    } catch (error) {
+      return (
+        resident: null,
+        error: 'Could not create resident account: $error',
+      );
+    }
+  }
+
+  Future<String?> completeTemporaryPasswordChange({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final error = await changeOwnPassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    if (error != null) return error;
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return 'Your session has expired.';
+    await _firestore.collection('users').doc(uid).update({
+      'mustChangePassword': false,
+    });
+    await _loadUserData(uid);
+    notifyListeners();
+    return null;
   }
 }

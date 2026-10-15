@@ -32,18 +32,35 @@ export default {
       );
       const accessToken = await getGoogleAccessToken(serviceAccount);
       const callerProfile = await getFirestoreUser(callerUid, accessToken);
-      if (firestoreString(callerProfile, 'role') !== 'captain') {
-        return jsonResponse(
-          { error: 'Only the Barangay Captain can manage accounts.' },
-          403,
-        );
-      }
+      const callerRole = firestoreString(callerProfile, 'role');
 
       const body = await request.json();
       if (request.method === 'DELETE') {
+        if (callerRole !== 'captain') {
+          return jsonResponse(
+            { error: 'Only the Barangay Captain can manage accounts.' },
+            403,
+          );
+        }
         return deleteAccount(body, callerUid, accessToken);
       }
-      return createAccount(body, accessToken);
+      const requestedRole = body?.role;
+      const mayCreateResident =
+        requestedRole === 'resident' &&
+        ['staff', 'officer', 'captain'].includes(callerRole);
+      const mayCreateManagedAccount =
+        requestedRole !== 'resident' && callerRole === 'captain';
+      if (!mayCreateResident && !mayCreateManagedAccount) {
+        return jsonResponse(
+          { error: 'You are not allowed to create this account type.' },
+          403,
+        );
+      }
+      return createAccount(body, accessToken, {
+        callerUid,
+        callerRole,
+        isWalkInResident: requestedRole === 'resident',
+      });
     } catch (error) {
       return jsonResponse(
         { error: error?.message || 'Account service request failed.' },
@@ -67,6 +84,7 @@ async function deleteAccount(body, callerUid, accessToken) {
 
   const targetProfile = await getFirestoreUser(uid, accessToken);
   const targetRole = firestoreString(targetProfile, 'role');
+  const targetMobile = firestoreString(targetProfile, 'mobile');
   if (!['staff', 'officer', 'captain'].includes(targetRole)) {
     return jsonResponse(
       {
@@ -103,16 +121,37 @@ async function deleteAccount(body, callerUid, accessToken) {
   if (!profileDelete.ok && profileDelete.status !== 404) {
     throw new Error(await responseError(profileDelete));
   }
+  if (targetMobile) {
+    const mobileDelete = await fetch(
+      `${FIRESTORE_BASE}/mobileIdentifiers/${encodeURIComponent(targetMobile)}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+    if (!mobileDelete.ok && mobileDelete.status !== 404) {
+      throw new Error(await responseError(mobileDelete));
+    }
+  }
   return jsonResponse({ success: true, uid });
 }
 
-async function createAccount(body, accessToken) {
+async function createAccount(body, accessToken, caller) {
   const { email, password, name, mobile, role } = body ?? {};
   if (!email || !password || !name || !mobile || !role) {
     return jsonResponse({ error: 'Missing required fields.' }, 400);
   }
-  if (!['staff', 'officer', 'captain'].includes(role)) {
+  if (!['resident', 'staff', 'officer', 'captain'].includes(role)) {
     return jsonResponse({ error: 'Invalid role.' }, 400);
+  }
+
+  const normalizedMobile = mobile.trim();
+  const mobileInUse = await firestoreMobileExists(
+    normalizedMobile,
+    accessToken,
+  );
+  if (mobileInUse) {
+    return jsonResponse({ error: 'This mobile number is already in use.' }, 409);
   }
 
   const signUp = await fetch(
@@ -142,12 +181,20 @@ async function createAccount(body, accessToken) {
       body: JSON.stringify({
         fields: {
           name: { stringValue: name },
-          mobile: { stringValue: mobile },
+          mobile: { stringValue: normalizedMobile },
           email: { stringValue: email },
           role: { stringValue: role },
           isActive: { booleanValue: true },
           isSeedData: { booleanValue: false },
           createdAt: { timestampValue: new Date().toISOString() },
+          ...(caller.isWalkInResident
+            ? {
+                mustChangePassword: { booleanValue: true },
+                accountOrigin: { stringValue: 'walk_in' },
+                createdBy: { stringValue: caller.callerUid },
+                createdByRole: { stringValue: caller.callerRole },
+              }
+            : {}),
         },
       }),
     },
@@ -166,10 +213,85 @@ async function createAccount(body, accessToken) {
     );
     throw new Error(await responseError(profileWrite));
   }
+
+
+  const mobileWrite = await fetch(
+    `${FIRESTORE_BASE}/mobileIdentifiers?documentId=${encodeURIComponent(normalizedMobile)}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          uid: { stringValue: created.localId },
+          createdAt: { timestampValue: new Date().toISOString() },
+        },
+      }),
+    },
+  );
+  if (!mobileWrite.ok) {
+    await fetch(
+      `${FIRESTORE_BASE}/users/${encodeURIComponent(created.localId)}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts:delete`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ localId: created.localId }),
+      },
+    );
+    if (mobileWrite.status === 409) {
+      throw new Error('This mobile number is already in use.');
+    }
+    throw new Error(await responseError(mobileWrite));
+  }
   return jsonResponse(
     { success: true, uid: created.localId, email, role },
     201,
   );
+}
+
+async function firestoreMobileExists(mobile, accessToken) {
+  const identifier = await fetch(
+    `${FIRESTORE_BASE}/mobileIdentifiers/${encodeURIComponent(mobile)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (identifier.ok) return true;
+  if (identifier.status !== 404) throw new Error(await responseError(identifier));
+
+  const query = await fetch(
+    `${FIRESTORE_BASE}:runQuery`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'users' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'mobile' },
+              op: 'EQUAL',
+              value: { stringValue: mobile },
+            },
+          },
+          limit: 1,
+        },
+      }),
+    },
+  );
+  if (!query.ok) throw new Error(await responseError(query));
+  const results = await query.json();
+  return results.some((entry) => entry.document);
 }
 
 async function verifyFirebaseIdToken(idToken) {
