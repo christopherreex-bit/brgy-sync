@@ -10,6 +10,9 @@ service cloud.firestore {
     function isStaff()   { return getRole() in ['staff', 'officer', 'captain']; }
     function isOfficer() { return getRole() in ['officer', 'captain']; }
     function isCaptain() { return getRole() == 'captain'; }
+    function currentUserMobile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.mobile;
+    }
     function canCreateCaseForResident(caseData) {
       return caseData.residentId == request.auth.uid
              || (isStaff()
@@ -37,6 +40,59 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if request.auth != null
                     && (resource.data.uid == request.auth.uid || isCaptain());
+    }
+
+    // ─── Citizen Registry ────────────────────────────────────────
+    // The registry is authoritative and independent of login accounts.
+    // Residents can only read a record whose unique mobile matches their
+    // account; registry creation and edits remain barangay-controlled.
+    match /citizenRegistry/{registryId} {
+      allow read: if isStaff()
+                  || (request.auth != null
+                      && resource.data.mobile == currentUserMobile());
+      allow create: if isStaff()
+                    || (request.auth != null
+                        && registryId == request.resource.data.mobile
+                        && request.resource.data.createdByAccountId == request.auth.uid
+                        && request.resource.data.source == 'account_registration'
+                        && request.resource.data.verificationStatus == 'pending_verification'
+                        && existsAfter(/databases/$(database)/documents/users/$(request.auth.uid))
+                        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'resident'
+                        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.mobile
+                            == request.resource.data.mobile);
+      allow update: if isStaff();
+      allow delete: if isCaptain();
+    }
+
+    match /registryCorrections/{correctionId} {
+      allow read: if isStaff()
+                  || (request.auth != null
+                      && resource.data.residentId == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.resource.data.residentId == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.requestedChanges is map
+                    && exists(/databases/$(database)/documents/citizenRegistry/$(request.resource.data.registryId))
+                    && get(/databases/$(database)/documents/citizenRegistry/$(request.resource.data.registryId)).data.mobile
+                        == currentUserMobile();
+      allow update: if isOfficer();
+      allow delete: if false;
+    }
+
+    // A case creates one immutable observation that staff can compare with the
+    // verified registry without silently replacing authoritative information.
+    match /registryObservations/{caseId} {
+      allow read: if isStaff()
+                  || (request.auth != null
+                      && resource.data.residentId == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.resource.data.caseId == caseId
+                    && existsAfter(/databases/$(database)/documents/cases/$(caseId))
+                    && canCreateCaseForResident(
+                         getAfter(/databases/$(database)/documents/cases/$(caseId)).data
+                       );
+      allow update: if isStaff();
+      allow delete: if isCaptain();
     }
 
     // ─── Cases ───────────────────────────────────────────────────

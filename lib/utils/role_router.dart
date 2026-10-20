@@ -26,6 +26,7 @@ import '../screens/dashboard/report_archive_screen.dart';
 import '../screens/dashboard/account_management_screen.dart';
 import '../screens/dashboard/user_management_screen.dart';
 import '../screens/dashboard/walk_in_intake_screen.dart';
+import '../screens/dashboard/citizen_registry_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/login',
@@ -50,6 +51,10 @@ final appRouter = GoRouter(
     ShellRoute(
       builder: (context, state, child) => DashboardShell(child: child),
       routes: [
+        GoRoute(
+          path: '/dashboard/citizen-registry',
+          builder: (context, state) => const CitizenRegistryScreen(),
+        ),
         GoRoute(
           path: '/dashboard',
           builder: (context, state) => const CaseQueueScreen(),

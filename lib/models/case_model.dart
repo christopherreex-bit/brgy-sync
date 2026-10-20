@@ -25,6 +25,7 @@ class CaseModel {
   final String slaStatus;
   final bool isConfidential;
   final List<Map<String, dynamic>> documents;
+  final Map<String, dynamic> requestDetails;
   final double? assistanceAmount;
   final String? budgetProgramId;
 
@@ -53,6 +54,7 @@ class CaseModel {
     this.slaStatus = 'on_time',
     this.isConfidential = false,
     this.documents = const [],
+    this.requestDetails = const {},
     this.assistanceAmount,
     this.budgetProgramId,
   }) : submissionTimestamp = submissionTimestamp ?? DateTime.now();
@@ -93,6 +95,9 @@ class CaseModel {
       slaStatus: map['slaStatus'] ?? 'on_time',
       isConfidential: map['isConfidential'] ?? false,
       documents: List<Map<String, dynamic>>.from(map['documents'] ?? []),
+      requestDetails: map['requestDetails'] is Map
+          ? Map<String, dynamic>.from(map['requestDetails'] as Map)
+          : const {},
       assistanceAmount: (map['assistanceAmount'] as num?)?.toDouble(),
       budgetProgramId: map['budgetProgramId'],
     );
@@ -129,6 +134,7 @@ class CaseModel {
       'slaStatus': slaStatus,
       'isConfidential': isConfidential,
       'documents': documents,
+      'requestDetails': requestDetails,
       if (assistanceAmount != null) 'assistanceAmount': assistanceAmount,
       if (budgetProgramId != null) 'budgetProgramId': budgetProgramId,
     };

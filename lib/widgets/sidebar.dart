@@ -133,6 +133,13 @@ class _SidebarState extends State<Sidebar> {
                         ),
                         _navItem(
                           context,
+                          Icons.people_alt_outlined,
+                          'Citizen Registry',
+                          '/dashboard/citizen-registry',
+                          currentLocation,
+                        ),
+                        _navItem(
+                          context,
                           Icons.assignment,
                           'Distributions',
                           '/dashboard/distributions',

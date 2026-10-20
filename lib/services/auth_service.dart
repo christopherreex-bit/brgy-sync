@@ -56,25 +56,28 @@ class AuthService extends ChangeNotifier {
   }) async {
     final mobileError = validatePhilippineMobile(mobile);
     if (mobileError != null) return mobileError;
+    final normalizedMobile = mobile.trim();
+    final normalizedEmail = email.trim().toLowerCase();
     User? createdUser;
+    var firestoreProfileCreated = false;
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
+        email: normalizedEmail,
         password: password,
       );
       createdUser = cred.user;
       if (cred.user != null) {
         final user = UserModel(
           uid: cred.user!.uid,
-          name: name,
-          mobile: mobile,
-          email: email,
+          name: name.trim(),
+          mobile: normalizedMobile,
+          email: normalizedEmail,
           role: 'resident',
           createdAt: DateTime.now(),
         );
         final mobileRef = _firestore
             .collection('mobileIdentifiers')
-            .doc(mobile);
+            .doc(normalizedMobile);
         await _firestore.runTransaction((transaction) async {
           final existingMobile = await transaction.get(mobileRef);
           if (existingMobile.exists) {
@@ -89,6 +92,39 @@ class AuthService extends ChangeNotifier {
             user.toMap(),
           );
         });
+        firestoreProfileCreated = true;
+
+        final registryMatch = await _firestore
+            .collection('citizenRegistry')
+            .where('mobile', isEqualTo: normalizedMobile)
+            .limit(1)
+            .get();
+        final existingRegistryId = registryMatch.docs.firstOrNull?.id;
+        final registryId = existingRegistryId ?? normalizedMobile;
+        await _firestore.collection('users').doc(cred.user!.uid).update({
+          'citizenRegistryId': registryId,
+        });
+        if (existingRegistryId == null) {
+          final registryRef = _firestore
+              .collection('citizenRegistry')
+              .doc(registryId);
+          await _firestore.runTransaction((transaction) async {
+            final sameIdRecord = await transaction.get(registryRef);
+            if (!sameIdRecord.exists) {
+              transaction.set(registryRef, {
+                'registryId': registryId,
+                'legalName': name.trim(),
+                'mobile': normalizedMobile,
+                'email': normalizedEmail,
+                'verificationStatus': 'pending_verification',
+                'source': 'account_registration',
+                'createdByAccountId': cred.user!.uid,
+                'createdAt': FieldValue.serverTimestamp(),
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+            }
+          });
+        }
         _currentUserModel = user;
         notifyListeners();
       }
@@ -97,6 +133,15 @@ class AuthService extends ChangeNotifier {
       return e.message;
     } catch (e) {
       if (createdUser != null) {
+        if (firestoreProfileCreated) {
+          try {
+            await _firestore.collection('users').doc(createdUser.uid).delete();
+            await _firestore
+                .collection('mobileIdentifiers')
+                .doc(normalizedMobile)
+                .delete();
+          } catch (_) {}
+        }
         try {
           await createdUser.delete();
         } catch (_) {}

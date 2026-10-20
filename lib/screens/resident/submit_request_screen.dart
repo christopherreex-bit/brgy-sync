@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../../models/case_model.dart';
 import '../../models/address_location.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../services/citizen_registry_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
@@ -52,8 +54,11 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   bool _submitted = false;
   String? _refNumber;
   bool _requestingForSomeoneElse = false;
+  bool _registryPrefillApplied = false;
+  int _registryPrefillRequest = 0;
 
   final _firestore = FirestoreService();
+  final _citizenRegistry = CitizenRegistryService();
   final _twilio = TwilioService();
   final _database = FirebaseDatabase.instance;
   final _encryption = AesGcm.with256bits();
@@ -101,6 +106,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     }
     if (!_requestingForSomeoneElse) {
       _prefillLoggedInResident();
+      unawaited(_prefillFromCitizenRegistry());
     }
     // BASS doc checklist
     if (_selectedCategoryId == 'bass') {
@@ -159,9 +165,115 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     }
   }
 
+  Future<void> _prefillFromCitizenRegistry() async {
+    final resident = _resident;
+    if (resident == null) return;
+    final request = ++_registryPrefillRequest;
+    final category = _selectedCategoryId;
+    final subType = _selectedSubType;
+    final record = await _citizenRegistry.findByMobile(resident.mobile);
+    final data = record?.data();
+    if (!mounted ||
+        request != _registryPrefillRequest ||
+        _requestingForSomeoneElse ||
+        category != _selectedCategoryId ||
+        subType != _selectedSubType ||
+        data == null) {
+      return;
+    }
+
+    void setText(String key, Object? value) {
+      final controller = _controllers[key];
+      final text = (value ?? '').toString().trim();
+      if (controller != null &&
+          controller.text.trim().isEmpty &&
+          text.isNotEmpty) {
+        controller.text = text;
+      }
+    }
+
+    String? matchingOption(String key, Object? value) {
+      final raw = (value ?? '').toString().trim();
+      if (raw.isEmpty) return null;
+      final field = _fields.where((item) => item.key == key).firstOrNull;
+      for (final option in field?.options ?? const <String>[]) {
+        if (option.toLowerCase() == raw.toLowerCase()) return option;
+      }
+      return null;
+    }
+
+    DateTime? registryDate(Object? value) {
+      if (value is Timestamp) return value.toDate();
+      return DateTime.tryParse((value ?? '').toString());
+    }
+
+    String residencyValue() {
+      final raw = (data['residencySince'] ?? '').toString().trim();
+      final since = DateTime.tryParse(raw);
+      if (since == null) return raw;
+      final now = DateTime.now();
+      var years = now.year - since.year;
+      if (now.month < since.month ||
+          (now.month == since.month && now.day < since.day)) {
+        years--;
+      }
+      return years.clamp(0, 999).toString();
+    }
+
+    setState(() {
+      final legalName = (data['legalName'] ?? '').toString().trim();
+      if (legalName.isNotEmpty) {
+        for (final key in _personNameKeys) {
+          setText(key, legalName);
+        }
+        if (_selectedCategoryId == 'bass') {
+          setText('claimantName', legalName);
+        }
+        final parts = legalName
+            .split(RegExp(r'\s+'))
+            .where((part) => part.isNotEmpty)
+            .toList();
+        if (parts.isNotEmpty) {
+          setText('firstName', parts.first);
+          if (parts.length > 1) setText('surname', parts.last);
+          if (parts.length > 2) {
+            setText('middleInitial', parts[1].substring(0, 1).toUpperCase());
+          }
+        }
+      }
+      setText('address', data['permanentAddress']);
+      setText('contact', data['mobile']);
+      setText('precinct', data['precinctNumber']);
+      setText('lengthOfStay', residencyValue());
+      setText('yearsResidency', residencyValue());
+      setText('emergencyName', data['emergencyContactName']);
+      setText('emergencyContact', data['emergencyContactMobile']);
+      setText('emergencyRelation', data['emergencyContactRelationship']);
+
+      final birthday = registryDate(data['dateOfBirth']);
+      if (_dateValues.containsKey('birthday') &&
+          _dateValues['birthday'] == null &&
+          birthday != null) {
+        _dateValues['birthday'] = birthday;
+      }
+      final gender = matchingOption('gender', data['sex']);
+      if (_radioValues.containsKey('gender') && gender != null) {
+        _radioValues['gender'] ??= gender;
+      }
+      final civilStatus = matchingOption('civilStatus', data['civilStatus']);
+      if (_dropdownValues.containsKey('civilStatus') && civilStatus != null) {
+        _dropdownValues['civilStatus'] ??= civilStatus;
+      }
+      _registryPrefillApplied = true;
+      _fieldErrors.clear();
+    });
+  }
+
   void _setRequestingForSomeoneElse(bool value) {
     setState(() {
+      _registryPrefillRequest++;
       _requestingForSomeoneElse = value;
+      _registryPrefillApplied = false;
       _fieldErrors.clear();
       for (final document in _bassDocs ?? <BassDocument>[]) {
         if (document.requiredWhenRequestingForSomeoneElse) {
@@ -192,6 +304,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
       if (!value) {
         _prefillLoggedInResident();
+        unawaited(_prefillFromCitizenRegistry());
       }
     });
   }
@@ -387,7 +500,10 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       final caseData = CaseModel(
         residentId: resident.uid,
         residentName: _applicantName(formData, resident.name),
-        residentMobile: resident.mobile,
+        residentMobile:
+            formData['contact']?.toString().trim().isNotEmpty == true
+            ? formData['contact'].toString().trim()
+            : resident.mobile,
         residentAddress: formData['address'] ?? '',
         addressLocation: _addressLocations['address']?.toMap(),
         requestedForSelf: !_requestingForSomeoneElse,
@@ -407,6 +523,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             .firstWhere((c) => c.id == _selectedCategoryId!)
             .isConfidential,
         documents: documents,
+        requestDetails: formData,
         assistanceAmount:
             formData['assistanceAmount'] != null &&
                 formData['assistanceAmount'].toString().isNotEmpty
@@ -917,6 +1034,32 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               ),
             ),
             const SizedBox(height: 16),
+          ],
+          if (_registryPrefillApplied && !_requestingForSomeoneElse) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                border: Border.all(color: Colors.green.shade200),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.verified_user_outlined,
+                    color: Colors.green.shade700,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Available information was filled from your Citizen Registry record. Please review it before submitting and confirm the address pin when required.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           ..._fields.where(_isFieldVisible).map((f) => _buildField(f)),
           // BASS document checklist

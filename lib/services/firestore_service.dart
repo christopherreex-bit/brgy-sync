@@ -12,6 +12,30 @@ class FirestoreService {
     final year = DateTime.now().year;
     final counterRef = _db.collection('caseCounters').doc('$year');
     final docRef = _db.collection('cases').doc();
+    final accountMobile =
+        (caseData.requesterMobile.isNotEmpty
+                ? caseData.requesterMobile
+                : caseData.residentMobile)
+            .replaceAll(RegExp(r'\D'), '');
+    final registryQuery = await _db
+        .collection('citizenRegistry')
+        .where('mobile', isEqualTo: accountMobile)
+        .limit(1)
+        .get();
+    final registryDocument = registryQuery.docs.firstOrNull;
+    final registryData = registryDocument?.data();
+    final registryVerified = registryData?['verificationStatus'] == 'verified';
+    final registryName = _normalizeIdentity(registryData?['legalName']);
+    final caseName = _normalizeIdentity(caseData.residentName);
+    final identityMatches =
+        caseData.requestedForSelf &&
+        registryName.isNotEmpty &&
+        registryName == caseName;
+    final registryMatchStatus = registryDocument == null
+        ? 'not_registered'
+        : registryVerified && identityMatches
+        ? 'verified_match'
+        : 'needs_review';
 
     return _db.runTransaction((transaction) async {
       final counterSnapshot = await transaction.get(counterRef);
@@ -21,7 +45,6 @@ class FirestoreService {
       final nextNumber = currentNumber + 1;
       final referenceNumber =
           'BRGY-$year-${nextNumber.toString().padLeft(5, '0')}';
-
       transaction.set(counterRef, {
         'lastNumber': nextNumber,
         'lastCaseId': docRef.id,
@@ -32,11 +55,32 @@ class FirestoreService {
         'referenceNumber': referenceNumber,
         'sequenceYear': year,
         'sequenceNumber': nextNumber,
+        'registryId': registryDocument?.id,
+        'registryMatchStatus': registryMatchStatus,
+        'registryCheckedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.set(_db.collection('registryObservations').doc(docRef.id), {
+        'caseId': docRef.id,
+        'residentId': caseData.residentId,
+        'residentName': caseData.residentName,
+        'residentMobile': caseData.residentMobile,
+        'residentAddress': caseData.residentAddress,
+        if (caseData.addressLocation != null)
+          'addressLocation': caseData.addressLocation,
+        'source': caseData.submissionChannel,
+        'observedAt': FieldValue.serverTimestamp(),
+        'reviewStatus': 'pending',
       });
 
       return referenceNumber;
     });
   }
+
+  static String _normalizeIdentity(Object? value) => (value ?? '')
+      .toString()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .trim();
 
   Stream<QuerySnapshot> getCases({String? statusFilter}) {
     Query query = _db

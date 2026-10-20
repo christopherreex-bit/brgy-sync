@@ -210,6 +210,10 @@ class CaseDetailScreen extends StatelessWidget {
                           _row('Name', residentName),
                           _row('Address', data['residentAddress'] ?? ''),
                           _row('Contact', data['residentMobile'] ?? ''),
+                          _row(
+                            'Registry validation',
+                            _registryStatusLabel(data['registryMatchStatus']),
+                          ),
                         ]),
                         if (data['addressLocation'] is Map) ...[
                           const SizedBox(height: 16),
@@ -223,6 +227,22 @@ class CaseDetailScreen extends StatelessWidget {
                         _infoCard('Service Request Details', [
                           _row('Service Type', category.toUpperCase()),
                           _row('Sub-type', subType),
+                          if (data['requestDetails'] is Map)
+                            ...Map<String, dynamic>.from(
+                                  data['requestDetails'] as Map,
+                                ).entries
+                                .where(
+                                  (entry) =>
+                                      entry.key != 'assistanceAmount' &&
+                                      entry.value != null &&
+                                      entry.value.toString().trim().isNotEmpty,
+                                )
+                                .map(
+                                  (entry) => _row(
+                                    _requestFieldLabel(entry.key),
+                                    _requestFieldValue(entry.value),
+                                  ),
+                                ),
                           if (data['assistanceAmount'] != null)
                             _row(
                               'Assistance Amount',
@@ -591,6 +611,61 @@ class CaseDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _registryStatusLabel(dynamic value) => switch (value) {
+    'verified_match' => 'Verified registry match',
+    'needs_review' => 'Registry record needs review',
+    'not_registered' => 'No registry record found',
+    _ => 'Not checked (older case)',
+  };
+
+  String _requestFieldLabel(String key) {
+    const labels = {
+      'fullName': 'Full name',
+      'patientName': 'Patient/beneficiary name',
+      'beneficiaryName': 'Beneficiary/patient name',
+      'claimantName': 'Claimant name',
+      'guardianName': 'Guardian/claimant name',
+      'studentName': 'Student name',
+      'reporterName': 'Reporter name',
+      'firstName': 'First name',
+      'middleInitial': 'Middle initial',
+      'surname': 'Surname',
+      'address': 'Address',
+      'contact': 'Contact number',
+      'birthday': 'Birthday',
+      'gender': 'Gender',
+      'civilStatus': 'Civil status',
+      'precinct': 'Voter precinct',
+      'lengthOfStay': 'Length of stay',
+      'yearsResidency': 'Years of residency',
+      'emergencyName': 'Emergency contact name',
+      'emergencyContact': 'Emergency contact number',
+      'emergencyRelation': 'Emergency contact relationship',
+      'relationship': 'Relationship',
+      'requesterRelationship': 'Relationship to requester',
+    };
+    return labels[key] ??
+        key
+            .replaceAllMapped(
+              RegExp(r'([a-z])([A-Z])'),
+              (match) => '${match.group(1)} ${match.group(2)}',
+            )
+            .replaceAll('_', ' ')
+            .split(' ')
+            .where((part) => part.isNotEmpty)
+            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+            .join(' ');
+  }
+
+  String _requestFieldValue(dynamic value) {
+    if (value is Timestamp) {
+      final date = value.toDate();
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    }
+    if (value is Iterable) return value.join(', ');
+    return value.toString();
   }
 
   // Keep listening so a log written just after the case update appears

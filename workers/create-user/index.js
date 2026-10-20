@@ -146,6 +146,7 @@ async function createAccount(body, accessToken, caller) {
   }
 
   const normalizedMobile = mobile.trim();
+  const normalizedEmail = email.trim().toLowerCase();
   const mobileInUse = await firestoreMobileExists(
     normalizedMobile,
     accessToken,
@@ -153,6 +154,10 @@ async function createAccount(body, accessToken, caller) {
   if (mobileInUse) {
     return jsonResponse({ error: 'This mobile number is already in use.' }, 409);
   }
+  const existingRegistryId = role === 'resident'
+    ? await findCitizenRegistryByMobile(normalizedMobile, accessToken)
+    : null;
+  const registryId = existingRegistryId || normalizedMobile;
 
   const signUp = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`,
@@ -160,7 +165,7 @@ async function createAccount(body, accessToken, caller) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email,
+        email: normalizedEmail,
         password,
         displayName: name,
         returnSecureToken: false,
@@ -182,11 +187,14 @@ async function createAccount(body, accessToken, caller) {
         fields: {
           name: { stringValue: name },
           mobile: { stringValue: normalizedMobile },
-          email: { stringValue: email },
+          email: { stringValue: normalizedEmail },
           role: { stringValue: role },
           isActive: { booleanValue: true },
           isSeedData: { booleanValue: false },
           createdAt: { timestampValue: new Date().toISOString() },
+          ...(role === 'resident'
+            ? { citizenRegistryId: { stringValue: registryId } }
+            : {}),
           ...(caller.isWalkInResident
             ? {
                 mustChangePassword: { booleanValue: true },
@@ -252,10 +260,84 @@ async function createAccount(body, accessToken, caller) {
     }
     throw new Error(await responseError(mobileWrite));
   }
+  if (role === 'resident' && !existingRegistryId) {
+    const registryWrite = await fetch(
+      `${FIRESTORE_BASE}/citizenRegistry?documentId=${encodeURIComponent(registryId)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fields: {
+            registryId: { stringValue: registryId },
+            legalName: { stringValue: name.trim() },
+            mobile: { stringValue: normalizedMobile },
+            email: { stringValue: normalizedEmail },
+            verificationStatus: { stringValue: 'pending_verification' },
+            source: { stringValue: 'account_registration' },
+            createdByAccountId: { stringValue: created.localId },
+            createdAt: { timestampValue: new Date().toISOString() },
+            updatedAt: { timestampValue: new Date().toISOString() },
+          },
+        }),
+      },
+    );
+    if (!registryWrite.ok && registryWrite.status !== 409) {
+      await fetch(
+        `${FIRESTORE_BASE}/mobileIdentifiers/${encodeURIComponent(normalizedMobile)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      await fetch(
+        `${FIRESTORE_BASE}/users/${encodeURIComponent(created.localId)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      await fetch(
+        `https://identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts:delete`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ localId: created.localId }),
+        },
+      );
+      throw new Error(await responseError(registryWrite));
+    }
+  }
   return jsonResponse(
-    { success: true, uid: created.localId, email, role },
+    { success: true, uid: created.localId, email: normalizedEmail, role },
     201,
   );
+}
+
+async function findCitizenRegistryByMobile(mobile, accessToken) {
+  const query = await fetch(`${FIRESTORE_BASE}:runQuery`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'citizenRegistry' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'mobile' },
+            op: 'EQUAL',
+            value: { stringValue: mobile },
+          },
+        },
+        limit: 1,
+      },
+    }),
+  });
+  if (!query.ok) throw new Error(await responseError(query));
+  const results = await query.json();
+  const documentName = results.find((entry) => entry.document)?.document?.name;
+  return documentName ? documentName.split('/').pop() : null;
 }
 
 async function firestoreMobileExists(mobile, accessToken) {
