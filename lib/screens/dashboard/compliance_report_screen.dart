@@ -18,7 +18,6 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
   String? _selectedMonth;
   int? _selectedYear;
   String? _selectedCategory;
-  List<Map<String, dynamic>> _breakdownData = [];
   int _totalReceived = 0;
   int _carryoverCases = 0;
   int _totalWorkload = 0;
@@ -366,11 +365,6 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                     }
                   }
 
-                  // Store breakdown data for export
-                  _breakdownData = categoryBreakdown.entries
-                      .map((e) => {'category': e.key, ...e.value})
-                      .toList();
-
                   final avgTime = completedCases == 0
                       ? 'N/A'
                       : _formatDuration(
@@ -648,21 +642,10 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
           ),
 
           const SizedBox(height: 20),
-          // Export buttons
-          Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => _exportCsv(),
-                icon: const Icon(Icons.download),
-                label: const Text('Export (.xlsx)'),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: () => _exportPdf(),
-                icon: const Icon(Icons.print),
-                label: const Text('Print PDF'),
-              ),
-            ],
+          FilledButton.icon(
+            onPressed: _exportReport,
+            icon: const Icon(Icons.download),
+            label: const Text('Export'),
           ),
         ],
       ),
@@ -682,13 +665,346 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
   DateTime? _timestampDate(dynamic value) =>
       value is Timestamp ? value.toDate() : null;
 
-  void _exportCsv() {
-    if (_breakdownData.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No data available to export.')),
+  Future<void> _exportReport() async {
+    final now = DateTime.now();
+    var startYear = _selectedYear ?? now.year;
+    var startMonth = _selectedMonth == null
+        ? 1
+        : _months.indexOf(_selectedMonth!) + 1;
+    var endYear = _selectedYear ?? now.year;
+    var endMonth = _selectedMonth == null ? now.month : startMonth;
+    var format = 'excel';
+    final years = List.generate(10, (index) => now.year - index);
+    final selection =
+        await showDialog<
+          ({
+            int startYear,
+            int startMonth,
+            int endYear,
+            int endMonth,
+            String format,
+          })
+        >(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('Export compliance report'),
+              content: SizedBox(
+                width: 520,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'From',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: startMonth,
+                            decoration: const InputDecoration(
+                              labelText: 'Month',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: List.generate(
+                              12,
+                              (index) => DropdownMenuItem(
+                                value: index + 1,
+                                child: Text(_months[index]),
+                              ),
+                            ),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setDialogState(() => startMonth = value);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: startYear,
+                            decoration: const InputDecoration(
+                              labelText: 'Year',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: years
+                                .map(
+                                  (value) => DropdownMenuItem(
+                                    value: value,
+                                    child: Text('$value'),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() => startYear = value);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'To',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: endMonth,
+                            decoration: const InputDecoration(
+                              labelText: 'Month',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: List.generate(
+                              12,
+                              (index) => DropdownMenuItem(
+                                value: index + 1,
+                                child: Text(_months[index]),
+                              ),
+                            ),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() => endMonth = value);
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: endYear,
+                            decoration: const InputDecoration(
+                              labelText: 'Year',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: years
+                                .map(
+                                  (value) => DropdownMenuItem(
+                                    value: value,
+                                    child: Text('$value'),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() => endYear = value);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: format,
+                      decoration: const InputDecoration(
+                        labelText: 'File format',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'excel',
+                          child: Text('Excel-compatible spreadsheet (.csv)'),
+                        ),
+                        DropdownMenuItem(value: 'pdf', child: Text('PDF')),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) setDialogState(() => format = value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    final start = DateTime(startYear, startMonth);
+                    final end = DateTime(endYear, endMonth);
+                    if (end.isBefore(start)) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'The end month cannot be before the start month.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.pop(dialogContext, (
+                      startYear: startYear,
+                      startMonth: startMonth,
+                      endYear: endYear,
+                      endMonth: endMonth,
+                      format: format,
+                    ));
+                  },
+                  icon: const Icon(Icons.download),
+                  label: const Text('Export'),
+                ),
+              ],
+            ),
+          ),
+        );
+    if (selection == null || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Preparing compliance range report…')),
+    );
+    try {
+      final caseSnapshot = await FirebaseFirestore.instance
+          .collection('cases')
+          .get();
+      final configSnapshot = await FirebaseFirestore.instance
+          .collection('slaConfig')
+          .get();
+      final config = sla.buildSlaConfig(
+        configSnapshot.docs.map((document) => document.data()),
       );
-      return;
+      final start = DateTime(selection.startYear, selection.startMonth, 1);
+      final end = DateTime(selection.endYear, selection.endMonth + 1, 1);
+      final metrics = _calculateRangeMetrics(
+        caseSnapshot.docs,
+        DateTimeRange(start: start, end: end),
+        config,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      if (metrics.breakdown.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No data exists in that month range.')),
+        );
+        return;
+      }
+      final rangeLabel = selection.startYear == selection.endYear
+          ? '${_months[selection.startMonth - 1]}–${_months[selection.endMonth - 1]} ${selection.startYear}'
+          : '${_months[selection.startMonth - 1]} ${selection.startYear}–${_months[selection.endMonth - 1]} ${selection.endYear}';
+      if (selection.format == 'pdf') {
+        ExportService.generateCompliancePdf(
+          month: rangeLabel,
+          breakdown: metrics.breakdown,
+          totalReceived: metrics.received,
+          carryoverCases: metrics.carryover,
+          totalWorkload: metrics.workload,
+          activeOnTime: metrics.activeOnTime,
+          activeOverdue: metrics.activeOverdue,
+          completedOnTime: metrics.completedOnTime,
+          completedLate: metrics.completedLate,
+          pendingAtPeriodEnd: metrics.pending,
+        );
+      } else {
+        _downloadRangeCsv(metrics, selection, rangeLabel);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not export report: $error')),
+      );
     }
+  }
+
+  _ComplianceRangeMetrics _calculateRangeMetrics(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
+    DateTimeRange range,
+    sla.SlaConfigMap config,
+  ) {
+    final now = DateTime.now();
+    if (range.start.isAfter(now)) return _ComplianceRangeMetrics();
+    final endCutoff = range.end.isAfter(now)
+        ? now
+        : range.end.subtract(const Duration(microseconds: 1));
+    final categoryKey = _categoryKeys[_selectedCategory ?? 'All Categories'];
+    final metrics = _ComplianceRangeMetrics();
+    for (final document in documents) {
+      final data = document.data();
+      final category = (data['serviceCategory'] ?? 'unknown').toString();
+      if (categoryKey != null && category != categoryKey) continue;
+      final submitted = _timestampDate(data['submissionTimestamp']);
+      if (submitted == null ||
+          submitted.isAfter(endCutoff) ||
+          !submitted.isBefore(range.end)) {
+        continue;
+      }
+      final status = (data['status'] ?? 'pending_review').toString();
+      final terminal = status == 'released' || status == 'rejected';
+      final completed = terminal
+          ? _timestampDate(data['statusUpdatedAt'] ?? data['lastUpdated'])
+          : null;
+      if (completed != null && completed.isBefore(range.start)) continue;
+
+      final received = !submitted.isBefore(range.start);
+      final carryover = submitted.isBefore(range.start);
+      final completedInRange =
+          completed != null &&
+          !completed.isBefore(range.start) &&
+          completed.isBefore(range.end);
+      final activeAtEnd = completed == null || completed.isAfter(endCutoff);
+      final deadline = sla.computeDeadline(
+        submitted,
+        category,
+        (data['serviceSubType'] ?? '').toString(),
+        config: config,
+      );
+      final completedOnTime = completedInRange && !completed.isAfter(deadline);
+      final completedLate = completedInRange && completed.isAfter(deadline);
+      final activeOverdue = activeAtEnd && endCutoff.isAfter(deadline);
+
+      metrics.workload++;
+      if (received) metrics.received++;
+      if (carryover) metrics.carryover++;
+      if (activeAtEnd && !activeOverdue) metrics.activeOnTime++;
+      if (activeOverdue) metrics.activeOverdue++;
+      if (completedOnTime) metrics.completedOnTime++;
+      if (completedLate) metrics.completedLate++;
+      if (activeAtEnd) metrics.pending++;
+
+      final breakdown = metrics.byCategory.putIfAbsent(
+        category,
+        () => {
+          'workload': 0,
+          'received': 0,
+          'carryover': 0,
+          'completedOnTime': 0,
+          'completedLate': 0,
+          'pending': 0,
+        },
+      );
+      breakdown['workload'] = breakdown['workload']! + 1;
+      if (received) breakdown['received'] = breakdown['received']! + 1;
+      if (carryover) breakdown['carryover'] = breakdown['carryover']! + 1;
+      if (completedOnTime) {
+        breakdown['completedOnTime'] = breakdown['completedOnTime']! + 1;
+      }
+      if (completedLate) {
+        breakdown['completedLate'] = breakdown['completedLate']! + 1;
+      }
+      if (activeAtEnd) breakdown['pending'] = breakdown['pending']! + 1;
+    }
+    return metrics;
+  }
+
+  void _downloadRangeCsv(
+    _ComplianceRangeMetrics metrics,
+    ({int startYear, int startMonth, int endYear, int endMonth, String format})
+    selection,
+    String rangeLabel,
+  ) {
     ExportService.downloadCsv(
       headers: [
         'Category',
@@ -700,57 +1016,47 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
         'Pending at Period End',
         'Completion Compliance Rate',
       ],
-      rows: _breakdownData.map<List<String>>((d) {
-        final onTime = d['completedOnTime'] as int;
-        final late = d['completedLate'] as int;
+      rows: metrics.breakdown.map((data) {
+        final onTime = data['completedOnTime'] as int;
+        final late = data['completedLate'] as int;
         final completed = onTime + late;
-        final rate = completed > 0
-            ? (onTime / completed * 100).toStringAsFixed(1)
-            : '0.0';
         return <String>[
-          (d['category'] as String).toUpperCase(),
-          '${d['workload']}',
-          '${d['received']}',
-          '${d['carryover']}',
-          '${d['completedOnTime']}',
-          '${d['completedLate']}',
-          '${d['pending']}',
-          '$rate%',
+          (data['category'] as String).toUpperCase(),
+          '${data['workload']}',
+          '${data['received']}',
+          '${data['carryover']}',
+          '$onTime',
+          '$late',
+          '${data['pending']}',
+          completed == 0
+              ? 'N/A'
+              : '${(onTime / completed * 100).toStringAsFixed(1)}%',
         ];
       }).toList(),
       filename:
-          'compliance_report_${DateTime.now().millisecondsSinceEpoch}.csv',
+          'compliance_${selection.startYear}-${selection.startMonth.toString().padLeft(2, '0')}_to_${selection.endYear}-${selection.endMonth.toString().padLeft(2, '0')}.csv',
     );
-    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Compliance report exported as CSV.'),
+      SnackBar(
+        content: Text('$rangeLabel compliance report downloaded.'),
         backgroundColor: Colors.green,
-        duration: Duration(seconds: 3),
       ),
     );
   }
+}
 
-  void _exportPdf() {
-    if (_breakdownData.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No data available to export.')),
-      );
-      return;
-    }
-    ExportService.generateCompliancePdf(
-      month:
-          '${_selectedMonth ?? _months[DateTime.now().month - 1]} '
-          '${_selectedYear ?? DateTime.now().year}',
-      breakdown: _breakdownData,
-      totalReceived: _totalReceived,
-      carryoverCases: _carryoverCases,
-      totalWorkload: _totalWorkload,
-      activeOnTime: _activeOnTime,
-      activeOverdue: _activeOverdue,
-      completedOnTime: _completedOnTime,
-      completedLate: _completedLate,
-      pendingAtPeriodEnd: _pendingAtPeriodEnd,
-    );
-  }
+class _ComplianceRangeMetrics {
+  int received = 0;
+  int carryover = 0;
+  int workload = 0;
+  int activeOnTime = 0;
+  int activeOverdue = 0;
+  int completedOnTime = 0;
+  int completedLate = 0;
+  int pending = 0;
+  final Map<String, Map<String, int>> byCategory = {};
+
+  List<Map<String, dynamic>> get breakdown => byCategory.entries
+      .map((entry) => <String, dynamic>{'category': entry.key, ...entry.value})
+      .toList();
 }
