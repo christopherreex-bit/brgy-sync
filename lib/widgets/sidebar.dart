@@ -140,13 +140,6 @@ class _SidebarState extends State<Sidebar> {
                         ),
                         _navItem(
                           context,
-                          Icons.assignment,
-                          'Distributions',
-                          '/dashboard/distributions',
-                          currentLocation,
-                        ),
-                        _navItem(
-                          context,
                           Icons.history,
                           'Audit Trail',
                           '/dashboard/audit',

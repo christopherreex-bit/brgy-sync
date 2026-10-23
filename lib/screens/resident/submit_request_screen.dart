@@ -171,6 +171,10 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     final request = ++_registryPrefillRequest;
     final category = _selectedCategoryId;
     final subType = _selectedSubType;
+    final isResidentInfrastructureConcern =
+        !_isWalkIn &&
+        category == 'community' &&
+        subType == 'Infrastructure Concern';
     final record = await _citizenRegistry.findByMobile(resident.mobile);
     final data = record?.data();
     if (!mounted ||
@@ -241,7 +245,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           }
         }
       }
-      setText('address', data['permanentAddress']);
+      if (!isResidentInfrastructureConcern) {
+        setText('address', data['permanentAddress']);
+      }
       setText('contact', data['mobile']);
       setText('precinct', data['precinctNumber']);
       setText('lengthOfStay', residencyValue());

@@ -16,11 +16,17 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
   late final Stream<QuerySnapshot> _casesStream;
   late final Stream<QuerySnapshot> _slaConfigStream;
   String? _selectedMonth;
+  int? _selectedYear;
   String? _selectedCategory;
   List<Map<String, dynamic>> _breakdownData = [];
   int _totalReceived = 0;
+  int _carryoverCases = 0;
+  int _totalWorkload = 0;
+  int _activeOnTime = 0;
+  int _activeOverdue = 0;
   int _completedOnTime = 0;
-  int _overdueCases = 0;
+  int _completedLate = 0;
+  int _pendingAtPeriodEnd = 0;
 
   final _months = const [
     'January',
@@ -70,10 +76,8 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
         .snapshots();
   }
 
-  DateTimeRange _getMonthRange(String month) {
+  DateTimeRange _getMonthRange(String month, int year) {
     final monthIndex = _months.indexOf(month);
-    final now = DateTime.now();
-    final year = now.year;
     return DateTimeRange(
       start: DateTime(year, monthIndex + 1, 1),
       end: DateTime(year, monthIndex + 2, 1),
@@ -84,6 +88,7 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
   Widget build(BuildContext context) {
     final currentMonth = _months[DateTime.now().month - 1];
     final month = _selectedMonth ?? currentMonth;
+    final year = _selectedYear ?? DateTime.now().year;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -106,44 +111,96 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
           const SizedBox(height: 20),
 
           // Filters
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: month,
-                  decoration: const InputDecoration(
-                    labelText: 'Reporting Period',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
+          LayoutBuilder(
+            builder: (context, constraints) => Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: constraints.maxWidth < 760
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                  child: DropdownButtonFormField<int>(
+                    initialValue: year,
+                    decoration: const InputDecoration(
+                      labelText: 'Year',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
+                    items:
+                        List.generate(6, (index) => DateTime.now().year - index)
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text('$value'),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (value) => setState(() => _selectedYear = value),
                   ),
-                  items: _months
-                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedMonth = v),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedCategory ?? 'All Categories',
-                  decoration: const InputDecoration(
-                    labelText: 'Service Category',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
+                SizedBox(
+                  width: constraints.maxWidth < 760
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: month,
+                    decoration: const InputDecoration(
+                      labelText: 'Reporting Month',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
+                    items: _months
+                        .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedMonth = v),
                   ),
-                  items: _categories
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedCategory = v),
                 ),
-              ),
-            ],
+                SizedBox(
+                  width: constraints.maxWidth < 760
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _selectedCategory ?? 'All Categories',
+                    decoration: const InputDecoration(
+                      labelText: 'Service Category',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                    items: _categories
+                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedCategory = v),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              border: Border.all(color: Colors.blue.shade100),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Monthly workload includes cases received during the month and '
+              'unfinished cases carried over from earlier months. Past months '
+              'are evaluated as of the final day of that month; the current '
+              'month is evaluated as of today.',
+              style: TextStyle(fontSize: 12),
+            ),
           ),
           const SizedBox(height: 20),
 
@@ -181,13 +238,26 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
 
                   final docs = snapshot.data?.docs ?? [];
                   _totalReceived = 0;
+                  _carryoverCases = 0;
+                  _totalWorkload = 0;
+                  _activeOnTime = 0;
+                  _activeOverdue = 0;
                   _completedOnTime = 0;
-                  _overdueCases = 0;
+                  _completedLate = 0;
+                  _pendingAtPeriodEnd = 0;
                   var completedCases = 0;
                   var totalProcessingMilliseconds = 0;
 
                   final categoryBreakdown = <String, Map<String, int>>{};
-                  final range = _getMonthRange(month);
+                  final range = _getMonthRange(month, year);
+                  final now = DateTime.now();
+                  final periodIsCurrent =
+                      year == now.year &&
+                      _months.indexOf(month) + 1 == now.month;
+                  final periodIsFuture = range.start.isAfter(now);
+                  final asOf = periodIsCurrent
+                      ? now
+                      : range.end.subtract(const Duration(microseconds: 1));
                   final selectedCategoryKey =
                       _categoryKeys[_selectedCategory ?? 'All Categories'];
 
@@ -198,26 +268,42 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                         ? (data['submissionTimestamp'] as Timestamp).toDate()
                         : null;
 
-                    if (submittedAt == null ||
-                        submittedAt.isBefore(range.start) ||
-                        !submittedAt.isBefore(range.end)) {
-                      continue;
-                    }
-
-                    // Apply category filter
                     if (selectedCategoryKey != null &&
                         cat != selectedCategoryKey) {
                       continue;
                     }
 
-                    _totalReceived++;
+                    if (submittedAt == null ||
+                        periodIsFuture ||
+                        !submittedAt.isBefore(range.end)) {
+                      continue;
+                    }
+
                     final status =
                         data['status'] as String? ?? 'pending_review';
                     final isCompleted =
                         status == 'released' || status == 'rejected';
-                    final completedAt = data['lastUpdated'] is Timestamp
-                        ? (data['lastUpdated'] as Timestamp).toDate()
+                    final completedAt = isCompleted
+                        ? _timestampDate(
+                            data['statusUpdatedAt'] ?? data['lastUpdated'],
+                          )
                         : null;
+                    final wasCompletedBeforePeriod =
+                        completedAt != null &&
+                        completedAt.isBefore(range.start);
+                    if (wasCompletedBeforePeriod) continue;
+
+                    final receivedDuringPeriod = !submittedAt.isBefore(
+                      range.start,
+                    );
+                    final carryover = submittedAt.isBefore(range.start);
+                    final completedDuringPeriod =
+                        completedAt != null &&
+                        !completedAt.isBefore(range.start) &&
+                        completedAt.isBefore(range.end);
+                    final activeAtCutoff =
+                        !submittedAt.isAfter(asOf) &&
+                        (completedAt == null || completedAt.isAfter(asOf));
                     final deadline = sla.computeDeadline(
                       submittedAt,
                       cat,
@@ -225,17 +311,22 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                       config: slaConfig,
                     );
                     final completedOnTime =
-                        isCompleted &&
-                        completedAt != null &&
-                        !completedAt.isAfter(deadline);
-                    final overdue = isCompleted
-                        ? completedAt != null && completedAt.isAfter(deadline)
-                        : DateTime.now().isAfter(deadline);
+                        completedDuringPeriod && !completedAt.isAfter(deadline);
+                    final completedLate =
+                        completedDuringPeriod && completedAt.isAfter(deadline);
+                    final activeIsOverdue =
+                        activeAtCutoff && asOf.isAfter(deadline);
+                    final activeIsOnTime = activeAtCutoff && !activeIsOverdue;
 
+                    _totalWorkload++;
+                    if (receivedDuringPeriod) _totalReceived++;
+                    if (carryover) _carryoverCases++;
+                    if (activeIsOnTime) _activeOnTime++;
+                    if (activeIsOverdue) _activeOverdue++;
                     if (completedOnTime) _completedOnTime++;
-                    if (overdue) _overdueCases++;
-                    if (isCompleted &&
-                        completedAt != null &&
+                    if (completedLate) _completedLate++;
+                    if (activeAtCutoff) _pendingAtPeriodEnd++;
+                    if (completedDuringPeriod &&
                         !completedAt.isBefore(submittedAt)) {
                       completedCases++;
                       totalProcessingMilliseconds += completedAt
@@ -245,30 +336,39 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
 
                     categoryBreakdown.putIfAbsent(
                       cat,
-                      () => {'total': 0, 'onTime': 0, 'overdue': 0},
+                      () => {
+                        'workload': 0,
+                        'received': 0,
+                        'carryover': 0,
+                        'completedOnTime': 0,
+                        'completedLate': 0,
+                        'pending': 0,
+                      },
                     );
-                    categoryBreakdown[cat]!['total'] =
-                        categoryBreakdown[cat]!['total']! + 1;
-                    if (completedOnTime) {
-                      categoryBreakdown[cat]!['onTime'] =
-                          categoryBreakdown[cat]!['onTime']! + 1;
+                    final breakdown = categoryBreakdown[cat]!;
+                    breakdown['workload'] = breakdown['workload']! + 1;
+                    if (receivedDuringPeriod) {
+                      breakdown['received'] = breakdown['received']! + 1;
                     }
-                    if (overdue) {
-                      categoryBreakdown[cat]!['overdue'] =
-                          categoryBreakdown[cat]!['overdue']! + 1;
+                    if (carryover) {
+                      breakdown['carryover'] = breakdown['carryover']! + 1;
+                    }
+                    if (completedOnTime) {
+                      breakdown['completedOnTime'] =
+                          breakdown['completedOnTime']! + 1;
+                    }
+                    if (completedLate) {
+                      breakdown['completedLate'] =
+                          breakdown['completedLate']! + 1;
+                    }
+                    if (activeAtCutoff) {
+                      breakdown['pending'] = breakdown['pending']! + 1;
                     }
                   }
 
                   // Store breakdown data for export
                   _breakdownData = categoryBreakdown.entries
-                      .map(
-                        (e) => {
-                          'category': e.key,
-                          'total': e.value['total']!,
-                          'onTime': e.value['onTime']!,
-                          'overdue': e.value['overdue']!,
-                        },
-                      )
+                      .map((e) => {'category': e.key, ...e.value})
                       .toList();
 
                   final avgTime = completedCases == 0
@@ -279,45 +379,90 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                                 totalProcessingMilliseconds ~/ completedCases,
                           ),
                         );
+                  final completedInPeriod = _completedOnTime + _completedLate;
+                  final complianceRate = completedInPeriod == 0
+                      ? 'N/A'
+                      : '${(_completedOnTime / completedInPeriod * 100).toStringAsFixed(1)}%';
 
                   return Column(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: KpiCard(
-                              label: 'Total Received',
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final columns = constraints.maxWidth >= 1050
+                              ? 4
+                              : constraints.maxWidth >= 560
+                              ? 2
+                              : 1;
+                          final width =
+                              (constraints.maxWidth - (columns - 1) * 12) /
+                              columns;
+                          final cards = [
+                            KpiCard(
+                              label: 'Received This Month',
                               value: '$_totalReceived',
                               icon: Icons.inbox,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: KpiCard(
+                            KpiCard(
+                              label: 'Carryover Backlog',
+                              value: '$_carryoverCases',
+                              icon: Icons.history,
+                            ),
+                            KpiCard(
+                              label: 'Total Workload',
+                              value: '$_totalWorkload',
+                              icon: Icons.work_outline,
+                            ),
+                            KpiCard(
+                              label: 'Active On Time',
+                              value: '$_activeOnTime',
+                              accentColor: Colors.green,
+                              icon: Icons.schedule,
+                            ),
+                            KpiCard(
+                              label: 'Active Overdue',
+                              value: '$_activeOverdue',
+                              accentColor: Colors.red,
+                              icon: Icons.error_outline,
+                            ),
+                            KpiCard(
                               label: 'Completed On Time',
                               value: '$_completedOnTime',
                               accentColor: Colors.green,
                               icon: Icons.check_circle,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: KpiCard(
-                              label: 'Overdue Cases',
-                              value: '$_overdueCases',
+                            KpiCard(
+                              label: 'Completed Late',
+                              value: '$_completedLate',
                               accentColor: Colors.red,
-                              icon: Icons.error,
+                              icon: Icons.timer_off_outlined,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: KpiCard(
+                            KpiCard(
+                              label: 'Pending at Period End',
+                              value: '$_pendingAtPeriodEnd',
+                              icon: Icons.pending_actions,
+                            ),
+                            KpiCard(
                               label: 'Avg Processing',
                               value: avgTime,
                               icon: Icons.timer,
                             ),
-                          ),
-                        ],
+                            KpiCard(
+                              label: 'Completion Compliance',
+                              value: complianceRate,
+                              accentColor: Colors.green,
+                              icon: Icons.analytics_outlined,
+                            ),
+                          ];
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: cards
+                                .map(
+                                  (card) => SizedBox(width: width, child: card),
+                                )
+                                .toList(),
+                          );
+                        },
                       ),
                       const SizedBox(height: 20),
 
@@ -364,6 +509,15 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                                   ),
                                   Expanded(
                                     child: Text(
+                                      'Workload',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
                                       'Received',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
@@ -373,7 +527,7 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      'On Time',
+                                      'Carryover',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 12,
@@ -382,7 +536,7 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      'Overdue',
+                                      'Completed On Time',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 12,
@@ -391,7 +545,16 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      'Rate %',
+                                      'Completed Late',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      'Pending',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 12,
@@ -413,10 +576,6 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                               ...categoryBreakdown.entries.map((entry) {
                                 final cat = entry.key;
                                 final d = entry.value;
-                                final rate = d['total']! > 0
-                                    ? (d['onTime']! / d['total']! * 100)
-                                          .toStringAsFixed(1)
-                                    : '0.0';
                                 return Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -440,29 +599,38 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
                                       ),
                                       Expanded(
                                         child: Text(
-                                          '${d['total']}',
+                                          '${d['workload']}',
                                           style: const TextStyle(fontSize: 12),
                                         ),
                                       ),
                                       Expanded(
                                         child: Text(
-                                          '${d['onTime']}',
+                                          '${d['received']}',
                                           style: const TextStyle(fontSize: 12),
                                         ),
                                       ),
                                       Expanded(
                                         child: Text(
-                                          '${d['overdue']}',
+                                          '${d['carryover']}',
                                           style: const TextStyle(fontSize: 12),
                                         ),
                                       ),
                                       Expanded(
                                         child: Text(
-                                          '$rate%',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                          '${d['completedOnTime']}',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          '${d['completedLate']}',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          '${d['pending']}',
+                                          style: const TextStyle(fontSize: 12),
                                         ),
                                       ),
                                     ],
@@ -511,6 +679,9 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
     return '${duration.inMinutes}m';
   }
 
+  DateTime? _timestampDate(dynamic value) =>
+      value is Timestamp ? value.toDate() : null;
+
   void _exportCsv() {
     if (_breakdownData.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -519,18 +690,31 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
       return;
     }
     ExportService.downloadCsv(
-      headers: ['Category', 'Received', 'On Time', 'Overdue', 'Rate %'],
+      headers: [
+        'Category',
+        'Total Workload',
+        'Received',
+        'Carryover',
+        'Completed On Time',
+        'Completed Late',
+        'Pending at Period End',
+        'Completion Compliance Rate',
+      ],
       rows: _breakdownData.map<List<String>>((d) {
-        final total = d['total'] as int;
-        final onTime = d['onTime'] as int;
-        final rate = total > 0
-            ? (onTime / total * 100).toStringAsFixed(1)
+        final onTime = d['completedOnTime'] as int;
+        final late = d['completedLate'] as int;
+        final completed = onTime + late;
+        final rate = completed > 0
+            ? (onTime / completed * 100).toStringAsFixed(1)
             : '0.0';
         return <String>[
           (d['category'] as String).toUpperCase(),
-          '$total',
-          '$onTime',
-          '${d['overdue']}',
+          '${d['workload']}',
+          '${d['received']}',
+          '${d['carryover']}',
+          '${d['completedOnTime']}',
+          '${d['completedLate']}',
+          '${d['pending']}',
           '$rate%',
         ];
       }).toList(),
@@ -555,11 +739,18 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
       return;
     }
     ExportService.generateCompliancePdf(
-      month: _selectedMonth ?? 'Current',
+      month:
+          '${_selectedMonth ?? _months[DateTime.now().month - 1]} '
+          '${_selectedYear ?? DateTime.now().year}',
       breakdown: _breakdownData,
       totalReceived: _totalReceived,
+      carryoverCases: _carryoverCases,
+      totalWorkload: _totalWorkload,
+      activeOnTime: _activeOnTime,
+      activeOverdue: _activeOverdue,
       completedOnTime: _completedOnTime,
-      overdueCases: _overdueCases,
+      completedLate: _completedLate,
+      pendingAtPeriodEnd: _pendingAtPeriodEnd,
     );
   }
 }

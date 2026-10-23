@@ -69,15 +69,20 @@ class ExportService {
     required String month,
     required List<Map<String, dynamic>> breakdown,
     required int totalReceived,
+    required int carryoverCases,
+    required int totalWorkload,
+    required int activeOnTime,
+    required int activeOverdue,
     required int completedOnTime,
-    required int overdueCases,
+    required int completedLate,
+    required int pendingAtPeriodEnd,
   }) async {
     final pdf = pw.Document();
     final now = DateTime.now();
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+        pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context ctx) {
           final widgets = <pw.Widget>[
@@ -107,21 +112,33 @@ class ExportService {
                 pw.TableRow(
                   children: [
                     _pdfCell('Total Received', bold: true),
-                    _pdfCell('Completed On Time', bold: true),
-                    _pdfCell('Overdue Cases', bold: true),
-                    _pdfCell('Compliance Rate', bold: true),
+                    _pdfCell('Carryover', bold: true),
+                    _pdfCell('Total Workload', bold: true),
+                    _pdfCell('Pending at End', bold: true),
                   ],
                 ),
                 pw.TableRow(
                   children: [
                     _pdfCell('$totalReceived'),
+                    _pdfCell('$carryoverCases'),
+                    _pdfCell('$totalWorkload'),
+                    _pdfCell('$pendingAtPeriodEnd'),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('Active On Time', bold: true),
+                    _pdfCell('Active Overdue', bold: true),
+                    _pdfCell('Completed On Time', bold: true),
+                    _pdfCell('Completed Late', bold: true),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('$activeOnTime'),
+                    _pdfCell('$activeOverdue'),
                     _pdfCell('$completedOnTime'),
-                    _pdfCell('$overdueCases'),
-                    _pdfCell(
-                      totalReceived > 0
-                          ? '${(completedOnTime / totalReceived * 100).toStringAsFixed(1)}%'
-                          : 'N/A',
-                    ),
+                    _pdfCell('$completedLate'),
                   ],
                 ),
               ],
@@ -136,34 +153,44 @@ class ExportService {
               border: pw.TableBorder.all(color: PdfColors.grey300),
               columnWidths: {
                 0: const pw.FlexColumnWidth(3),
-                1: const pw.FlexColumnWidth(1.5),
-                2: const pw.FlexColumnWidth(1.5),
-                3: const pw.FlexColumnWidth(1.5),
-                4: const pw.FlexColumnWidth(1.5),
+                1: const pw.FlexColumnWidth(1.2),
+                2: const pw.FlexColumnWidth(1.2),
+                3: const pw.FlexColumnWidth(1.2),
+                4: const pw.FlexColumnWidth(1.2),
+                5: const pw.FlexColumnWidth(1.2),
+                6: const pw.FlexColumnWidth(1.2),
+                7: const pw.FlexColumnWidth(1.2),
               },
               children: [
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                   children: [
                     _pdfCell('Category', bold: true),
+                    _pdfCell('Workload', bold: true),
                     _pdfCell('Received', bold: true),
+                    _pdfCell('Carryover', bold: true),
                     _pdfCell('On Time', bold: true),
-                    _pdfCell('Overdue', bold: true),
-                    _pdfCell('Rate %', bold: true),
+                    _pdfCell('Late', bold: true),
+                    _pdfCell('Pending', bold: true),
+                    _pdfCell('Rate', bold: true),
                   ],
                 ),
                 ...breakdown.map((d) {
-                  final total = d['total'] as int;
-                  final onTime = d['onTime'] as int;
-                  final rate = total > 0
-                      ? (onTime / total * 100).toStringAsFixed(1)
+                  final onTime = d['completedOnTime'] as int;
+                  final late = d['completedLate'] as int;
+                  final completed = onTime + late;
+                  final rate = completed > 0
+                      ? (onTime / completed * 100).toStringAsFixed(1)
                       : '0.0';
                   return pw.TableRow(
                     children: [
                       _pdfCell((d['category'] as String).toUpperCase()),
-                      _pdfCell('$total'),
-                      _pdfCell('$onTime'),
-                      _pdfCell('${d['overdue']}'),
+                      _pdfCell('${d['workload']}'),
+                      _pdfCell('${d['received']}'),
+                      _pdfCell('${d['carryover']}'),
+                      _pdfCell('${d['completedOnTime']}'),
+                      _pdfCell('${d['completedLate']}'),
+                      _pdfCell('${d['pending']}'),
                       _pdfCell('$rate%'),
                     ],
                   );
