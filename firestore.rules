@@ -62,6 +62,15 @@ service cloud.firestore {
                             == request.resource.data.mobile);
       allow update: if isStaff();
       allow delete: if isCaptain();
+
+      match /verifiedDocuments/{documentId} {
+        allow read: if isStaff()
+                    || (request.auth != null
+                        && get(/databases/$(database)/documents/citizenRegistry/$(registryId)).data.mobile
+                            == currentUserMobile());
+        allow create, update: if isStaff();
+        allow delete: if isCaptain();
+      }
     }
 
     match /registryCorrections/{correctionId} {

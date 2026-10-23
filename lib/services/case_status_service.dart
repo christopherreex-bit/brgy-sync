@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/budget_health.dart';
 import '../utils/budget_period.dart';
 import '../utils/constants.dart';
+import 'document_vault_service.dart';
 
 class CaseStatusService {
   final FirebaseFirestore _db;
@@ -287,6 +288,46 @@ class CaseStatusService {
           'budgetReservedAmount': FieldValue.delete(),
           'budgetReservedProgramId': FieldValue.delete(),
         });
+      }
+
+      // Approval is the staff verification event for reusable evidence. Keep
+      // only conservative identity/relationship documents in the citizen's
+      // vault; medical and other case-specific evidence is never reused.
+      if (newStatus == statusApproved) {
+        final registryId = (caseData['registryId'] ?? '').toString();
+        final documents = caseData['documents'];
+        if (registryId.isNotEmpty && documents is List) {
+          for (final rawDocument in documents) {
+            if (rawDocument is! Map) continue;
+            final document = Map<String, dynamic>.from(rawDocument);
+            final name = (document['name'] ?? '').toString();
+            final validityDays = DocumentVaultService.validityDays(name);
+            if (validityDays == null ||
+                document['status'] != 'uploaded' ||
+                (document['databasePath'] ?? '').toString().isEmpty) {
+              continue;
+            }
+            final vaultRef = _db
+                .collection('citizenRegistry')
+                .doc(registryId)
+                .collection('verifiedDocuments')
+                .doc(DocumentVaultService.documentKey(name));
+            transaction.set(vaultRef, {
+              ...document,
+              'status': 'verified',
+              'verificationStatus': 'verified',
+              'sourceCaseId': caseId,
+              'sourceReferenceNumber':
+                  referenceNumber ?? caseData['referenceNumber'] ?? '',
+              'verifiedAt': FieldValue.serverTimestamp(),
+              'verifiedBy': staffId,
+              'verifiedByName': staffName,
+              'validUntil': Timestamp.fromDate(
+                effectiveDate.add(Duration(days: validityDays)),
+              ),
+            }, SetOptions(merge: true));
+          }
+        }
       }
 
       transaction.update(caseRef, updates);

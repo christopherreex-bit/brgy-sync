@@ -24,14 +24,25 @@ class FirestoreService {
         .get();
     final registryDocument = registryQuery.docs.firstOrNull;
     final registryData = registryDocument?.data();
-    final registryVerified = registryData?['verificationStatus'] == 'verified';
-    final registryName = _normalizeIdentity(registryData?['legalName']);
+    final isWalkIn = caseData.submissionChannel == 'walk_in';
+    final registryRef =
+        registryDocument?.reference ??
+        _db.collection('citizenRegistry').doc(accountMobile);
+    // A walk-in application is encoded face-to-face by an authenticated
+    // barangay employee, so the matched (or newly created) registry identity
+    // can be verified immediately. Other profile fields may still be filled
+    // in later from the Citizen Registry screen.
+    final registryVerified =
+        isWalkIn || registryData?['verificationStatus'] == 'verified';
+    final registryLegalName =
+        (registryData?['legalName'] ?? caseData.requesterName).toString();
+    final registryName = _normalizeIdentity(registryLegalName);
     final caseName = _normalizeIdentity(caseData.residentName);
     final identityMatches =
         caseData.requestedForSelf &&
         registryName.isNotEmpty &&
         registryName == caseName;
-    final registryMatchStatus = registryDocument == null
+    final registryMatchStatus = registryDocument == null && !isWalkIn
         ? 'not_registered'
         : registryVerified && identityMatches
         ? 'verified_match'
@@ -50,12 +61,29 @@ class FirestoreService {
         'lastCaseId': docRef.id,
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      if (isWalkIn) {
+        transaction.set(registryRef, {
+          'registryId': registryRef.id,
+          'legalName': registryLegalName,
+          'mobile': accountMobile,
+          'verificationStatus': 'verified',
+          'source': registryData?['source'] ?? 'walk_in_intake',
+          'verifiedAt': FieldValue.serverTimestamp(),
+          'verifiedBy': caseData.encodedById,
+          'verifiedByName': caseData.encodedByName,
+          'updatedAt': FieldValue.serverTimestamp(),
+          if (registryDocument == null)
+            'createdAt': FieldValue.serverTimestamp(),
+          if (registryDocument == null)
+            'createdByAccountId': caseData.residentId,
+        }, SetOptions(merge: true));
+      }
       transaction.set(docRef, {
         ...caseData.toMap(),
         'referenceNumber': referenceNumber,
         'sequenceYear': year,
         'sequenceNumber': nextNumber,
-        'registryId': registryDocument?.id,
+        'registryId': isWalkIn ? registryRef.id : registryDocument?.id,
         'registryMatchStatus': registryMatchStatus,
         'registryCheckedAt': FieldValue.serverTimestamp(),
       });

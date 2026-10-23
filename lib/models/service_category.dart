@@ -635,6 +635,8 @@ class BassDocument {
   String? contentType;
   int? size;
   Uint8List? bytes;
+  Map<String, dynamic>? reusableDocument;
+  bool useReusableDocument;
 
   BassDocument({
     required this.name,
@@ -645,7 +647,11 @@ class BassDocument {
     this.contentType,
     this.size,
     this.bytes,
+    this.reusableDocument,
+    this.useReusableDocument = false,
   });
+
+  bool get reused => useReusableDocument && reusableDocument != null;
 }
 
 List<BassDocument> kBassDocuments(String subType) => [

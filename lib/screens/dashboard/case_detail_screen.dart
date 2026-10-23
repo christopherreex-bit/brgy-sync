@@ -268,7 +268,9 @@ class CaseDetailScreen extends StatelessWidget {
                             )
                           else
                             ...documents.map((d) {
-                              final uploaded = d['status'] == 'uploaded';
+                              final uploaded =
+                                  d['status'] == 'uploaded' ||
+                                  d['status'] == 'reused';
                               final databasePath = (d['databasePath'] ?? '')
                                   .toString();
                               final fileName = (d['fileName'] ?? '').toString();
@@ -289,7 +291,11 @@ class CaseDetailScreen extends StatelessWidget {
                                     Expanded(
                                       child: Text(
                                         '${d['name'] ?? ''}'
-                                        '${fileName.isEmpty ? '' : '\n$fileName'}',
+                                        '${d['status'] == 'reused'
+                                            ? '\nVerified document reused from Citizen Registry'
+                                            : fileName.isEmpty
+                                            ? ''
+                                            : '\n$fileName'}',
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: uploaded

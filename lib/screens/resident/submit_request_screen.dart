@@ -15,6 +15,7 @@ import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/citizen_registry_service.dart';
 import '../../services/firestore_service.dart';
+import '../../services/document_vault_service.dart';
 import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
@@ -59,6 +60,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
   final _firestore = FirestoreService();
   final _citizenRegistry = CitizenRegistryService();
+  final _documentVault = DocumentVaultService();
   final _twilio = TwilioService();
   final _database = FirebaseDatabase.instance;
   final _encryption = AesGcm.with256bits();
@@ -111,8 +113,43 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     // BASS doc checklist
     if (_selectedCategoryId == 'bass') {
       _bassDocs = kBassDocuments(_selectedSubType!);
+      unawaited(_loadReusableDocuments());
     } else {
       _bassDocs = null;
+    }
+  }
+
+  Future<void> _loadReusableDocuments() async {
+    final resident = _resident;
+    final documents = _bassDocs;
+    if (resident == null || documents == null || _requestingForSomeoneElse) {
+      return;
+    }
+    try {
+      final registry = await _citizenRegistry.findByMobile(resident.mobile);
+      if (registry == null ||
+          registry.data()['verificationStatus'] != 'verified') {
+        return;
+      }
+      final available = await _documentVault.validDocumentsForRegistry(
+        registry.id,
+      );
+      if (!mounted || documents != _bassDocs || _requestingForSomeoneElse) {
+        return;
+      }
+      setState(() {
+        for (final document in documents) {
+          final reusable =
+              available[DocumentVaultService.documentKey(document.name)];
+          if (reusable != null) {
+            document.reusableDocument = reusable;
+            document.useReusableDocument = true;
+          }
+        }
+      });
+    } catch (_) {
+      // Vault lookup is an enhancement; a lookup failure must not prevent a
+      // resident from uploading the normal requirements.
     }
   }
 
@@ -286,6 +323,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           document.required = value;
           if (!value) {
             document.uploaded = false;
+            document.useReusableDocument = false;
             document.fileName = null;
             document.contentType = null;
             document.size = null;
@@ -394,7 +432,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     // Validate BASS documents
     if (_bassDocs != null) {
       final missingRequired = _bassDocs!
-          .where((d) => d.required && !d.uploaded)
+          .where((d) => d.required && !d.uploaded && !d.reused)
           .toList();
       if (missingRequired.isNotEmpty) {
         _showError(
@@ -632,6 +670,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       }
 
       setState(() {
+        document.useReusableDocument = false;
         document.uploaded = true;
         document.fileName = file.name;
         document.contentType = contentType;
@@ -650,6 +689,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       document.contentType = null;
       document.size = null;
       document.bytes = null;
+      document.useReusableDocument = false;
     });
   }
 
@@ -660,6 +700,16 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     final documents = <Map<String, dynamic>>[];
     for (var index = 0; index < _bassDocs!.length; index++) {
       final document = _bassDocs![index];
+      if (document.reused) {
+        documents.add({
+          ...document.reusableDocument!,
+          'name': document.name,
+          'required': document.required,
+          'status': 'reused',
+          'reusedFromVault': true,
+        });
+        continue;
+      }
       if (!document.uploaded || document.bytes == null) {
         documents.add({
           'name': document.name,
@@ -1096,7 +1146,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: doc.uploaded
+                    color: doc.uploaded || doc.reused
                         ? Colors.green.shade300
                         : Colors.grey.shade300,
                   ),
@@ -1105,10 +1155,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 child: Row(
                   children: [
                     Icon(
-                      doc.uploaded
+                      doc.uploaded || doc.reused
                           ? Icons.check_circle
                           : Icons.upload_file_outlined,
-                      color: doc.uploaded ? Colors.green : Colors.grey,
+                      color: doc.uploaded || doc.reused
+                          ? Colors.green
+                          : Colors.grey,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1124,7 +1176,15 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                                   : FontWeight.normal,
                             ),
                           ),
-                          if (doc.fileName != null)
+                          if (doc.reused)
+                            Text(
+                              'Verified document on file · Reused for this request',
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontSize: 11,
+                              ),
+                            )
+                          else if (doc.fileName != null)
                             Text(
                               '${doc.fileName} · ${_formatFileSize(doc.size ?? 0)}',
                               style: TextStyle(
@@ -1149,9 +1209,11 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                         ],
                       ),
                     ),
-                    if (doc.uploaded)
+                    if (doc.uploaded || doc.reused)
                       IconButton(
-                        tooltip: 'Remove file',
+                        tooltip: doc.reused
+                            ? 'Do not reuse this document'
+                            : 'Remove file',
                         onPressed: () => _removeDocument(doc),
                         icon: const Icon(Icons.close, color: Colors.red),
                       )
