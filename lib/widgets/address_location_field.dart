@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:universal_html/html.dart' as html;
 
 import '../models/address_location.dart';
 import '../services/location_service.dart';
@@ -47,7 +46,6 @@ class _AddressLocationFieldState extends State<AddressLocationField> {
   List<AddressSuggestion> _suggestions = const [];
   AddressLocation? _selected;
   bool _searching = false;
-  bool _locating = false;
   String? _lookupMessage;
   int _pinLookupId = 0;
 
@@ -267,38 +265,6 @@ class _AddressLocationFieldState extends State<AddressLocationField> {
     );
   }
 
-  Future<void> _useCurrentLocation() async {
-    setState(() {
-      _locating = true;
-      _lookupMessage = 'Waiting for location permission…';
-    });
-    try {
-      final position = await html.window.navigator.geolocation
-          .getCurrentPosition(
-            enableHighAccuracy: true,
-            timeout: const Duration(seconds: 15),
-            maximumAge: const Duration(minutes: 1),
-          );
-      if (!mounted) return;
-      final point = LatLng(
-        (position.coords?.latitude)?.toDouble() ??
-            LocationService.barangayLatitude,
-        (position.coords?.longitude)?.toDouble() ??
-            LocationService.barangayLongitude,
-      );
-      _mapController.move(point, 18);
-      await _placePin(point);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _lookupMessage =
-            'Location permission was denied or unavailable. Search for an address or tap the map instead.';
-      });
-    } finally {
-      if (mounted) setState(() => _locating = false);
-    }
-  }
-
   Widget _zoomButton({
     required IconData icon,
     required String tooltip,
@@ -379,6 +345,68 @@ class _AddressLocationFieldState extends State<AddressLocationField> {
           ),
         if (selected != null) ...[
           const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: selected.insideServiceArea
+                  ? Colors.green.shade50
+                  : Colors.red.shade50,
+              border: Border.all(
+                color: selected.insideServiceArea
+                    ? Colors.green.shade300
+                    : Colors.red.shade300,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  selected.insideServiceArea
+                      ? Icons.check_circle_outline
+                      : Icons.warning_amber_rounded,
+                  color: selected.insideServiceArea
+                      ? Colors.green.shade800
+                      : Colors.red.shade800,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selected.insideServiceArea
+                            ? 'Within Barangay Calzada-Tipas'
+                            : 'Outside Barangay Calzada-Tipas jurisdiction',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: selected.insideServiceArea
+                              ? Colors.green.shade900
+                              : Colors.red.shade900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        selected.insideServiceArea
+                            ? 'The selected address or map pin is within the configured barangay service area.'
+                            : 'The selected address or map pin appears outside the barangay service area. Please choose a location within Calzada-Tipas or ask barangay staff to verify it.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: selected.insideServiceArea
+                              ? Colors.green.shade900
+                              : Colors.red.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (selected != null) ...[
+          const SizedBox(height: 10),
           Text(
             'Address details',
             style: Theme.of(context).textTheme.titleSmall,
@@ -453,21 +481,6 @@ class _AddressLocationFieldState extends State<AddressLocationField> {
             ],
           ),
         ],
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: _locating ? null : _useCurrentLocation,
-            icon: _locating
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.my_location, size: 18),
-            label: Text(_locating ? 'Locating…' : 'Use my current location'),
-          ),
-        ),
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
@@ -564,34 +577,19 @@ class _AddressLocationFieldState extends State<AddressLocationField> {
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            Icon(
-              selected == null
-                  ? Icons.touch_app_outlined
-                  : selected.insideServiceArea
-                  ? Icons.check_circle
-                  : Icons.warning_amber,
-              size: 18,
-              color: selected == null
-                  ? Colors.grey
-                  : selected.insideServiceArea
-                  ? Colors.green
-                  : Colors.orange,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                selected == null
-                    ? 'Select a suggestion or tap the map to confirm the location.'
-                    : selected.insideServiceArea
-                    ? 'Location is within the configured Calzada-Tipas service area.'
-                    : 'Location appears outside the configured service area. Staff should verify it.',
-                style: const TextStyle(fontSize: 12),
+        if (selected == null)
+          const Row(
+            children: [
+              Icon(Icons.touch_app_outlined, size: 18, color: Colors.grey),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Select a suggestion or tap the map to confirm the location.',
+                  style: TextStyle(fontSize: 12),
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
       ],
     );
   }
