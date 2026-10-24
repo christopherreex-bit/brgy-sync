@@ -482,11 +482,14 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                                     label: const Text('View case'),
                                   ),
                                   const Spacer(),
-                                  OutlinedButton.icon(
-                                    onPressed: () => _showUpdateStatusDialog(c),
-                                    icon: const Icon(Icons.edit, size: 16),
-                                    label: const Text('Update status'),
-                                  ),
+                                  if (c['caseStatus'] != statusReleased &&
+                                      c['caseStatus'] != statusRejected)
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _showUpdateStatusDialog(c),
+                                      icon: const Icon(Icons.edit, size: 16),
+                                      label: const Text('Update status'),
+                                    ),
                                 ],
                               ),
                             ],

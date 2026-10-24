@@ -16,6 +16,7 @@ const String roleCaptain = 'captain';
 // ─── Case Statuses ──────────────────────────────────────────────
 const String statusPendingReview = 'pending_review';
 const String statusProcessing = 'processing';
+const String statusNeedsCorrection = 'needs_correction';
 const String statusAwaitingDocs = 'awaiting_docs';
 const String statusApproved = 'approved';
 const String statusForClaiming = 'for_claiming';
@@ -27,8 +28,13 @@ String normalizeCaseStatus(String status) =>
     status == 'pending' ? statusPendingReview : status;
 
 const Map<String, List<String>> validCaseStatusTransitions = {
-  statusPendingReview: [statusProcessing, statusRejected],
-  statusProcessing: [statusApproved, statusRejected],
+  statusPendingReview: [
+    statusProcessing,
+    statusNeedsCorrection,
+    statusRejected,
+  ],
+  statusProcessing: [statusApproved, statusNeedsCorrection, statusRejected],
+  statusNeedsCorrection: [],
   // Legacy cases may still have this status and must remain actionable.
   statusAwaitingDocs: [statusProcessing, statusApproved, statusRejected],
   statusApproved: [statusForClaiming, statusRejected],
@@ -70,6 +76,7 @@ const String catAdhoc = 'adhoc';
 const Map<String, Color> statusBadgeBg = {
   statusPendingReview: Color(0xFFFFF3CD),
   statusProcessing: Color(0xFFD1ECF1),
+  statusNeedsCorrection: Color(0xFFFFE0CC),
   statusAwaitingDocs: Color(0xFFFFE0CC),
   statusApproved: Color(0xFFD4EDDA),
   statusForClaiming: Color(0xFFE8DDF8),
@@ -95,6 +102,7 @@ const Map<String, Color> statusBadgeBg = {
 const Map<String, Color> statusBadgeText = {
   statusPendingReview: Color(0xFF856404),
   statusProcessing: Color(0xFF0C5460),
+  statusNeedsCorrection: Color(0xFF854A00),
   statusAwaitingDocs: Color(0xFF854A00),
   statusApproved: Color(0xFF155724),
   statusForClaiming: Color(0xFF5B348B),

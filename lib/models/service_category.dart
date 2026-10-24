@@ -667,11 +667,16 @@ List<BassDocument> kBassDocuments(String subType) => [
   ),
   BassDocument(
     name: "Voter's Certificate from Comelec (claimant)",
-    required: true,
+    required: false,
+    requiredWhenRequestingForSomeoneElse: true,
   ),
   BassDocument(name: "Barangay Certificate of Indigency", required: true),
   BassDocument(name: "Valid ID (patient)", required: true),
-  BassDocument(name: "Valid ID (claimant)", required: true),
+  BassDocument(
+    name: "Valid ID (claimant)",
+    required: false,
+    requiredWhenRequestingForSomeoneElse: true,
+  ),
   BassDocument(
     name: "Proof of relationship to patient / demised",
     required: false,

@@ -43,13 +43,13 @@ class TwilioService {
     final to = formatPhoneNumber(toNumber);
 
     // ── Primary: MySMSGate (Android SMS Gateway) ──
-    if (_mySmsGateKey != null && _mySmsGateKey!.isNotEmpty) {
+    if (_mySmsGateKey != null && _mySmsGateKey.isNotEmpty) {
       final result = await _sendMySMSGate(to, message);
       if (result == null) return null;
     }
 
     // ── Fallback 1: EasySendSMS ──
-    if (_easySendKey != null && _easySendKey!.isNotEmpty) {
+    if (_easySendKey != null && _easySendKey.isNotEmpty) {
       final result = await _sendEasySend(to, message);
       if (result == null) return null;
     }
@@ -172,6 +172,13 @@ class TwilioService {
     return sendSms(
       mobile,
       'BrgySync: Your case $refNumber requires additional documents. Please submit the missing items to the barangay hall.',
+    );
+  }
+
+  Future<String?> sendNeedsCorrection(String mobile, String refNumber) async {
+    return sendSms(
+      mobile,
+      'BrgySync: Your case $refNumber needs corrections. Open My Cases to review the flagged information or documents and resubmit the same case.',
     );
   }
 

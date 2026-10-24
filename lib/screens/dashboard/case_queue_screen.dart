@@ -31,6 +31,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     {'key': 'all', 'label': 'All statuses'},
     {'key': 'pending_review', 'label': 'Pending Review'},
     {'key': 'processing', 'label': 'Processing'},
+    {'key': 'needs_correction', 'label': 'Needs Correction'},
     {'key': 'approved', 'label': 'Approved'},
     {'key': 'for_claiming', 'label': 'For Claiming'},
     {'key': 'released', 'label': 'Released'},

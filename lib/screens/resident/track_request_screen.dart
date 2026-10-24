@@ -1,6 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cryptography/cryptography.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
 import '../../services/auth_service.dart';
@@ -183,6 +189,24 @@ class _CaseCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
+          if (status == statusNeedsCorrection) ...[
+            _CorrectionNotice(data: data),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) =>
+                      _CaseCorrectionDialog(caseId: caseId, caseData: data),
+                ),
+                icon: const Icon(Icons.edit_document),
+                label: const Text('Correct and resubmit this case'),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
@@ -301,6 +325,316 @@ class _CaseCard extends StatelessWidget {
       }
     }
   }
+}
+
+class _CorrectionNotice extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const _CorrectionNotice({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final request = Map<String, dynamic>.from(
+      data['correctionRequest'] as Map? ?? const {},
+    );
+    final reason = (request['reason'] ?? '').toString();
+    final fields = List<String>.from(request['fields'] ?? const []);
+    final documents = List<String>.from(request['documents'] ?? const []);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        border: Border.all(color: Colors.orange.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Corrections requested',
+            style: TextStyle(
+              color: Colors.orange.shade900,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (reason.isNotEmpty) ...[const SizedBox(height: 4), Text(reason)],
+          if (fields.isNotEmpty)
+            Text('Information: ${fields.map(_friendlyFieldName).join(', ')}'),
+          if (documents.isNotEmpty) Text('Documents: ${documents.join(', ')}'),
+        ],
+      ),
+    );
+  }
+}
+
+String _friendlyFieldName(String key) => key
+    .replaceAllMapped(
+      RegExp(r'([a-z])([A-Z])'),
+      (match) => '${match.group(1)} ${match.group(2)}',
+    )
+    .replaceAll('_', ' ')
+    .split(' ')
+    .where((word) => word.isNotEmpty)
+    .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+    .join(' ');
+
+class _CaseCorrectionDialog extends StatefulWidget {
+  final String caseId;
+  final Map<String, dynamic> caseData;
+
+  const _CaseCorrectionDialog({required this.caseId, required this.caseData});
+
+  @override
+  State<_CaseCorrectionDialog> createState() => _CaseCorrectionDialogState();
+}
+
+class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
+  final _controllers = <String, TextEditingController>{};
+  final _files = <String, PlatformFile>{};
+  bool _saving = false;
+  String? _error;
+
+  Map<String, dynamic> get _correction => Map<String, dynamic>.from(
+    widget.caseData['correctionRequest'] as Map? ?? const {},
+  );
+
+  List<String> get _fields =>
+      List<String>.from(_correction['fields'] ?? const []);
+  List<String> get _documents =>
+      List<String>.from(_correction['documents'] ?? const []);
+
+  @override
+  void initState() {
+    super.initState();
+    final details = Map<String, dynamic>.from(
+      widget.caseData['requestDetails'] as Map? ?? const {},
+    );
+    for (final field in _fields) {
+      _controllers[field] = TextEditingController(
+        text: (details[field] ?? '').toString(),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _pickFile(String name) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    if (file.bytes == null || file.size > 2 * 1024 * 1024) {
+      setState(
+        () => _error = 'Files must be readable and no larger than 2 MB.',
+      );
+      return;
+    }
+    setState(() {
+      _error = null;
+      _files[name] = file;
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_controllers.values.any(
+      (controller) => controller.text.trim().isEmpty,
+    )) {
+      setState(() => _error = 'Complete every flagged information field.');
+      return;
+    }
+    if (_documents.any((name) => !_files.containsKey(name))) {
+      setState(
+        () => _error = 'Upload a replacement for every flagged document.',
+      );
+      return;
+    }
+    final user = context.read<AuthService>().currentUserModel;
+    if (user == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final uploadedPaths = <String>[];
+    try {
+      final updatedDocuments = List<Map<String, dynamic>>.from(
+        widget.caseData['documents'] ?? const [],
+      );
+      var index = 0;
+      for (final name in _documents) {
+        final file = _files[name]!;
+        final extension = (file.extension ?? '').toLowerCase();
+        final contentType = extension == 'pdf'
+            ? 'application/pdf'
+            : extension == 'png'
+            ? 'image/png'
+            : 'image/jpeg';
+        final key = await AesGcm.with256bits().newSecretKey();
+        final keyBytes = await key.extractBytes();
+        final encrypted = await AesGcm.with256bits().encrypt(
+          file.bytes!,
+          secretKey: key,
+        );
+        final path =
+            'caseDocuments/${user.uid}/correction_${const Uuid().v4()}/document_${++index}';
+        await FirebaseDatabase.instance.ref(path).set({
+          'ownerId': user.uid,
+          'cipherText': base64Encode(encrypted.cipherText),
+          'nonce': base64Encode(encrypted.nonce),
+          'mac': base64Encode(encrypted.mac.bytes),
+          'contentType': contentType,
+          'size': file.size,
+        });
+        uploadedPaths.add(path);
+        final replacement = {
+          'name': name,
+          'required': true,
+          'status': 'uploaded',
+          'fileName': file.name,
+          'contentType': contentType,
+          'size': file.size,
+          'databasePath': path,
+          'encryptionKey': base64Encode(keyBytes),
+          // Firestore transforms such as serverTimestamp cannot be nested
+          // inside a map that is itself stored in an array.
+          'correctedAt': Timestamp.now(),
+        };
+        final existingIndex = updatedDocuments.indexWhere(
+          (document) => document['name'] == name,
+        );
+        if (existingIndex < 0) {
+          updatedDocuments.add(replacement);
+        } else {
+          updatedDocuments[existingIndex] = replacement;
+        }
+      }
+
+      final details = Map<String, dynamic>.from(
+        widget.caseData['requestDetails'] as Map? ?? const {},
+      );
+      for (final entry in _controllers.entries) {
+        details[entry.key] = entry.value.text.trim();
+      }
+      final db = FirebaseFirestore.instance;
+      final caseRef = db.collection('cases').doc(widget.caseId);
+      final logRef = caseRef.collection('actionLog').doc();
+      final returnStatus =
+          (_correction['returnStatus'] ?? statusPendingReview).toString() ==
+              statusProcessing
+          ? statusProcessing
+          : statusPendingReview;
+      final batch = db.batch();
+      batch.update(caseRef, {
+        'requestDetails': details,
+        'documents': updatedDocuments,
+        'status': returnStatus,
+        'lastUpdated': FieldValue.serverTimestamp(),
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
+        'correctionRequest.status': 'submitted',
+        'correctionRequest.submittedAt': FieldValue.serverTimestamp(),
+        'correctionRequest.submittedBy': user.uid,
+      });
+      batch.set(logRef, {
+        'caseId': widget.caseId,
+        'referenceNumber': widget.caseData['referenceNumber'] ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'staffId': user.uid,
+        'staffName': user.name,
+        'action': 'Resident submitted requested corrections',
+        'previousStatus': statusNeedsCorrection,
+        'newStatus': returnStatus,
+        'notes': 'Flagged information and documents were corrected.',
+        'residentCorrection': true,
+      });
+      await batch.commit();
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Corrections submitted for review in the same case.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (error) {
+      for (final path in uploadedPaths) {
+        await FirebaseDatabase.instance.ref(path).remove();
+      }
+      if (mounted) {
+        setState(() => _error = 'Could not submit corrections: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Correct case information'),
+    content: SizedBox(
+      width: 620,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text((_correction['reason'] ?? '').toString()),
+            const SizedBox(height: 16),
+            ..._controllers.entries.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TextField(
+                  controller: entry.value,
+                  decoration: InputDecoration(
+                    labelText: '${_friendlyFieldName(entry.key)} *',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ),
+            ..._documents.map(
+              (name) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  _files.containsKey(name)
+                      ? Icons.check_circle
+                      : Icons.upload_file,
+                  color: _files.containsKey(name) ? Colors.green : null,
+                ),
+                title: Text(name),
+                subtitle: Text(_files[name]?.name ?? 'Replacement required'),
+                trailing: OutlinedButton(
+                  onPressed: _saving ? null : () => _pickFile(name),
+                  child: const Text('Choose file'),
+                ),
+              ),
+            ),
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _saving ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _saving ? null : _submit,
+        child: Text(_saving ? 'Submitting…' : 'Resubmit case'),
+      ),
+    ],
+  );
 }
 
 class _StatusHistory extends StatelessWidget {

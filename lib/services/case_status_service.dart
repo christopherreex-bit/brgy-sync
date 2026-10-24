@@ -25,6 +25,8 @@ class CaseStatusService {
     DateTime? changedAt,
     bool budgetApprovalConfirmed = false,
     double? approvedAssistanceAmount,
+    List<String> correctionFields = const [],
+    List<String> correctionDocuments = const [],
   }) async {
     final effectiveDate = changedAt ?? DateTime.now();
     final caseRef = _db.collection('cases').doc(caseId);
@@ -32,6 +34,7 @@ class CaseStatusService {
     if (!initialCase.exists) throw StateError('Case not found.');
 
     final initialData = initialCase.data()!;
+    final registryRef = await _registryReferenceForCase(initialData);
     DocumentReference<Map<String, dynamic>>? programRef;
 
     if (newStatus == statusApproved && _requiresBudgetReview(initialData)) {
@@ -102,6 +105,26 @@ class CaseStatusService {
         'lastUpdated': FieldValue.serverTimestamp(),
         'statusUpdatedAt': FieldValue.serverTimestamp(),
       };
+      if (newStatus == statusNeedsCorrection) {
+        if (correctionFields.isEmpty && correctionDocuments.isEmpty) {
+          throw StateError(
+            'Flag at least one information field or document for correction.',
+          );
+        }
+        updates['correctionRequest'] = {
+          'status': 'open',
+          'reason': notes,
+          'fields': correctionFields,
+          'documents': correctionDocuments,
+          'returnStatus': previousStatus == statusProcessing
+              ? statusProcessing
+              : statusPendingReview,
+          'requestedAt': FieldValue.serverTimestamp(),
+          'requestedBy': staffId,
+          'requestedByName': staffName,
+          'requestedByRole': staffRole,
+        };
+      }
       if (newStatus == statusForClaiming) {
         updates.addAll({
           'claimingApprovalStatus': 'approved',
@@ -290,44 +313,23 @@ class CaseStatusService {
         });
       }
 
-      // Approval is the staff verification event for reusable evidence. Keep
-      // only conservative identity/relationship documents in the citizen's
-      // vault; medical and other case-specific evidence is never reused.
-      if (newStatus == statusApproved) {
-        final registryId = (caseData['registryId'] ?? '').toString();
-        final documents = caseData['documents'];
-        if (registryId.isNotEmpty && documents is List) {
-          for (final rawDocument in documents) {
-            if (rawDocument is! Map) continue;
-            final document = Map<String, dynamic>.from(rawDocument);
-            final name = (document['name'] ?? '').toString();
-            final validityDays = DocumentVaultService.validityDays(name);
-            if (validityDays == null ||
-                document['status'] != 'uploaded' ||
-                (document['databasePath'] ?? '').toString().isEmpty) {
-              continue;
-            }
-            final vaultRef = _db
-                .collection('citizenRegistry')
-                .doc(registryId)
-                .collection('verifiedDocuments')
-                .doc(DocumentVaultService.documentKey(name));
-            transaction.set(vaultRef, {
-              ...document,
-              'status': 'verified',
-              'verificationStatus': 'verified',
-              'sourceCaseId': caseId,
-              'sourceReferenceNumber':
-                  referenceNumber ?? caseData['referenceNumber'] ?? '',
-              'verifiedAt': FieldValue.serverTimestamp(),
-              'verifiedBy': staffId,
-              'verifiedByName': staffName,
-              'validUntil': Timestamp.fromDate(
-                effectiveDate.add(Duration(days: validityDays)),
-              ),
-            }, SetOptions(merge: true));
-          }
-        }
+      // A released case has completed review. Merge the verified personal
+      // facts it contains into the authoritative citizen record and retain
+      // only conservative identity documents for future requests.
+      if (newStatus == statusReleased && registryRef != null) {
+        updates['registryId'] = registryRef.id;
+        updates['registryMatchStatus'] = 'verified_match';
+        updates['registryCheckedAt'] = FieldValue.serverTimestamp();
+        _writeReleasedRegistrySync(
+          transaction: transaction,
+          registryRef: registryRef,
+          caseData: caseData,
+          caseId: caseId,
+          staffId: staffId,
+          staffName: staffName,
+          effectiveDate: effectiveDate,
+          referenceNumber: referenceNumber,
+        );
       }
 
       transaction.update(caseRef, updates);
@@ -346,6 +348,201 @@ class CaseStatusService {
         'smsBody': smsBody,
       });
     });
+  }
+
+  Future<DocumentReference<Map<String, dynamic>>?> _registryReferenceForCase(
+    Map<String, dynamic> caseData,
+  ) async {
+    if (caseData['requestedForSelf'] == false) return null;
+    final mobile =
+        (caseData['requesterMobile'] ?? caseData['residentMobile'] ?? '')
+            .toString()
+            .replaceAll(RegExp(r'\D'), '');
+    if (mobile.isNotEmpty) {
+      final matches = await _db
+          .collection('citizenRegistry')
+          .where('mobile', isEqualTo: mobile)
+          .get();
+      if (matches.docs.isNotEmpty) {
+        final canonical = matches.docs.where((doc) => doc.id == mobile);
+        if (canonical.isNotEmpty) return canonical.first.reference;
+        final linkedId = (caseData['registryId'] ?? '').toString().trim();
+        final linked = matches.docs.where((doc) => doc.id == linkedId);
+        if (linked.isNotEmpty) return linked.first.reference;
+        return matches.docs.first.reference;
+      }
+    }
+    final registryId = (caseData['registryId'] ?? '').toString().trim();
+    if (registryId.isEmpty) return null;
+    final linked = await _db
+        .collection('citizenRegistry')
+        .doc(registryId)
+        .get();
+    return linked.exists ? linked.reference : null;
+  }
+
+  void _writeReleasedRegistrySync({
+    required Transaction transaction,
+    required DocumentReference<Map<String, dynamic>> registryRef,
+    required Map<String, dynamic> caseData,
+    required String caseId,
+    required String staffId,
+    required String staffName,
+    required DateTime effectiveDate,
+    String? referenceNumber,
+  }) {
+    final resolvedReference =
+        referenceNumber ?? caseData['referenceNumber'] ?? '';
+    transaction.set(registryRef, {
+      ..._registryUpdatesFromReleasedCase(caseData),
+      'registryId': registryRef.id,
+      'verificationStatus': 'verified',
+      'verifiedAt': FieldValue.serverTimestamp(),
+      'verifiedBy': staffId,
+      'verifiedByName': staffName,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedBy': staffId,
+      'updatedByName': staffName,
+      'lastVerifiedCaseId': caseId,
+      'lastVerifiedReferenceNumber': resolvedReference,
+    }, SetOptions(merge: true));
+
+    final documents = caseData['documents'];
+    if (documents is! List) return;
+    for (final rawDocument in documents) {
+      if (rawDocument is! Map) continue;
+      final document = Map<String, dynamic>.from(rawDocument);
+      final name = (document['name'] ?? '').toString();
+      final validityDays = DocumentVaultService.validityDays(name);
+      if (validityDays == null ||
+          !['uploaded', 'reused', 'verified'].contains(document['status']) ||
+          (document['databasePath'] ?? '').toString().isEmpty) {
+        continue;
+      }
+      final vaultRef = registryRef
+          .collection('verifiedDocuments')
+          .doc(DocumentVaultService.documentKey(name));
+      transaction.set(vaultRef, {
+        ...document,
+        'status': 'verified',
+        'verificationStatus': 'verified',
+        'sourceCaseId': caseId,
+        'sourceReferenceNumber': resolvedReference,
+        'verifiedAt': FieldValue.serverTimestamp(),
+        'verifiedBy': staffId,
+        'verifiedByName': staffName,
+        'validUntil': Timestamp.fromDate(
+          effectiveDate.add(Duration(days: validityDays)),
+        ),
+      }, SetOptions(merge: true));
+    }
+  }
+
+  /// Repairs registry/vault synchronization for a case that was already
+  /// released, including cases created with an older or stale registry ID.
+  Future<bool> syncReleasedCaseRegistry({
+    required String caseId,
+    required String staffId,
+    required String staffName,
+  }) async {
+    final caseRef = _db.collection('cases').doc(caseId);
+    final initial = await caseRef.get();
+    if (!initial.exists ||
+        normalizeCaseStatus((initial.data()?['status'] ?? '').toString()) !=
+            statusReleased) {
+      return false;
+    }
+    final registryRef = await _registryReferenceForCase(initial.data()!);
+    if (registryRef == null) return false;
+    await _db.runTransaction((transaction) async {
+      final current = await transaction.get(caseRef);
+      if (!current.exists ||
+          normalizeCaseStatus((current.data()?['status'] ?? '').toString()) !=
+              statusReleased) {
+        return;
+      }
+      final data = current.data()!;
+      _writeReleasedRegistrySync(
+        transaction: transaction,
+        registryRef: registryRef,
+        caseData: data,
+        caseId: caseId,
+        staffId: staffId,
+        staffName: staffName,
+        effectiveDate: DateTime.now(),
+      );
+      transaction.update(caseRef, {
+        'registryId': registryRef.id,
+        'registryMatchStatus': 'verified_match',
+        'registryCheckedAt': FieldValue.serverTimestamp(),
+        'registrySyncedAt': FieldValue.serverTimestamp(),
+      });
+    });
+    return true;
+  }
+
+  static Map<String, dynamic> _registryUpdatesFromReleasedCase(
+    Map<String, dynamic> caseData,
+  ) {
+    if (caseData['requestedForSelf'] == false) return const {};
+    final details = Map<String, dynamic>.from(
+      caseData['requestDetails'] as Map? ?? const {},
+    );
+    final result = <String, dynamic>{};
+
+    void copy(String registryKey, Iterable<String> caseKeys) {
+      for (final key in caseKeys) {
+        final value = details[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          result[registryKey] = value is String ? value.trim() : value;
+          return;
+        }
+      }
+    }
+
+    copy('legalName', const [
+      'fullName',
+      'patientName',
+      'beneficiaryName',
+      'studentName',
+      'reporterName',
+    ]);
+    if (!result.containsKey('legalName')) {
+      final first = (details['firstName'] ?? '').toString().trim();
+      final middle = (details['middleInitial'] ?? '').toString().trim();
+      final surname = (details['surname'] ?? '').toString().trim();
+      final name = [
+        first,
+        middle,
+        surname,
+      ].where((part) => part.isNotEmpty).join(' ');
+      if (name.isNotEmpty) result['legalName'] = name;
+    }
+    copy('dateOfBirth', const ['birthday']);
+    copy('sex', const ['gender']);
+    copy('civilStatus', const ['civilStatus']);
+    copy('birthplace', const ['birthplace']);
+    copy('precinctNumber', const ['precinct']);
+    copy('emergencyContactName', const ['emergencyName']);
+    copy('emergencyContactMobile', const ['emergencyContact']);
+    copy('emergencyContactRelationship', const ['emergencyRelation']);
+
+    final category = (caseData['serviceCategory'] ?? '').toString();
+    final subType = (caseData['serviceSubType'] ?? '').toString();
+    final isInfrastructureConcern =
+        category == 'community' && subType == 'Infrastructure Concern';
+    if (!isInfrastructureConcern) {
+      copy('permanentAddress', const ['address']);
+      if (caseData['addressLocation'] is Map) {
+        result['permanentAddressLocation'] = caseData['addressLocation'];
+      }
+    }
+    final mobile = (caseData['requesterMobile'] ?? '').toString().replaceAll(
+      RegExp(r'\D'),
+      '',
+    );
+    if (mobile.isNotEmpty) result['mobile'] = mobile;
+    return result;
   }
 
   Future<void> requestForClaimingApproval({

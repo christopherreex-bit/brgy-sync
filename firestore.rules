@@ -71,6 +71,7 @@ service cloud.firestore {
         allow create, update: if isStaff();
         allow delete: if isCaptain();
       }
+
     }
 
     match /registryCorrections/{correctionId} {
@@ -119,7 +120,25 @@ service cloud.firestore {
       // the final transition into For Claiming.
       allow update: if isStaff()
                     && (request.resource.data.status != 'for_claiming'
-                        || isCaptain());
+                        || isCaptain())
+                    || (request.auth != null
+                        && resource.data.residentId == request.auth.uid
+                        && resource.data.status == 'needs_correction'
+                        && request.resource.data.status
+                            == resource.data.correctionRequest.returnStatus
+                        && request.resource.data.status
+                            in ['pending_review', 'processing']
+                        && request.resource.data.correctionRequest.status == 'submitted'
+                        && request.resource.data.correctionRequest.submittedBy == request.auth.uid
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly([
+                              'requestDetails',
+                              'documents',
+                              'status',
+                              'lastUpdated',
+                              'statusUpdatedAt',
+                              'correctionRequest'
+                            ]));
       allow delete: if request.auth != null
                     && (resource.data.residentId == request.auth.uid || isCaptain())
                     && existsAfter(/databases/$(database)/documents/auditEvents/$(caseId))
@@ -160,6 +179,15 @@ service cloud.firestore {
       allow read, delete: if request.auth != null
                           && (get(/databases/$(database)/documents/cases/$(caseId)).data.residentId == request.auth.uid
                               || isCaptain());
+      allow create: if request.auth != null
+                    && request.resource.data.residentCorrection == true
+                    && request.resource.data.staffId == request.auth.uid
+                    && request.resource.data.previousStatus == 'needs_correction'
+                    && request.resource.data.newStatus
+                        == getAfter(/databases/$(database)/documents/cases/$(caseId)).data.status
+                    && getAfter(/databases/$(database)/documents/cases/$(caseId)).data.residentId == request.auth.uid
+                    && getAfter(/databases/$(database)/documents/cases/$(caseId)).data.status
+                        in ['pending_review', 'processing'];
     }
 
     // Immutable record required whenever a case is permanently deleted.

@@ -60,6 +60,7 @@ class AuthService extends ChangeNotifier {
     final normalizedEmail = email.trim().toLowerCase();
     User? createdUser;
     var firestoreProfileCreated = false;
+    var registrationStage = 'authentication';
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
         email: normalizedEmail,
@@ -78,22 +79,29 @@ class AuthService extends ChangeNotifier {
         final mobileRef = _firestore
             .collection('mobileIdentifiers')
             .doc(normalizedMobile);
-        await _firestore.runTransaction((transaction) async {
-          final existingMobile = await transaction.get(mobileRef);
-          if (existingMobile.exists) {
-            throw StateError('This mobile number is already in use.');
-          }
-          transaction.set(mobileRef, {
-            'uid': cred.user!.uid,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          transaction.set(
-            _firestore.collection('users').doc(cred.user!.uid),
-            user.toMap(),
+        registrationStage = 'mobile_check';
+        if ((await mobileRef.get()).exists) {
+          return await _rollbackFailedRegistration(
+            createdUser: createdUser,
+            normalizedMobile: normalizedMobile,
+            profileCreated: false,
+            message: 'This mobile number is already in use.',
           );
+        }
+        registrationStage = 'profile_creation';
+        final profileBatch = _firestore.batch();
+        profileBatch.set(mobileRef, {
+          'uid': cred.user!.uid,
+          'createdAt': FieldValue.serverTimestamp(),
         });
+        profileBatch.set(
+          _firestore.collection('users').doc(cred.user!.uid),
+          user.toMap(),
+        );
+        await profileBatch.commit();
         firestoreProfileCreated = true;
 
+        registrationStage = 'registry_lookup';
         final registryMatch = await _firestore
             .collection('citizenRegistry')
             .where('mobile', isEqualTo: normalizedMobile)
@@ -101,28 +109,25 @@ class AuthService extends ChangeNotifier {
             .get();
         final existingRegistryId = registryMatch.docs.firstOrNull?.id;
         final registryId = existingRegistryId ?? normalizedMobile;
+        registrationStage = 'registry_link';
         await _firestore.collection('users').doc(cred.user!.uid).update({
           'citizenRegistryId': registryId,
         });
         if (existingRegistryId == null) {
+          registrationStage = 'registry_creation';
           final registryRef = _firestore
               .collection('citizenRegistry')
               .doc(registryId);
-          await _firestore.runTransaction((transaction) async {
-            final sameIdRecord = await transaction.get(registryRef);
-            if (!sameIdRecord.exists) {
-              transaction.set(registryRef, {
-                'registryId': registryId,
-                'legalName': name.trim(),
-                'mobile': normalizedMobile,
-                'email': normalizedEmail,
-                'verificationStatus': 'pending_verification',
-                'source': 'account_registration',
-                'createdByAccountId': cred.user!.uid,
-                'createdAt': FieldValue.serverTimestamp(),
-                'updatedAt': FieldValue.serverTimestamp(),
-              });
-            }
+          await registryRef.set({
+            'registryId': registryId,
+            'legalName': name.trim(),
+            'mobile': normalizedMobile,
+            'email': normalizedEmail,
+            'verificationStatus': 'pending_verification',
+            'source': 'account_registration',
+            'createdByAccountId': cred.user!.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
           });
         }
         _currentUserModel = user;
@@ -130,7 +135,14 @@ class AuthService extends ChangeNotifier {
       }
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message;
+      return switch (e.code) {
+        'email-already-in-use' => 'This email address is already in use.',
+        'invalid-email' => 'Enter a valid email address.',
+        'weak-password' => 'Password must contain at least 6 characters.',
+        'network-request-failed' =>
+          'Could not reach Firebase. Check your internet connection and try again.',
+        _ => e.message ?? 'Could not create the account.',
+      };
     } catch (e) {
       if (createdUser != null) {
         if (firestoreProfileCreated) {
@@ -149,8 +161,45 @@ class AuthService extends ChangeNotifier {
       if (e.toString().contains('mobile number is already in use')) {
         return 'This mobile number is already in use.';
       }
-      return e.toString();
+      final text = e.toString();
+      if (registrationStage == 'profile_creation' &&
+          (e is FirebaseException ||
+              text.contains('Dart exception thrown from converted Future'))) {
+        return 'This mobile number is already in use, or a previous incomplete registration reserved it. Please use another number or ask the barangay to clear the incomplete record.';
+      }
+      if (text.contains('Dart exception thrown from converted Future')) {
+        return switch (registrationStage) {
+          'registry_lookup' || 'registry_link' || 'registry_creation' =>
+            'The account could not be linked to the Citizen Registry. Please try again or contact the barangay office.',
+          _ =>
+            'Registration could not be completed because Firebase rejected the request. Please try again.',
+        };
+      }
+      return text.replaceFirst(RegExp(r'^(Exception|StateError):\s*'), '');
     }
+  }
+
+  Future<String> _rollbackFailedRegistration({
+    required User? createdUser,
+    required String normalizedMobile,
+    required bool profileCreated,
+    required String message,
+  }) async {
+    if (createdUser != null) {
+      if (profileCreated) {
+        try {
+          await _firestore.collection('users').doc(createdUser.uid).delete();
+          await _firestore
+              .collection('mobileIdentifiers')
+              .doc(normalizedMobile)
+              .delete();
+        } catch (_) {}
+      }
+      try {
+        await createdUser.delete();
+      } catch (_) {}
+    }
+    return message;
   }
 
   /// Completes when the current user's Firestore data has been loaded.

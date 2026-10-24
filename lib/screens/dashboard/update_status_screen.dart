@@ -25,6 +25,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   String? _error;
   bool _budgetApprovalConfirmed = false;
   double? _approvedAssistanceAmount;
+  final Set<String> _correctionFields = {};
+  final Set<String> _correctionDocuments = {};
 
   final _twilio = TwilioService();
 
@@ -33,6 +35,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   }
 
   Future<void> _selectStatus(String? status) async {
+    if (status != statusNeedsCorrection) {
+      _correctionFields.clear();
+      _correctionDocuments.clear();
+    }
     if (status != statusApproved) {
       setState(() {
         _newStatus = status;
@@ -63,6 +69,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
     switch (nextStatus) {
       case 'processing':
         return 'BrgySync: Your case $refNumber is now being processed. Thank you for your patience.';
+      case 'needs_correction':
+        return 'BrgySync: Your case $refNumber needs corrections. Open My Cases to review and update the flagged items.';
       case 'awaiting_docs':
         return 'BrgySync: Your case $refNumber requires additional documents. Please submit the missing items to the barangay hall.';
       case 'approved':
@@ -85,6 +93,15 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
     }
     if (_actionNotesCtrl.text.trim().isEmpty) {
       setState(() => _error = 'Please describe the action taken.');
+      return;
+    }
+    if (_newStatus == statusNeedsCorrection &&
+        _correctionFields.isEmpty &&
+        _correctionDocuments.isEmpty) {
+      setState(
+        () => _error =
+            'Select at least one information field or document to correct.',
+      );
       return;
     }
 
@@ -125,6 +142,24 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       // Business rule: BASS medical cannot approve without Certificate of Admission
       final serviceCategory = caseData['serviceCategory'] ?? '';
       final serviceSubType = caseData['serviceSubType'] ?? '';
+      final caseDocuments = List<Map<String, dynamic>>.from(
+        caseData['documents'] ?? const [],
+      );
+      final hasMissingRequiredDocuments = caseDocuments.any(
+        (document) =>
+            document['required'] == true &&
+            document['status'] != 'uploaded' &&
+            document['status'] != 'reused',
+      );
+      if (_newStatus == statusRejected && hasMissingRequiredDocuments) {
+        setState(() {
+          _loading = false;
+          _error =
+              'Cases cannot be rejected only because documents are missing. '
+              'Choose Needs Correction and flag the missing documents.';
+        });
+        return;
+      }
       if (_newStatus == 'approved' &&
           serviceCategory == 'bass' &&
           (serviceSubType.toLowerCase().contains('dialysis') ||
@@ -200,6 +235,9 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         case 'awaiting_docs':
           smsError = await _twilio.sendStatusAwaitingDocs(smsTo, refNumber);
           break;
+        case 'needs_correction':
+          smsError = await _twilio.sendNeedsCorrection(smsTo, refNumber);
+          break;
         case 'approved':
           smsError = await _twilio.sendStatusApproved(smsTo, refNumber);
           break;
@@ -232,6 +270,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         ),
         budgetApprovalConfirmed: _budgetApprovalConfirmed,
         approvedAssistanceAmount: _approvedAssistanceAmount,
+        correctionFields: _correctionFields.toList(),
+        correctionDocuments: _correctionDocuments.toList(),
       );
 
       if (mounted) {
@@ -267,6 +307,17 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         .join(' ');
   }
 
+  static String _fieldLabel(String key) => key
+      .replaceAllMapped(
+        RegExp(r'([a-z])([A-Z])'),
+        (match) => '${match.group(1)} ${match.group(2)}',
+      )
+      .replaceAll('_', ' ')
+      .split(' ')
+      .where((word) => word.isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
@@ -297,7 +348,12 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           data['documents'] ?? [],
         );
         final missingDocs = documents
-            .where((d) => d['required'] == true && d['status'] != 'uploaded')
+            .where(
+              (d) =>
+                  d['required'] == true &&
+                  d['status'] != 'uploaded' &&
+                  d['status'] != 'reused',
+            )
             .toList();
 
         return SingleChildScrollView(
@@ -409,7 +465,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _newStatus,
+                          key: ValueKey(_newStatus),
+                          initialValue: _newStatus,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             contentPadding: EdgeInsets.symmetric(
@@ -435,19 +492,127 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
               ),
               const SizedBox(height: 24),
 
+              if (_newStatus == statusRejected) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    border: Border.all(color: Colors.red.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Rejected is a final decision. Use Needs Correction when '
+                    'information or documents can still be corrected.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+
+              if (_newStatus == statusNeedsCorrection) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    border: Border.all(color: Colors.orange.shade200),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Flag items the resident must correct *',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'The resident will edit only these items in the same case.',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                      const SizedBox(height: 12),
+                      if ((data['requestDetails'] as Map?)?.isNotEmpty == true)
+                        const Text(
+                          'Information',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ...(data['requestDetails'] as Map? ?? const {}).keys
+                          .map((key) => key.toString())
+                          .map(
+                            (key) => CheckboxListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(_fieldLabel(key)),
+                              subtitle: Text(
+                                (data['requestDetails'][key] ?? '').toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              value: _correctionFields.contains(key),
+                              onChanged: (selected) => setState(() {
+                                selected == true
+                                    ? _correctionFields.add(key)
+                                    : _correctionFields.remove(key);
+                              }),
+                            ),
+                          ),
+                      if (documents.any(
+                        (document) =>
+                            document['status'] == 'uploaded' ||
+                            document['status'] == 'reused',
+                      )) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Documents',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        ...documents
+                            .where(
+                              (document) =>
+                                  document['status'] == 'uploaded' ||
+                                  document['status'] == 'reused',
+                            )
+                            .map((document) {
+                              final name = (document['name'] ?? '').toString();
+                              return CheckboxListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(name),
+                                subtitle: const Text(
+                                  'Replace or correct this uploaded document',
+                                ),
+                                value: _correctionDocuments.contains(name),
+                                onChanged: (selected) => setState(() {
+                                  selected == true
+                                      ? _correctionDocuments.add(name)
+                                      : _correctionDocuments.remove(name);
+                                }),
+                              );
+                            }),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+
               // Action taken
-              const Text(
-                'Action Taken *',
+              Text(
+                _newStatus == statusNeedsCorrection
+                    ? 'Correction instructions *'
+                    : 'Action Taken *',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _actionNotesCtrl,
                 maxLines: 4,
-                decoration: const InputDecoration(
-                  hintText:
-                      'Describe what was done, reviewed, or decided on this case',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  hintText: _newStatus == statusNeedsCorrection
+                      ? 'Explain what is wrong and what the resident should provide'
+                      : 'Describe what was done, reviewed, or decided on this case',
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 24),

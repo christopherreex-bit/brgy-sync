@@ -139,6 +139,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       }
       setState(() {
         for (final document in documents) {
+          if (document.requiredWhenRequestingForSomeoneElse &&
+              !_requestingForSomeoneElse) {
+            document.reusableDocument = null;
+            document.useReusableDocument = false;
+            continue;
+          }
           final reusable =
               available[DocumentVaultService.documentKey(document.name)];
           if (reusable != null) {
@@ -432,7 +438,14 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     // Validate BASS documents
     if (_bassDocs != null) {
       final missingRequired = _bassDocs!
-          .where((d) => d.required && !d.uploaded && !d.reused)
+          .where(
+            (d) =>
+                (!d.requiredWhenRequestingForSomeoneElse ||
+                    _requestingForSomeoneElse) &&
+                d.required &&
+                !d.uploaded &&
+                !d.reused,
+          )
           .toList();
       if (missingRequired.isNotEmpty) {
         _showError(
@@ -700,6 +713,15 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     final documents = <Map<String, dynamic>>[];
     for (var index = 0; index < _bassDocs!.length; index++) {
       final document = _bassDocs![index];
+      if (document.requiredWhenRequestingForSomeoneElse &&
+          !_requestingForSomeoneElse) {
+        documents.add({
+          'name': document.name,
+          'required': false,
+          'status': 'not_applicable',
+        });
+        continue;
+      }
       if (document.reused) {
         documents.add({
           ...document.reusableDocument!,
@@ -1135,105 +1157,100 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            ...(_bassDocs!).asMap().entries.map((entry) {
-              final i = entry.key;
-              final doc = entry.value;
-              final isApplicable =
-                  !doc.requiredWhenRequestingForSomeoneElse ||
-                  _requestingForSomeoneElse;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: doc.uploaded || doc.reused
-                        ? Colors.green.shade300
-                        : Colors.grey.shade300,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      doc.uploaded || doc.reused
-                          ? Icons.check_circle
-                          : Icons.upload_file_outlined,
-                      color: doc.uploaded || doc.reused
-                          ? Colors.green
-                          : Colors.grey,
+            ...(_bassDocs!
+                    .where(
+                      (doc) =>
+                          !doc.requiredWhenRequestingForSomeoneElse ||
+                          _requestingForSomeoneElse,
+                    )
+                    .toList())
+                .asMap()
+                .entries
+                .map((entry) {
+                  final i = entry.key;
+                  final doc = entry.value;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: doc.uploaded || doc.reused
+                            ? Colors.green.shade300
+                            : Colors.grey.shade300,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${i + 1}. ${doc.name}${doc.required ? ' *' : ''}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: doc.required
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          doc.uploaded || doc.reused
+                              ? Icons.check_circle
+                              : Icons.upload_file_outlined,
+                          color: doc.uploaded || doc.reused
+                              ? Colors.green
+                              : Colors.grey,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${i + 1}. ${doc.name}${doc.required ? ' *' : ''}',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: doc.required
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                              if (doc.reused)
+                                Text(
+                                  'Verified document on file · Reused for this request',
+                                  style: TextStyle(
+                                    color: Colors.green.shade700,
+                                    fontSize: 11,
+                                  ),
+                                )
+                              else if (doc.fileName != null)
+                                Text(
+                                  '${doc.fileName} · ${_formatFileSize(doc.size ?? 0)}',
+                                  style: TextStyle(
+                                    color: Colors.green.shade700,
+                                    fontSize: 11,
+                                  ),
+                                )
+                              else
+                                Text(
+                                  doc.required ? 'Required' : 'Optional',
+                                  style: TextStyle(
+                                    color: doc.required
+                                        ? Colors.red
+                                        : Colors.grey,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                            ],
                           ),
-                          if (doc.reused)
-                            Text(
-                              'Verified document on file · Reused for this request',
-                              style: TextStyle(
-                                color: Colors.green.shade700,
-                                fontSize: 11,
-                              ),
-                            )
-                          else if (doc.fileName != null)
-                            Text(
-                              '${doc.fileName} · ${_formatFileSize(doc.size ?? 0)}',
-                              style: TextStyle(
-                                color: Colors.green.shade700,
-                                fontSize: 11,
-                              ),
-                            )
-                          else
-                            Text(
-                              !isApplicable
-                                  ? 'Not applicable when requesting for yourself'
-                                  : doc.required
-                                  ? 'Required'
-                                  : 'Optional',
-                              style: TextStyle(
-                                color: doc.required && isApplicable
-                                    ? Colors.red
-                                    : Colors.grey,
-                                fontSize: 11,
-                              ),
-                            ),
-                        ],
-                      ),
+                        ),
+                        if (doc.uploaded || doc.reused)
+                          IconButton(
+                            tooltip: doc.reused
+                                ? 'Do not reuse this document'
+                                : 'Remove file',
+                            onPressed: () => _removeDocument(doc),
+                            icon: const Icon(Icons.close, color: Colors.red),
+                          )
+                        else
+                          OutlinedButton.icon(
+                            onPressed: () => _pickDocument(doc),
+                            icon: const Icon(Icons.attach_file, size: 16),
+                            label: const Text('Choose file'),
+                          ),
+                      ],
                     ),
-                    if (doc.uploaded || doc.reused)
-                      IconButton(
-                        tooltip: doc.reused
-                            ? 'Do not reuse this document'
-                            : 'Remove file',
-                        onPressed: () => _removeDocument(doc),
-                        icon: const Icon(Icons.close, color: Colors.red),
-                      )
-                    else
-                      OutlinedButton.icon(
-                        onPressed: isApplicable
-                            ? () => _pickDocument(doc)
-                            : null,
-                        icon: Icon(
-                          isApplicable ? Icons.attach_file : Icons.block,
-                          size: 16,
-                        ),
-                        label: Text(
-                          isApplicable ? 'Choose file' : 'Not applicable',
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            }),
+                  );
+                }),
           ],
           const SizedBox(height: 16),
           // Info note

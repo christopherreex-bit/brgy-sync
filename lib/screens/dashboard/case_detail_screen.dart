@@ -96,6 +96,8 @@ class CaseDetailScreen extends StatelessWidget {
                 '${data['encodedByName'] != null ? ' · encoded by ${data['encodedByName']}' : ''}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
+              if (normalizeCaseStatus(status.toString()) == statusReleased)
+                _ReleasedRegistrySync(caseId: caseId),
               if (claimingApprovalPending) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -329,7 +331,9 @@ class CaseDetailScreen extends StatelessWidget {
 
               const SizedBox(height: 24),
               // Action buttons
-              if (!(claimingApprovalPending && isCaptain))
+              if (!(claimingApprovalPending && isCaptain) &&
+                  normalizeCaseStatus(status.toString()) != statusReleased &&
+                  normalizeCaseStatus(status.toString()) != statusRejected)
                 SizedBox(
                   width: double.infinity,
                   height: 44,
@@ -829,6 +833,108 @@ class CaseDetailScreen extends StatelessWidget {
                     ),
                   );
                 }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ReleasedRegistrySync extends StatefulWidget {
+  final String caseId;
+
+  const _ReleasedRegistrySync({required this.caseId});
+
+  @override
+  State<_ReleasedRegistrySync> createState() => _ReleasedRegistrySyncState();
+}
+
+class _ReleasedRegistrySyncState extends State<_ReleasedRegistrySync> {
+  Future<bool>? _sync;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync ??= _startSync();
+  }
+
+  Future<bool> _startSync() async {
+    final user = context.read<AuthService>().currentUserModel;
+    if (user == null) throw StateError('Staff account was not found.');
+    return CaseStatusService().syncReleasedCaseRegistry(
+      caseId: widget.caseId,
+      staffId: user.uid,
+      staffName: user.name,
+    );
+  }
+
+  void _retry() => setState(() => _sync = _startSync());
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _sync,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 8),
+                Text('Saving verified information to Citizen Registry…'),
+              ],
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Citizen Registry synchronization needs to be retried.',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+                TextButton(onPressed: _retry, child: const Text('Retry')),
+              ],
+            ),
+          );
+        }
+        if (snapshot.data != true) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: Colors.grey),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'No existing Citizen Registry record is linked to this case. No registry record was created.',
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Row(
+            children: [
+              Icon(Icons.verified, size: 18, color: Colors.green.shade700),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Citizen Registry information and reusable documents are synchronized.',
+                ),
+              ),
             ],
           ),
         );
