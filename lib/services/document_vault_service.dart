@@ -16,6 +16,7 @@ class DocumentVaultService {
   /// evidence is deliberately excluded and must be uploaded for every case.
   static int? validityDays(String name) {
     final normalized = name.toLowerCase();
+    if (normalized.contains('certificate of indigency')) return 60;
     if (normalized.startsWith('valid id')) return 365;
     if (normalized.contains("voter's certificate")) return 1095;
     if (normalized.contains('proof of relationship')) return 1095;

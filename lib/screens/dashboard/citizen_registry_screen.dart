@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/citizen_registry_service.dart';
+import '../../services/document_vault_service.dart';
+import '../../services/indigency_certificate_service.dart';
 import '../../utils/constants.dart';
 
 class CitizenRegistryScreen extends StatefulWidget {
@@ -17,6 +19,7 @@ class CitizenRegistryScreen extends StatefulWidget {
 
 class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
   final _service = CitizenRegistryService();
+  final _indigencyCertificates = IndigencyCertificateService();
   final _search = TextEditingController();
   final _recordsScrollController = ScrollController();
   String _status = 'all';
@@ -879,6 +882,8 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
                           ),
                         );
                       }),
+                      _indigencyCertificatePanel(id, data, actor),
+                      const SizedBox(height: 12),
                       _requestHistory(residentMobile),
                     ],
                   ),
@@ -953,6 +958,227 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
     }
   }
 
+  Widget _indigencyCertificatePanel(
+    String registryId,
+    Map<String, dynamic> citizen,
+    UserModel actor,
+  ) {
+    final verified = citizen['verificationStatus'] == 'verified';
+    final documentId = DocumentVaultService.documentKey(
+      'Barangay Certificate of Indigency',
+    );
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        border: Border.all(color: Colors.amber.shade200),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('citizenRegistry')
+            .doc(registryId)
+            .collection('verifiedDocuments')
+            .doc(documentId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final document = snapshot.data?.data();
+          final validUntil = document?['validUntil'];
+          final expiry = validUntil is Timestamp ? validUntil.toDate() : null;
+          final valid =
+              document?['verificationStatus'] == 'verified' &&
+              expiry != null &&
+              !expiry.isBefore(DateTime.now());
+          final certificateNumber = (document?['certificateNumber'] ?? '')
+              .toString();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.description_outlined, color: kNavy),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Certificate of Indigency',
+                      style: TextStyle(
+                        color: kNavy,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (valid)
+                    Chip(
+                      avatar: const Icon(Icons.verified, size: 16),
+                      label: const Text('Valid'),
+                      backgroundColor: Colors.green.shade100,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                !verified
+                    ? 'Verify this citizen record before generating an official certificate.'
+                    : valid
+                    ? '$certificateNumber · Valid until ${_formatRegistryDate(expiry)}'
+                    : document == null
+                    ? 'No system-generated certificate is on file.'
+                    : 'The previous certificate expired on ${_formatRegistryDate(expiry)}.',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: verified
+                        ? () => _generateIndigencyCertificate(
+                            registryId,
+                            citizen,
+                            actor,
+                          )
+                        : null,
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: Text(
+                      document == null
+                          ? 'Generate certificate'
+                          : 'Regenerate certificate',
+                    ),
+                  ),
+                  if (document != null)
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        try {
+                          await _indigencyCertificates.previewStored(document);
+                        } catch (error) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Could not open certificate: $error',
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.visibility_outlined),
+                      label: const Text('Preview / print'),
+                    ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatRegistryDate(DateTime? date) {
+    if (date == null) return 'unknown date';
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  Future<void> _generateIndigencyCertificate(
+    String registryId,
+    Map<String, dynamic> citizen,
+    UserModel actor,
+  ) async {
+    final reasonController = TextEditingController(
+      text: 'Medical/Financial Assistance from MAO',
+    );
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Generate Certificate of Indigency'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${citizen['legalName'] ?? ''}\n${citizen['permanentAddress'] ?? ''}',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for issuance',
+                  helperText: 'This wording will appear on the certificate.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'The certificate will be valid for 60 days and saved as a verified reusable document.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = reasonController.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Generate'),
+          ),
+        ],
+      ),
+    );
+    reasonController.dispose();
+    if (reason == null || !mounted) return;
+    try {
+      await _indigencyCertificates.generateAndStore(
+        registryId: registryId,
+        citizen: citizen,
+        actor: actor,
+        reason: reason,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Certificate generated and saved to the Citizen Registry.',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not generate certificate: $error')),
+        );
+      }
+    }
+  }
+
   String _statusLabel(String value) => switch (value) {
     'verified' => 'Verified',
     'pending_verification' => 'Pending verification',
@@ -960,146 +1186,154 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
   };
 
   Widget _requestHistory(String residentId) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
         color: Colors.blueGrey.shade50,
-        border: Border.all(color: Colors.blueGrey.shade100),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _service.watchResidentRequests(residentId),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Row(
-              children: [
-                Icon(Icons.history, color: kNavy),
-                SizedBox(width: 10),
-                Expanded(child: Text('Request history could not be loaded.')),
-              ],
-            );
-          }
-          if (!snapshot.hasData) {
-            return const Row(
-              children: [
-                Icon(Icons.history, color: kNavy),
-                SizedBox(width: 10),
-                Expanded(child: Text('Loading request history…')),
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: Colors.blueGrey.shade100),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _service.watchResidentRequests(residentId),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Row(
+                children: [
+                  Icon(Icons.history, color: kNavy),
+                  SizedBox(width: 10),
+                  Expanded(child: Text('Request history could not be loaded.')),
+                ],
+              );
+            }
+            if (!snapshot.hasData) {
+              return const Row(
+                children: [
+                  Icon(Icons.history, color: kNavy),
+                  SizedBox(width: 10),
+                  Expanded(child: Text('Loading request history…')),
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ],
+              );
+            }
+            final requests = [...snapshot.data!.docs]
+              ..sort((a, b) {
+                final aDate = a.data()['submissionTimestamp'];
+                final bDate = b.data()['submissionTimestamp'];
+                final aMillis = aDate is Timestamp
+                    ? aDate.millisecondsSinceEpoch
+                    : 0;
+                final bMillis = bDate is Timestamp
+                    ? bDate.millisecondsSinceEpoch
+                    : 0;
+                return bMillis.compareTo(aMillis);
+              });
+            return ExpansionTile(
+              leading: const Icon(Icons.history, color: kNavy),
+              title: const Text(
+                'Request history',
+                style: TextStyle(
+                  color: kNavy,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                 ),
-              ],
-            );
-          }
-          final requests = [...snapshot.data!.docs]
-            ..sort((a, b) {
-              final aDate = a.data()['submissionTimestamp'];
-              final bDate = b.data()['submissionTimestamp'];
-              final aMillis = aDate is Timestamp
-                  ? aDate.millisecondsSinceEpoch
-                  : 0;
-              final bMillis = bDate is Timestamp
-                  ? bDate.millisecondsSinceEpoch
-                  : 0;
-              return bMillis.compareTo(aMillis);
-            });
-          return ExpansionTile(
-            leading: const Icon(Icons.history, color: kNavy),
-            title: const Text(
-              'Request history',
-              style: TextStyle(
-                color: kNavy,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
               ),
-            ),
-            subtitle: Text(
-              requests.isEmpty
-                  ? 'No requests recorded for this resident.'
-                  : '${requests.length} request${requests.length == 1 ? '' : 's'} recorded',
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            children: requests.isEmpty
-                ? const []
-                : requests.map((request) {
-                    final caseData = request.data();
-                    final reference =
-                        (caseData['referenceNumber'] ?? request.id).toString();
-                    final service =
-                        (caseData['serviceSubType'] ?? 'Service request')
-                            .toString();
-                    final status = _caseStatusLabel(caseData['status']);
-                    return Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: Colors.blueGrey.shade100),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: ExpansionTile(
-                        leading: const Icon(
-                          Icons.description_outlined,
-                          color: kNavy,
-                        ),
-                        title: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    reference,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: kNavy,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    service,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.normal,
-                                    ),
-                                  ),
-                                ],
-                              ),
+              subtitle: Text(
+                requests.isEmpty
+                    ? 'No requests recorded for this resident.'
+                    : '${requests.length} request${requests.length == 1 ? '' : 's'} recorded',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: requests.isEmpty
+                  ? const []
+                  : requests.map((request) {
+                      final caseData = request.data();
+                      final reference =
+                          (caseData['referenceNumber'] ?? request.id)
+                              .toString();
+                      final service =
+                          (caseData['serviceSubType'] ?? 'Service request')
+                              .toString();
+                      final status = _caseStatusLabel(caseData['status']);
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Material(
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            side: BorderSide(color: Colors.blueGrey.shade100),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: ExpansionTile(
+                            leading: const Icon(
+                              Icons.description_outlined,
+                              color: kNavy,
                             ),
-                            const SizedBox(width: 12),
-                            SizedBox(
-                              width: 130,
-                              child: Center(
-                                child: Chip(
-                                  label: SizedBox(
-                                    width: 96,
-                                    child: Text(
-                                      status,
-                                      textAlign: TextAlign.center,
+                            title: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        reference,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: kNavy,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        service,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.normal,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                SizedBox(
+                                  width: 130,
+                                  child: Center(
+                                    child: Chip(
+                                      label: SizedBox(
+                                        width: 96,
+                                        child: Text(
+                                          status,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
+                            childrenPadding: const EdgeInsets.fromLTRB(
+                              16,
+                              0,
+                              16,
+                              12,
+                            ),
+                            children: [
+                              _caseActionHistory(request.id, caseData),
+                            ],
+                          ),
                         ),
-                        childrenPadding: const EdgeInsets.fromLTRB(
-                          16,
-                          0,
-                          16,
-                          12,
-                        ),
-                        children: [_caseActionHistory(request.id, caseData)],
-                      ),
-                    );
-                  }).toList(),
-          );
-        },
+                      );
+                    }).toList(),
+            );
+          },
+        ),
       ),
     );
   }

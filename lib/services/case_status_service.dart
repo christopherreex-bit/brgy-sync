@@ -422,6 +422,11 @@ class CaseStatusService {
       final vaultRef = registryRef
           .collection('verifiedDocuments')
           .doc(DocumentVaultService.documentKey(name));
+      final existingValidUntil = document['validUntil'];
+      final validUntil =
+          document['status'] != 'uploaded' && existingValidUntil is Timestamp
+          ? existingValidUntil
+          : Timestamp.fromDate(effectiveDate.add(Duration(days: validityDays)));
       transaction.set(vaultRef, {
         ...document,
         'status': 'verified',
@@ -431,9 +436,7 @@ class CaseStatusService {
         'verifiedAt': FieldValue.serverTimestamp(),
         'verifiedBy': staffId,
         'verifiedByName': staffName,
-        'validUntil': Timestamp.fromDate(
-          effectiveDate.add(Duration(days: validityDays)),
-        ),
+        'validUntil': validUntil,
       }, SetOptions(merge: true));
     }
   }

@@ -168,6 +168,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /certificateCounters/{year} {
+      allow read, create, update: if isStaff();
+      allow delete: if isCaptain();
+    }
+
     // ─── Action Log — collection group access ───────────────────
     // Top-level match required for collectionGroup('actionLog') queries
     match /{path=**}/actionLog/{logId} {
