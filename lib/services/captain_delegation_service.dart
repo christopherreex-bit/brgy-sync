@@ -68,22 +68,30 @@ class CaptainDelegationService {
       );
     }
     final event = _db.collection('captainDelegationEvents').doc();
-    final batch = _db.batch();
-    batch.update(_current, {
-      'active': false,
-      'revokedAt': FieldValue.serverTimestamp(),
-      'revokedBy': captain.uid,
-      'revokedByName': captain.name,
-      'updatedAt': FieldValue.serverTimestamp(),
+    await _db.runTransaction((transaction) async {
+      final current = await transaction.get(_current);
+      if (!current.exists || current.data()?['active'] != true) {
+        throw StateError('There is no active delegation to revoke.');
+      }
+      final data = current.data()!;
+      transaction.update(_current, {
+        'active': false,
+        'revokedAt': FieldValue.serverTimestamp(),
+        'revokedBy': captain.uid,
+        'revokedByName': captain.name,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.set(event, {
+        'eventType': 'revoked',
+        'eventId': event.id,
+        'delegateUid': data['delegateUid'],
+        'delegateName': data['delegateName'],
+        'expiresAt': data['expiresAt'],
+        'actorId': captain.uid,
+        'actorName': captain.name,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     });
-    batch.set(event, {
-      'eventType': 'revoked',
-      'eventId': event.id,
-      'actorId': captain.uid,
-      'actorName': captain.name,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    await batch.commit();
   }
 
   Future<void> changeExpiry({

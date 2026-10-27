@@ -255,6 +255,13 @@ class _SidebarState extends State<Sidebar> {
                           '/dashboard/account-management',
                           currentLocation,
                         ),
+                        _navItem(
+                          context,
+                          Icons.policy_outlined,
+                          'Delegation History',
+                          '/dashboard/delegation-history',
+                          currentLocation,
+                        ),
                       ],
                       if (user.isStaff ||
                           user.isOfficer ||

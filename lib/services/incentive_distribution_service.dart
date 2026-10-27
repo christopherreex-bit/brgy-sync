@@ -159,7 +159,7 @@ class IncentiveDistributionService {
         'releasedAt': FieldValue.serverTimestamp(),
         'releasedBy': actor.uid,
         'releasedByName': actor.name,
-        'releasedByRole': actor.role,
+        'releasedByRole': actor.effectiveRole,
       });
       transaction.set(budgetTransactionRef, {
         'programId': programRef.id,
@@ -189,7 +189,7 @@ class IncentiveDistributionService {
         'effectiveAt': FieldValue.serverTimestamp(),
         'requestedBy': actor.uid,
         'requestedByName': actor.name,
-        'requestedByRole': actor.role,
+        'requestedByRole': actor.effectiveRole,
       });
     });
   }

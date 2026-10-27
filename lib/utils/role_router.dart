@@ -28,6 +28,7 @@ import '../screens/dashboard/user_management_screen.dart';
 import '../screens/dashboard/walk_in_intake_screen.dart';
 import '../screens/dashboard/citizen_registry_screen.dart';
 import '../screens/dashboard/cash_position_screen.dart';
+import '../screens/dashboard/delegation_history_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/login',
@@ -157,6 +158,10 @@ final appRouter = GoRouter(
           builder: (context, state) => const AccountManagementScreen(),
         ),
         GoRoute(
+          path: '/dashboard/delegation-history',
+          builder: (context, state) => const DelegationHistoryScreen(),
+        ),
+        GoRoute(
           path: '/dashboard/user-management',
           builder: (context, state) => const UserManagementScreen(),
         ),
@@ -176,7 +181,8 @@ final appRouter = GoRouter(
     final user = auth.currentUserModel;
     if (isLoggedIn &&
         user?.hasActingCaptainAuthority == true &&
-        state.matchedLocation == '/dashboard/account-management') {
+        (state.matchedLocation == '/dashboard/account-management' ||
+            state.matchedLocation == '/dashboard/delegation-history')) {
       return '/dashboard';
     }
     if (isLoggedIn && user?.isTreasurer == true) {

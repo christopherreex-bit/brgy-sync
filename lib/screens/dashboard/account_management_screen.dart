@@ -605,7 +605,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   children: [
                     OutlinedButton.icon(
                       onPressed: () =>
-                          _showChangeDurationDialog(captain, expiry!),
+                          _showChangeDurationDialog(captain, expiry),
                       icon: const Icon(Icons.edit_calendar_outlined),
                       label: const Text('Change duration'),
                     ),
@@ -1086,8 +1086,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
               style: TextStyle(color: Colors.grey, fontSize: 13),
             ),
             const SizedBox(height: 20),
-            if (currentUser?.isPermanentCaptain == true) ...[
-              _delegationPanel(currentUser!),
+            if (currentUser.isPermanentCaptain) ...[
+              _delegationPanel(currentUser),
               const SizedBox(height: 16),
             ],
             Row(
@@ -1173,7 +1173,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final u = users[index];
-                      final isSelf = u['uid'] == currentUser?.uid;
+                      final isSelf = u['uid'] == currentUser.uid;
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundColor: kNavyLight,

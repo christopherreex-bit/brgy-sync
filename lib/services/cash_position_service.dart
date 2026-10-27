@@ -108,7 +108,7 @@ class CashPositionService {
         'effectiveAt': FieldValue.serverTimestamp(),
         'requestedBy': actor.uid,
         'requestedByName': actor.name,
-        'requestedByRole': actor.role,
+        'requestedByRole': actor.effectiveRole,
       });
     });
   }
@@ -217,7 +217,7 @@ class CashPositionService {
         'effectiveAt': Timestamp.fromDate(effectiveAt),
         'requestedBy': actor.uid,
         'requestedByName': actor.name,
-        'requestedByRole': actor.role,
+        'requestedByRole': actor.effectiveRole,
       });
     });
   }
@@ -273,7 +273,7 @@ class CashPositionService {
         'effectiveAt': FieldValue.serverTimestamp(),
         'requestedBy': actor.uid,
         'requestedByName': actor.name,
-        'requestedByRole': actor.role,
+        'requestedByRole': actor.effectiveRole,
       });
     });
   }
