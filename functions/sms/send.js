@@ -26,21 +26,37 @@ export async function onRequest(context) {
   }
 
   try {
+    if (!env.MYSMSGATE_API_KEY) {
+      return jsonResponse(
+        { success: false, error: 'MYSMSGATE_API_KEY is not configured' },
+        503,
+      );
+    }
+
     const body = await request.json();
     const { to, message } = body;
 
     if (!to || !message) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing to or message' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse({ success: false, error: 'Missing to or message' }, 400);
     }
 
     // Get devices from MySMSGate
     const devResponse = await fetch('https://mysmsgate.net/api/v1/devices', {
       headers: { 'Authorization': `Bearer ${env.MYSMSGATE_API_KEY}` },
     });
-    const devData = await devResponse.json();
+    const devData = await responseJson(devResponse);
+
+    if (!devResponse.ok) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'MySMSGate device lookup failed',
+          providerStatus: devResponse.status,
+          providerResponse: devData,
+        },
+        devResponse.status,
+      );
+    }
 
     let deviceId = null;
     if (devData.devices && devData.devices.length > 0) {
@@ -61,19 +77,31 @@ export async function onRequest(context) {
       body: JSON.stringify(sendBody),
     });
 
-    const sendData = await sendResponse.json();
+    const sendData = await responseJson(sendResponse);
 
-    return new Response(JSON.stringify(sendData), {
-      status: sendResponse.status,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    return jsonResponse(sendData, sendResponse.status);
   } catch (err) {
-    return new Response(
-      JSON.stringify({ success: false, error: err.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse({ success: false, error: err.message }, 500);
   }
+}
+
+async function responseJson(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return { raw: text };
+  }
+}
+
+function jsonResponse(body, status) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store',
+    },
+  });
 }

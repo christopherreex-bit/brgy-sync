@@ -77,13 +77,13 @@ flutter run -d chrome
 
 The app opens at `http://localhost:xxxx` (Flutter picks a free port). Use the test accounts below to sign in.
 
-### 3.3 Optional: SMS provider keys for local runs
+### 3.3 Optional: SMS providers for local runs
 
-SMS sending is optional for local dev. The app reads these build-time variables via `--dart-define`; if omitted, SMS simply won't have credentials. To enable SMS locally, pass them on the run/build command:
+MySMSGate's API key stays in the Cloudflare Pages environment and is never compiled into the browser. To test through the deployed proxy while running locally, pass its URL. The fallback providers still use build-time variables:
 
 ```bash
 flutter run -d chrome \
-  --dart-define=MYSMSGATE_API_KEY=your_key \
+  --dart-define=SMS_PROXY_URL=https://brgy-sync.pages.dev/sms/send \
   --dart-define=EASYSENDSMS_API_KEY=your_key \
   --dart-define=TWILIO_ACCOUNT_SID=ACxxxx \
   --dart-define=TWILIO_AUTH_TOKEN=your_token \
@@ -130,13 +130,12 @@ In the Cloudflare dashboard, create an **API Token** with **Cloudflare Pages →
 |--------|-------|
 | `CF_API_TOKEN` | Cloudflare API token (Pages:Edit) |
 | `CF_ACCOUNT_ID` | Cloudflare account ID |
-| `MYSMSGATE_API_KEY` | MySMSGate API key |
 | `EASYSENDSMS_API_KEY` | EasySendSMS API key |
 | `TWILIO_ACCOUNT_SID` | Twilio account SID |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token |
 | `TWILIO_FROM` | Twilio sender number (e.g. `+1XXXXXXXXX`) |
 
-Also configure these in the **Cloudflare Pages project environment variables** (so the `/sms/send` Pages Function can reach MySMSGate):
+Configure this only in the **Cloudflare Pages project environment variables** (so the `/sms/send` Pages Function can reach MySMSGate without exposing the key in the browser build):
 
 | Pages env var | Value |
 |---------------|-------|
@@ -150,7 +149,7 @@ Also configure these in the **Cloudflare Pages project environment variables** (
 git push origin master
 ```
 
-`.github/workflows/deploy.yml` will: install Flutter, build the web bundle with the SMS keys from secrets, and run `wrangler pages deploy` to `brgy-sync`.
+`.github/workflows/deploy.yml` will: install Flutter, build the web bundle with optional fallback-provider keys, and run `wrangler pages deploy` to `brgy-sync`. MySMSGate is read only by the server-side Pages Function.
 
 ### 4.3 Manual deploy (from your machine)
 
@@ -158,9 +157,8 @@ git push origin master
 # 1. Install deps
 flutter pub get
 
-# 2. Build the web release with SMS keys
+# 2. Build the web release with optional fallback SMS keys
 flutter build web --release \
-  --dart-define=MYSMSGATE_API_KEY=your_key \
   --dart-define=EASYSENDSMS_API_KEY=your_key \
   --dart-define=TWILIO_ACCOUNT_SID=ACxxxx \
   --dart-define=TWILIO_AUTH_TOKEN=your_token \

@@ -3,9 +3,6 @@ import 'package:http/http.dart' as http;
 
 /// SMS service using MySMSGate as primary, EasySendSMS as fallback.
 ///
-/// MySMSGate credentials injected at build time via --dart-define:
-///   MYSMSGATE_API_KEY
-///
 /// EasySendSMS credentials injected at build time via --dart-define:
 ///   EASYSENDSMS_API_KEY
 ///
@@ -15,15 +12,16 @@ import 'package:http/http.dart' as http;
 class TwilioService {
   /// Fallback number where all seed-data SMS is routed.
   static const String fallbackNumber = '+639397193163';
-  final String? _mySmsGateKey;
+  static const String _configuredProxyUrl = String.fromEnvironment(
+    'SMS_PROXY_URL',
+  );
   final String? _easySendKey;
   final String? _twilioSid;
   final String? _twilioToken;
   final String? _twilioFrom;
 
   TwilioService()
-    : _mySmsGateKey = const String.fromEnvironment('MYSMSGATE_API_KEY'),
-      _easySendKey = const String.fromEnvironment('EASYSENDSMS_API_KEY'),
+    : _easySendKey = const String.fromEnvironment('EASYSENDSMS_API_KEY'),
       _twilioSid = const String.fromEnvironment('TWILIO_ACCOUNT_SID'),
       _twilioToken = const String.fromEnvironment('TWILIO_AUTH_TOKEN'),
       _twilioFrom = const String.fromEnvironment('TWILIO_FROM');
@@ -41,39 +39,46 @@ class TwilioService {
   /// Returns null on success, error message on failure.
   Future<String?> sendSms(String toNumber, String message) async {
     final to = formatPhoneNumber(toNumber);
+    final errors = <String>[];
 
     // ── Primary: MySMSGate (Android SMS Gateway) ──
-    if (_mySmsGateKey != null && _mySmsGateKey.isNotEmpty) {
-      final result = await _sendMySMSGate(to, message);
-      if (result == null) return null;
-    }
+    // The API key is held by the Cloudflare Pages Function. The browser must
+    // always try the proxy and must never require or receive that secret.
+    final mySmsGateResult = await _sendMySMSGate(to, message);
+    if (mySmsGateResult == null) return null;
+    errors.add(mySmsGateResult);
 
     // ── Fallback 1: EasySendSMS ──
     if (_easySendKey != null && _easySendKey.isNotEmpty) {
       final result = await _sendEasySend(to, message);
       if (result == null) return null;
+      errors.add(result);
     }
 
     // ── Fallback 2: Twilio ──
     if (_twilioSid != null && _twilioToken != null && _twilioFrom != null) {
-      return _sendTwilio(to, message);
+      final result = await _sendTwilio(to, message);
+      if (result == null) return null;
+      errors.add(result);
     }
 
-    return 'No SMS provider configured.';
+    return errors.isEmpty ? 'No SMS provider configured.' : errors.join(' | ');
   }
 
   /// Send via MySMSGate through Cloudflare Worker proxy (avoids CORS).
   Future<String?> _sendMySMSGate(String to, String message) async {
     try {
       final response = await http.post(
-        Uri.parse('https://brgy-sync.pages.dev/sms/send'),
+        _configuredProxyUrl.isNotEmpty
+            ? Uri.parse(_configuredProxyUrl)
+            : Uri.base.resolve('/sms/send'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'to': to, 'message': message}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 202) {
         final body = jsonDecode(response.body);
-        if (body['success'] != false) return null;
+        if (body is Map && body['success'] == true) return null;
         return 'MySMSGate error: ${response.body}';
       } else if (response.statusCode == 402) {
         return 'MySMSGate: Insufficient SMS balance.';
