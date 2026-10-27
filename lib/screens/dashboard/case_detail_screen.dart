@@ -16,8 +16,13 @@ import '../../widgets/case_location_card.dart';
 
 class CaseDetailScreen extends StatelessWidget {
   final String caseId;
+  final bool readOnly;
 
-  const CaseDetailScreen({super.key, required this.caseId});
+  const CaseDetailScreen({
+    super.key,
+    required this.caseId,
+    this.readOnly = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +80,34 @@ class CaseDetailScreen extends StatelessWidget {
                 label: const Text('Back'),
               ),
               const SizedBox(height: 8),
+              if (readOnly) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey.shade50,
+                    border: Border.all(color: Colors.blueGrey.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.visibility_outlined, color: kNavy, size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Read-only case view opened from the Audit Trail. No case changes can be made here.',
+                          style: TextStyle(
+                            color: kNavy,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               // Header
               Row(
                 children: [
@@ -96,7 +129,8 @@ class CaseDetailScreen extends StatelessWidget {
                 '${data['encodedByName'] != null ? ' · encoded by ${data['encodedByName']}' : ''}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
-              if (normalizeCaseStatus(status.toString()) == statusReleased)
+              if (!readOnly &&
+                  normalizeCaseStatus(status.toString()) == statusReleased)
                 _ReleasedRegistrySync(caseId: caseId),
               if (claimingApprovalPending) ...[
                 const SizedBox(height: 12),
@@ -157,7 +191,7 @@ class CaseDetailScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (isCaptain) ...[
+                      if (isCaptain && !readOnly) ...[
                         const SizedBox(height: 12),
                         Wrap(
                           spacing: 10,
@@ -331,7 +365,8 @@ class CaseDetailScreen extends StatelessWidget {
 
               const SizedBox(height: 24),
               // Action buttons
-              if (!(claimingApprovalPending && isCaptain) &&
+              if (!readOnly &&
+                  !(claimingApprovalPending && isCaptain) &&
                   normalizeCaseStatus(status.toString()) != statusReleased &&
                   normalizeCaseStatus(status.toString()) != statusRejected)
                 SizedBox(

@@ -65,7 +65,10 @@ final appRouter = GoRouter(
           path: '/dashboard/case/:caseId',
           builder: (context, state) {
             final caseId = state.pathParameters['caseId']!;
-            return CaseDetailScreen(caseId: caseId);
+            return CaseDetailScreen(
+              caseId: caseId,
+              readOnly: state.uri.queryParameters['readonly'] == 'true',
+            );
           },
         ),
         GoRoute(

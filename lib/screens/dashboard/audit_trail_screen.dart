@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../utils/constants.dart';
 
@@ -190,7 +191,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                         ),
                         clipBehavior: Clip.antiAlias,
                         child: InkWell(
-                          onTap: () => _showAuditDetails(log),
+                          onTap: () => _openAuditRecord(log),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Row(
@@ -288,6 +289,22 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _openAuditRecord(Map<String, dynamic> log) async {
+    final caseId = _text(log['caseId']);
+    if (caseId.isNotEmpty) {
+      final caseSnapshot = await FirebaseFirestore.instance
+          .collection('cases')
+          .doc(caseId)
+          .get();
+      if (!mounted) return;
+      if (caseSnapshot.exists) {
+        context.push('/dashboard/case/$caseId?readonly=true&source=audit');
+        return;
+      }
+    }
+    await _showAuditDetails(log);
   }
 
   Future<void> _showAuditDetails(Map<String, dynamic> log) async {
@@ -419,6 +436,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
     final List<Map<String, dynamic>> allLogs = [];
     for (final logDoc in [...snapshots[0].docs, ...snapshots[1].docs]) {
       final log = Map<String, dynamic>.from(logDoc.data());
+      log['caseId'] ??= logDoc.reference.parent.parent?.id ?? '';
 
       log['staffName'] ??= log['actorName'] ?? '';
       if (_text(log['action']).isEmpty) {
