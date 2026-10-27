@@ -61,6 +61,34 @@ service cloud.firestore {
       allow delete: if request.auth.uid == userId || getRole() == 'captain';
     }
 
+    // Persistent in-app notifications. Notification content is immutable;
+    // each recipient may only change their own read/hidden membership.
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null
+                  && (resource.data.recipientId == request.auth.uid
+                      || getRole() in resource.data.audienceRoles);
+      allow create: if request.auth != null
+                    && (isStaff()
+                        || (request.resource.data.type
+                                in ['case_submitted', 'correction_submitted']
+                            && request.resource.data.createdById == request.auth.uid
+                            && request.resource.data.audienceRoles
+                                == ['staff', 'officer', 'captain']
+                            && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId))
+                            && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId)).data.residentId
+                                == request.auth.uid));
+      allow update: if request.auth != null
+                    && (resource.data.recipientId == request.auth.uid
+                        || getRole() in resource.data.audienceRoles)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['readBy', 'deletedBy'])
+                    && request.resource.data.get('readBy', []).removeAll([request.auth.uid])
+                        == resource.data.get('readBy', []).removeAll([request.auth.uid])
+                    && request.resource.data.get('deletedBy', []).removeAll([request.auth.uid])
+                        == resource.data.get('deletedBy', []).removeAll([request.auth.uid]);
+      allow delete: if false;
+    }
+
     // One active, expiring delegation at a time. Only the permanent captain
     // may grant or revoke it; an acting captain cannot delegate onward.
     match /captainDelegations/{delegationId} {

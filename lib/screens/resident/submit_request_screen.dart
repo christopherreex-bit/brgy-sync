@@ -56,7 +56,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   String? _refNumber;
   bool _requestingForSomeoneElse = false;
   bool _registryPrefillApplied = false;
+  bool _verifiedRegistryAddressLocked = false;
   int _registryPrefillRequest = 0;
+
+  bool get _isInfrastructureConcern =>
+      _selectedCategoryId == 'community' &&
+      _selectedSubType == 'Infrastructure Concern';
 
   final _firestore = FirestoreService();
   final _citizenRegistry = CitizenRegistryService();
@@ -99,6 +104,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     _dateValues.clear();
     _addressLocations.clear();
     _fieldErrors.clear();
+    _verifiedRegistryAddressLocked = false;
     for (final f in _fields) {
       _controllers[f.key] = TextEditingController();
       if (f.type == FormFieldType.dropdown) _dropdownValues[f.key] = null;
@@ -214,10 +220,8 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     final request = ++_registryPrefillRequest;
     final category = _selectedCategoryId;
     final subType = _selectedSubType;
-    final isResidentInfrastructureConcern =
-        !_isWalkIn &&
-        category == 'community' &&
-        subType == 'Infrastructure Concern';
+    final isInfrastructureConcern =
+        category == 'community' && subType == 'Infrastructure Concern';
     final record = await _citizenRegistry.findByMobile(resident.mobile);
     final data = record?.data();
     if (!mounted ||
@@ -288,8 +292,46 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           }
         }
       }
-      if (!isResidentInfrastructureConcern) {
-        setText('address', data['permanentAddress']);
+      if (!isInfrastructureConcern) {
+        final permanentAddress = (data['permanentAddress'] ?? '')
+            .toString()
+            .trim();
+        _verifiedRegistryAddressLocked =
+            data['verificationStatus'] == 'verified' &&
+            permanentAddress.isNotEmpty &&
+            _controllers['address'] != null;
+        if (_verifiedRegistryAddressLocked) {
+          _controllers['address']!.text = permanentAddress;
+        } else {
+          setText('address', permanentAddress);
+        }
+        final storedLocation = data['permanentAddressLocation'];
+        if (_verifiedRegistryAddressLocked && storedLocation is Map) {
+          final location = Map<String, dynamic>.from(storedLocation);
+          final latitude = (location['latitude'] as num?)?.toDouble();
+          final longitude = (location['longitude'] as num?)?.toDouble();
+          if (latitude != null && longitude != null) {
+            _addressLocations['address'] = AddressLocation(
+              formattedAddress:
+                  (location['formattedAddress'] ?? permanentAddress).toString(),
+              latitude: latitude,
+              longitude: longitude,
+              source: 'registry_verified',
+              placeId: location['placeId']?.toString(),
+              landmark: location['landmark']?.toString(),
+              insideServiceArea: location['insideServiceArea'] != false,
+              components: Map<String, dynamic>.from(
+                location['components'] as Map? ?? const {},
+              ),
+            );
+          }
+        }
+      } else {
+        // This address identifies the reported infrastructure problem, not
+        // the resident's home, so it must always be entered for this case.
+        _controllers['address']?.clear();
+        _addressLocations['address'] = null;
+        _verifiedRegistryAddressLocked = false;
       }
       setText('contact', data['mobile']);
       setText('precinct', data['precinctNumber']);
@@ -323,6 +365,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _registryPrefillRequest++;
       _requestingForSomeoneElse = value;
       _registryPrefillApplied = false;
+      _verifiedRegistryAddressLocked = false;
       _fieldErrors.clear();
       for (final document in _bassDocs ?? <BassDocument>[]) {
         if (document.requiredWhenRequestingForSomeoneElse) {
@@ -345,6 +388,8 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _controllers['surname']?.clear();
       _controllers['middleInitial']?.clear();
       _controllers['contact']?.clear();
+      _controllers['address']?.clear();
+      _addressLocations['address'] = null;
       if (!value && _selectedCategoryId == 'bass') {
         _controllers['relationship']?.clear();
       }
@@ -428,7 +473,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       (field) =>
           field.key == 'address' && field.required && _isFieldVisible(field),
     );
-    if (hasVisibleAddress && _addressLocations['address'] == null) {
+    if (hasVisibleAddress &&
+        !_verifiedRegistryAddressLocked &&
+        _addressLocations['address'] == null) {
       setState(() {
         _fieldErrors['address'] =
             'Select a suggestion or tap the map to confirm the location.';
@@ -1330,6 +1377,35 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
   Widget _buildField(FormFieldConfig f) {
     if (f.key == 'address') {
+      if (_verifiedRegistryAddressLocked && !_isInfrastructureConcern) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _controllers[f.key],
+                readOnly: true,
+                decoration: InputDecoration(
+                  labelText: f.label + (f.required ? ' *' : ''),
+                  prefixIcon: const Icon(
+                    Icons.verified_user_outlined,
+                    color: Colors.green,
+                  ),
+                  filled: true,
+                  fillColor: Colors.green.shade50,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Verified address from your Citizen Registry record. Request a registry correction from My Record if this is no longer accurate.',
+                style: TextStyle(color: Colors.green, fontSize: 11),
+              ),
+            ],
+          ),
+        );
+      }
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: AddressLocationField(

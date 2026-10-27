@@ -12,6 +12,7 @@ class FirestoreService {
     final year = DateTime.now().year;
     final counterRef = _db.collection('caseCounters').doc('$year');
     final docRef = _db.collection('cases').doc();
+    final notificationRef = _db.collection('notifications').doc();
     final accountMobile =
         (caseData.requesterMobile.isNotEmpty
                 ? caseData.requesterMobile
@@ -86,6 +87,20 @@ class FirestoreService {
         'registryId': isWalkIn ? registryRef.id : registryDocument?.id,
         'registryMatchStatus': registryMatchStatus,
         'registryCheckedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.set(notificationRef, {
+        'type': 'case_submitted',
+        'title': isWalkIn ? 'New walk-in case' : 'New resident request',
+        'message':
+            '${caseData.residentName} submitted ${caseData.serviceSubType} ($referenceNumber).',
+        'caseId': docRef.id,
+        'referenceNumber': referenceNumber,
+        'recipientId': '',
+        'audienceRoles': const ['staff', 'officer', 'captain'],
+        'createdById': caseData.encodedById ?? caseData.residentId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'readBy': <String>[],
+        'deletedBy': <String>[],
       });
       transaction.set(_db.collection('registryObservations').doc(docRef.id), {
         'caseId': docRef.id,

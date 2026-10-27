@@ -77,6 +77,8 @@ class CaseStatusService {
     }
 
     final logRef = caseRef.collection('actionLog').doc();
+    final residentNotificationRef = _db.collection('notifications').doc();
+    final requesterNotificationRef = _db.collection('notifications').doc();
     final budgetTransactionRef = _db
         .collection('budgetTransactions')
         .doc(caseId);
@@ -403,7 +405,78 @@ class CaseStatusService {
         'smsError': smsError,
         'smsBody': smsBody,
       });
+      final residentId = (caseData['residentId'] ?? '').toString();
+      if (residentId.isNotEmpty) {
+        transaction.set(residentNotificationRef, {
+          'type': _notificationType(newStatus),
+          'title': _notificationTitle(newStatus),
+          'message': _notificationMessage(
+            newStatus: newStatus,
+            referenceNumber:
+                referenceNumber ?? caseData['referenceNumber'] ?? '',
+            notes: notes,
+          ),
+          'caseId': caseId,
+          'referenceNumber':
+              referenceNumber ?? caseData['referenceNumber'] ?? '',
+          'recipientId': residentId,
+          'audienceRoles': <String>[],
+          'createdById': staffId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'readBy': <String>[],
+          'deletedBy': <String>[],
+        });
+      }
+      final claimingRequesterId = (caseData['claimingRequestedBy'] ?? '')
+          .toString();
+      if (newStatus == statusForClaiming &&
+          claimingRequesterId.isNotEmpty &&
+          claimingRequesterId != staffId) {
+        transaction.set(requesterNotificationRef, {
+          'type': 'claiming_approved',
+          'title': 'For Claiming request approved',
+          'message':
+              'Case ${referenceNumber ?? caseData['referenceNumber'] ?? ''} was approved by the Barangay Captain.',
+          'caseId': caseId,
+          'referenceNumber':
+              referenceNumber ?? caseData['referenceNumber'] ?? '',
+          'recipientId': claimingRequesterId,
+          'audienceRoles': <String>[],
+          'createdById': staffId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'readBy': <String>[],
+          'deletedBy': <String>[],
+        });
+      }
     });
+  }
+
+  String _notificationType(String status) => switch (status) {
+    statusNeedsCorrection => 'needs_correction',
+    statusRejected => 'case_rejected',
+    statusReleased => 'case_released',
+    _ => 'case_status',
+  };
+
+  String _notificationTitle(String status) => switch (status) {
+    statusNeedsCorrection => 'Corrections requested',
+    statusApproved => 'Request approved',
+    statusForClaiming => 'Ready for claiming',
+    statusReleased => 'Assistance released',
+    statusRejected => 'Request rejected',
+    statusProcessing => 'Request is being processed',
+    _ => 'Case status updated',
+  };
+
+  String _notificationMessage({
+    required String newStatus,
+    required Object referenceNumber,
+    required String notes,
+  }) {
+    final statusText = caseStatusLabel(newStatus);
+    final reason = notes.trim();
+    return 'Case $referenceNumber is now $statusText.'
+        '${reason.isEmpty ? '' : ' Note: $reason'}';
   }
 
   Future<DocumentReference<Map<String, dynamic>>?> _registryReferenceForCase(
@@ -623,6 +696,7 @@ class CaseStatusService {
 
     final caseRef = _db.collection('cases').doc(caseId);
     final logRef = caseRef.collection('actionLog').doc();
+    final notificationRef = _db.collection('notifications').doc();
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(caseRef);
       if (!snapshot.exists) throw StateError('Case not found.');
@@ -658,6 +732,20 @@ class CaseStatusService {
         'smsSent': false,
         'smsBody': '',
       });
+      transaction.set(notificationRef, {
+        'type': 'claiming_approval',
+        'title': 'For Claiming approval needed',
+        'message':
+            '$staffName requested approval for case ${referenceNumber ?? data['referenceNumber'] ?? ''}.',
+        'caseId': caseId,
+        'referenceNumber': referenceNumber ?? data['referenceNumber'] ?? '',
+        'recipientId': '',
+        'audienceRoles': const ['captain'],
+        'createdById': staffId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'readBy': <String>[],
+        'deletedBy': <String>[],
+      });
     });
   }
 
@@ -690,6 +778,7 @@ class CaseStatusService {
         ? null
         : _db.collection('budgetPrograms').doc(reservedProgramId);
     final logRef = caseRef.collection('actionLog').doc();
+    final requesterNotificationRef = _db.collection('notifications').doc();
 
     await _db.runTransaction((transaction) async {
       final caseSnapshot = await transaction.get(caseRef);
@@ -698,6 +787,8 @@ class CaseStatusService {
       final currentStatus = normalizeCaseStatus(
         (caseData['status'] ?? '').toString(),
       );
+      final requestingStaffId = (caseData['claimingRequestedBy'] ?? '')
+          .toString();
       if (currentStatus != statusApproved ||
           caseData['claimingApprovalStatus'] != 'pending') {
         throw StateError(
@@ -772,6 +863,23 @@ class CaseStatusService {
         'smsSent': false,
         'smsBody': '',
       });
+      if (requestingStaffId.isNotEmpty) {
+        transaction.set(requesterNotificationRef, {
+          'type': 'claiming_rejected',
+          'title': 'For Claiming request rejected',
+          'message':
+              'Case ${referenceNumber ?? caseData['referenceNumber'] ?? ''} returned to Processing. Reason: $trimmedReason',
+          'caseId': caseId,
+          'referenceNumber':
+              referenceNumber ?? caseData['referenceNumber'] ?? '',
+          'recipientId': requestingStaffId,
+          'audienceRoles': <String>[],
+          'createdById': captainId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'readBy': <String>[],
+          'deletedBy': <String>[],
+        });
+      }
     });
   }
 

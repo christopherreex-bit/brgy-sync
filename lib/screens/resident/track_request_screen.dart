@@ -527,6 +527,7 @@ class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
       final db = FirebaseFirestore.instance;
       final caseRef = db.collection('cases').doc(widget.caseId);
       final logRef = caseRef.collection('actionLog').doc();
+      final notificationRef = db.collection('notifications').doc();
       final returnStatus =
           (_correction['returnStatus'] ?? statusPendingReview).toString() ==
               statusProcessing
@@ -554,6 +555,20 @@ class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
         'newStatus': returnStatus,
         'notes': 'Flagged information and documents were corrected.',
         'residentCorrection': true,
+      });
+      batch.set(notificationRef, {
+        'type': 'correction_submitted',
+        'title': 'Resident corrections submitted',
+        'message':
+            '${user.name} resubmitted case ${widget.caseData['referenceNumber'] ?? ''} for review.',
+        'caseId': widget.caseId,
+        'referenceNumber': widget.caseData['referenceNumber'] ?? '',
+        'recipientId': '',
+        'audienceRoles': const ['staff', 'officer', 'captain'],
+        'createdById': user.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'readBy': <String>[],
+        'deletedBy': <String>[],
       });
       await batch.commit();
       if (mounted) {

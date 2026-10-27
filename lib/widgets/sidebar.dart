@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../utils/constants.dart';
+import 'notification_bell.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
@@ -105,6 +106,7 @@ class _SidebarState extends State<Sidebar> {
                       ],
                     ),
                   ),
+                  const NotificationBell(iconColor: Colors.white70),
                 ],
               ),
             ),

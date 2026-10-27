@@ -414,8 +414,9 @@ List<FormFieldConfig> _bassFields() {
 }
 
 List<FormFieldConfig> _communityFields(String subType) {
-  return const [
-    FormFieldConfig(
+  final isInfrastructure = subType == 'Infrastructure Concern';
+  return [
+    const FormFieldConfig(
       key: 'fullName',
       label: 'Full Name',
       type: FormFieldType.text,
@@ -423,18 +424,23 @@ List<FormFieldConfig> _communityFields(String subType) {
     ),
     FormFieldConfig(
       key: 'address',
-      label: 'Address',
+      label: isInfrastructure
+          ? 'Location / Address of Infrastructure Concern'
+          : 'Address',
       type: FormFieldType.text,
       required: true,
+      hint: isInfrastructure
+          ? 'Search or pin the exact location of the reported concern'
+          : null,
     ),
-    FormFieldConfig(
+    const FormFieldConfig(
       key: 'contact',
       label: 'Contact No.',
       type: FormFieldType.phone,
       required: true,
       hint: '09XXXXXXXXX',
     ),
-    FormFieldConfig(
+    const FormFieldConfig(
       key: 'details',
       label: 'Details / Description',
       type: FormFieldType.textarea,

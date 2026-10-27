@@ -7,6 +7,7 @@ import 'home_screen.dart';
 import 'submit_request_screen.dart';
 import 'track_request_screen.dart';
 import 'citizen_record_screen.dart';
+import '../../widgets/notification_bell.dart';
 
 class ResidentShell extends StatefulWidget {
   const ResidentShell({super.key});
@@ -73,6 +74,7 @@ class ResidentShellState extends State<ResidentShell> {
           ],
         ),
         actions: [
+          NotificationBell(onResidentCasesRequested: () => _selectTab(2)),
           Container(
             margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
