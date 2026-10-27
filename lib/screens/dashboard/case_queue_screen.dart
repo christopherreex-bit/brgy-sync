@@ -75,7 +75,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUser = context.watch<AuthService>().currentUserModel;
-    final canDelete = currentUser?.role == roleCaptain;
+    final canDelete = currentUser?.isCaptain == true;
     final filters = [
       ..._baseFilters,
       if (canDelete)
@@ -580,7 +580,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
         caseId,
         actorId: user.uid,
         actorName: user.name,
-        actorRole: user.role,
+        actorRole: user.effectiveRole,
         source: 'captain_case_queue',
         deletionReason: deletionReason,
       );

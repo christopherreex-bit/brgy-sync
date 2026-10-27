@@ -198,13 +198,13 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         }
       }
 
-      if (_newStatus == statusForClaiming && user?.role != roleCaptain) {
+      if (_newStatus == statusForClaiming && user?.isCaptain != true) {
         await CaseStatusService(firestore: db).requestForClaimingApproval(
           caseId: widget.caseId,
           notes: _actionNotesCtrl.text.trim(),
           staffId: user?.uid ?? '',
           staffName: user?.name ?? 'Staff',
-          staffRole: user?.role ?? '',
+          staffRole: user?.effectiveRole ?? '',
           referenceNumber: refNumber,
         );
         if (mounted) {
@@ -258,7 +258,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         notes: _actionNotesCtrl.text.trim(),
         staffId: user?.uid ?? '',
         staffName: user?.name ?? 'Staff',
-        staffRole: user?.role ?? '',
+        staffRole: user?.effectiveRole ?? '',
         referenceNumber: refNumber,
         smsSent: smsError == null,
         smsError: smsError,

@@ -154,13 +154,13 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
     double? approvedAssistanceAmount,
   }) async {
     try {
-      if (newStatus == statusForClaiming && user?.role != roleCaptain) {
+      if (newStatus == statusForClaiming && user?.isCaptain != true) {
         await CaseStatusService().requestForClaimingApproval(
           caseId: caseId,
           notes: notes,
           staffId: user?.uid ?? '',
           staffName: user?.name ?? 'Unknown',
-          staffRole: user?.role ?? '',
+          staffRole: user?.effectiveRole ?? '',
           referenceNumber: referenceNumber,
         );
         if (mounted) {
@@ -181,7 +181,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
         notes: notes,
         staffId: user?.uid ?? '',
         staffName: user?.name ?? 'Unknown',
-        staffRole: user?.role ?? '',
+        staffRole: user?.effectiveRole ?? '',
         referenceNumber: referenceNumber,
         budgetApprovalConfirmed: budgetApprovalConfirmed,
         approvedAssistanceAmount: approvedAssistanceAmount,

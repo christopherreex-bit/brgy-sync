@@ -6,6 +6,7 @@ import '../../widgets/kpi_card.dart';
 import '../../widgets/budget_program_card.dart';
 import '../../utils/budget_health.dart';
 import '../../utils/budget_period.dart';
+import '../../services/cash_position_service.dart';
 
 class BudgetOverviewScreen extends StatefulWidget {
   const BudgetOverviewScreen({super.key});
@@ -15,6 +16,7 @@ class BudgetOverviewScreen extends StatefulWidget {
 }
 
 class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
+  final _cashPositionService = CashPositionService();
   static const _defaultPrograms = [
     'BASS – Medical Assistance',
     'BASS – Burial Assistance',
@@ -27,6 +29,16 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
 
   int? _selectedFiscalYear;
   String? _selectedPeriod;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    final currentQuarter = ((now.month - 1) ~/ 3) + 1;
+    _selectedFiscalYear = now.year;
+    _selectedPeriod = 'FY ${now.year} Q$currentQuarter';
+    _cashPositionService.reconcileMaturedTransfers().catchError((_) {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -296,6 +308,8 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+              _cashPositionSummary(),
+              const SizedBox(height: 16),
               if (flagged > 0)
                 Container(
                   width: double.infinity,
@@ -360,6 +374,65 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _cashPositionSummary() {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _cashPositionService.watchPosition(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        final initialized = data?['initialized'] == true;
+        final bank = (data?['cashInBank'] as num?)?.toDouble() ?? 0;
+        final transit = (data?['cashInTransit'] as num?)?.toDouble() ?? 0;
+        final hand = (data?['cashOnHand'] as num?)?.toDouble() ?? 0;
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => context.go('/dashboard/cash-position'),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.blueGrey.shade50,
+              border: Border.all(color: Colors.blueGrey.shade100),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  backgroundColor: Colors.white,
+                  child: Icon(Icons.payments_outlined, color: kNavy),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: initialized
+                      ? Wrap(
+                          spacing: 24,
+                          runSpacing: 6,
+                          children: [
+                            _cashValue('Bank', bank),
+                            _cashValue('In transit', transit),
+                            _cashValue('On hand', hand),
+                          ],
+                        )
+                      : const Text(
+                          'Cash position is not initialized. Open Cash Position to enter verified opening balances.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _cashValue(String label, double value) {
+    return Text(
+      '$label: ₱${value.toStringAsFixed(2)}',
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
     );
   }
 

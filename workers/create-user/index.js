@@ -33,7 +33,6 @@ export default {
       const accessToken = await getGoogleAccessToken(serviceAccount);
       const callerProfile = await getFirestoreUser(callerUid, accessToken);
       const callerRole = firestoreString(callerProfile, 'role');
-
       const body = await request.json();
       if (request.method === 'DELETE') {
         if (callerRole !== 'captain') {
@@ -85,11 +84,11 @@ async function deleteAccount(body, callerUid, accessToken) {
   const targetProfile = await getFirestoreUser(uid, accessToken);
   const targetRole = firestoreString(targetProfile, 'role');
   const targetMobile = firestoreString(targetProfile, 'mobile');
-  if (!['staff', 'officer', 'captain'].includes(targetRole)) {
+  if (!['staff', 'officer', 'captain', 'treasurer'].includes(targetRole)) {
     return jsonResponse(
       {
         error:
-          'This admin page can delete only staff, officer, or captain accounts.',
+          'This admin page can delete only staff, officer, captain, or treasurer accounts.',
       },
       400,
     );
@@ -141,7 +140,7 @@ async function createAccount(body, accessToken, caller) {
   if (!email || !password || !name || !mobile || !role) {
     return jsonResponse({ error: 'Missing required fields.' }, 400);
   }
-  if (!['resident', 'staff', 'officer', 'captain'].includes(role)) {
+  if (!['resident', 'staff', 'officer', 'captain', 'treasurer'].includes(role)) {
     return jsonResponse({ error: 'Invalid role.' }, 400);
   }
 

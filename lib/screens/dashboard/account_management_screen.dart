@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../services/captain_delegation_service.dart';
 import '../../utils/account_validators.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
@@ -15,6 +17,7 @@ class AccountManagementScreen extends StatefulWidget {
 }
 
 class _AccountManagementScreenState extends State<AccountManagementScreen> {
+  final _delegationService = CaptainDelegationService();
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -153,6 +156,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                       DropdownMenuItem(
                         value: 'captain',
                         child: Text('Barangay Captain'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'treasurer',
+                        child: Text('Barangay Treasurer'),
                       ),
                     ],
                     onChanged: (v) => setDialogState(() => selectedRole = v!),
@@ -366,6 +373,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 value: 'captain',
                 child: Text('Barangay Captain'),
               ),
+              DropdownMenuItem(
+                value: 'treasurer',
+                child: Text('Barangay Treasurer'),
+              ),
             ],
             onChanged: (v) => setDialogState(() => selectedRole = v!),
           ),
@@ -536,10 +547,528 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     }
   }
 
+  Widget _delegationPanel(UserModel captain) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _delegationService.watchCurrent(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        final expiry = (data?['expiresAt'] as Timestamp?)?.toDate();
+        final active =
+            data?['active'] == true &&
+            expiry != null &&
+            expiry.isAfter(DateTime.now());
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: active ? Colors.orange.shade50 : Colors.blueGrey.shade50,
+            border: Border.all(
+              color: active ? Colors.orange.shade200 : Colors.blueGrey.shade100,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                active ? Icons.admin_panel_settings : Icons.shield_outlined,
+                color: active ? Colors.orange.shade800 : kNavy,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      active
+                          ? '${data?['delegateName']} is Acting Barangay Captain'
+                          : 'Temporary Acting Captain',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      active
+                          ? 'Access expires ${MaterialLocalizations.of(context).formatFullDate(expiry)} at ${TimeOfDay.fromDateTime(expiry).format(context)}. ${data?['reason'] ?? ''}'
+                          : 'Temporarily grant captain-level system access to one active staff member or officer.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (active)
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          _showChangeDurationDialog(captain, expiry!),
+                      icon: const Icon(Icons.edit_calendar_outlined),
+                      label: const Text('Change duration'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _revokeDelegation(captain),
+                      icon: const Icon(Icons.block),
+                      label: const Text('Revoke'),
+                    ),
+                  ],
+                )
+              else
+                FilledButton.icon(
+                  onPressed: () => _showDelegationDialog(captain),
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('Assign acting captain'),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showDelegationDialog(UserModel captain) async {
+    final snapshot = await context.read<AuthService>().getStaffAccounts().first;
+    final candidates = snapshot.docs.where((document) {
+      final data = document.data() as Map<String, dynamic>;
+      return data['isActive'] != false &&
+          ['staff', 'officer'].contains(data['role']);
+    }).toList();
+    if (!mounted) return;
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No active staff or officer is available.'),
+        ),
+      );
+      return;
+    }
+    String selectedUid = candidates.first.id;
+    var selectedExpiry = DateTime.now().add(const Duration(days: 1));
+    final reason = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Assign Acting Barangay Captain'),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'This grants the selected person captain-level system access until the stated expiry. Their permanent role will not change.',
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedUid,
+                  decoration: const InputDecoration(
+                    labelText: 'Staff member or officer',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: candidates.map((document) {
+                    final data = document.data() as Map<String, dynamic>;
+                    return DropdownMenuItem(
+                      value: document.id,
+                      child: Text('${data['name']} (${data['role']})'),
+                    );
+                  }).toList(),
+                  onChanged: (value) =>
+                      setDialogState(() => selectedUid = value!),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month),
+                        label: Text(
+                          MaterialLocalizations.of(
+                            context,
+                          ).formatMediumDate(selectedExpiry),
+                        ),
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: dialogContext,
+                            initialDate: selectedExpiry,
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                            helpText: 'Select access expiry date',
+                          );
+                          if (date != null) {
+                            final candidate = DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              selectedExpiry.hour,
+                              selectedExpiry.minute,
+                            );
+                            if (!candidate.isAfter(DateTime.now())) {
+                              if (dialogContext.mounted) {
+                                ScaffoldMessenger.of(
+                                  dialogContext,
+                                ).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'That date and time has already passed. Select a future expiry.',
+                                    ),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+                            setDialogState(() {
+                              selectedExpiry = candidate;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.schedule),
+                        label: Text(
+                          TimeOfDay.fromDateTime(
+                            selectedExpiry,
+                          ).format(context),
+                        ),
+                        onPressed: () async {
+                          final time = await showTimePicker(
+                            context: dialogContext,
+                            initialTime: TimeOfDay.fromDateTime(selectedExpiry),
+                            initialEntryMode: TimePickerEntryMode.inputOnly,
+                            helpText: 'Select access expiry time',
+                            hourLabelText: 'Hour',
+                            minuteLabelText: 'Minute',
+                            errorInvalidText: 'Enter a valid time.',
+                          );
+                          if (time != null) {
+                            final candidate = DateTime(
+                              selectedExpiry.year,
+                              selectedExpiry.month,
+                              selectedExpiry.day,
+                              time.hour,
+                              time.minute,
+                            );
+                            if (!candidate.isAfter(DateTime.now())) {
+                              if (dialogContext.mounted) {
+                                ScaffoldMessenger.of(
+                                  dialogContext,
+                                ).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'That ending time has already passed. Select a future time.',
+                                    ),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+                            setDialogState(() {
+                              selectedExpiry = candidate;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Access starts immediately and automatically expires at the selected date and time.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason',
+                    hintText: 'Example: Captain on official leave',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed:
+                  selectedExpiry.isAfter(DateTime.now()) &&
+                      reason.text.trim().isNotEmpty
+                  ? () {
+                      if (!selectedExpiry.isAfter(DateTime.now())) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Select an expiry date and time in the future.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      if (reason.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                            content: Text('Enter a reason for the delegation.'),
+                          ),
+                        );
+                        return;
+                      }
+                      Navigator.pop(dialogContext, true);
+                    }
+                  : null,
+              child: const Text('Grant temporary access'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      reason.dispose();
+      return;
+    }
+    final selected = candidates.firstWhere((doc) => doc.id == selectedUid);
+    final data = selected.data() as Map<String, dynamic>;
+    try {
+      await _delegationService.grant(
+        captain: captain,
+        delegateUid: selectedUid,
+        delegateName: (data['name'] ?? '').toString(),
+        delegateRole: (data['role'] ?? '').toString(),
+        expiresAt: selectedExpiry,
+        reason: reason.text,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${data['name']} now has temporary captain access.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      reason.dispose();
+    }
+  }
+
+  Future<void> _revokeDelegation(UserModel captain) async {
+    try {
+      await _delegationService.revoke(captain: captain);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Temporary captain access revoked.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showChangeDurationDialog(
+    UserModel captain,
+    DateTime currentExpiry,
+  ) async {
+    var selectedExpiry = currentExpiry;
+    final reason = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Change temporary access duration'),
+          content: SizedBox(
+            width: 470,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Choose a new exact expiry. Access remains active only until this date and time.',
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month),
+                        label: Text(
+                          MaterialLocalizations.of(
+                            context,
+                          ).formatMediumDate(selectedExpiry),
+                        ),
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: dialogContext,
+                            initialDate: selectedExpiry.isAfter(DateTime.now())
+                                ? selectedExpiry
+                                : DateTime.now(),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                            helpText: 'Select new expiry date',
+                          );
+                          if (date == null) return;
+                          final candidate = DateTime(
+                            date.year,
+                            date.month,
+                            date.day,
+                            selectedExpiry.hour,
+                            selectedExpiry.minute,
+                          );
+                          if (!candidate.isAfter(DateTime.now())) {
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'That date and time has already passed.',
+                                  ),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          setDialogState(() => selectedExpiry = candidate);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.schedule),
+                        label: Text(
+                          TimeOfDay.fromDateTime(
+                            selectedExpiry,
+                          ).format(context),
+                        ),
+                        onPressed: () async {
+                          final time = await showTimePicker(
+                            context: dialogContext,
+                            initialTime: TimeOfDay.fromDateTime(selectedExpiry),
+                            initialEntryMode: TimePickerEntryMode.inputOnly,
+                            helpText: 'Enter new expiry time',
+                            hourLabelText: 'Hour',
+                            minuteLabelText: 'Minute',
+                            errorInvalidText: 'Enter a valid time.',
+                          );
+                          if (time == null) return;
+                          final candidate = DateTime(
+                            selectedExpiry.year,
+                            selectedExpiry.month,
+                            selectedExpiry.day,
+                            time.hour,
+                            time.minute,
+                          );
+                          if (!candidate.isAfter(DateTime.now())) {
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'That ending time has already passed.',
+                                  ),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          setDialogState(() => selectedExpiry = candidate);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  maxLines: 2,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Reason for changing duration',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed:
+                  selectedExpiry.isAfter(DateTime.now()) &&
+                      reason.text.trim().isNotEmpty
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
+              child: const Text('Save new duration'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final changeReason = reason.text;
+    reason.dispose();
+    if (confirmed != true || !mounted) return;
+    try {
+      await _delegationService.changeExpiry(
+        captain: captain,
+        expiresAt: selectedExpiry,
+        reason: changeReason,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Temporary access duration updated.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
     final currentUser = auth.currentUserModel;
+
+    if (currentUser == null || !currentUser.isPermanentCaptain) {
+      return const Center(
+        child: Text(
+          'Account Management is available only to the permanent Barangay Captain.',
+        ),
+      );
+    }
 
     return Scaffold(
       body: Padding(
@@ -557,6 +1086,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
               style: TextStyle(color: Colors.grey, fontSize: 13),
             ),
             const SizedBox(height: 20),
+            if (currentUser?.isPermanentCaptain == true) ...[
+              _delegationPanel(currentUser!),
+              const SizedBox(height: 16),
+            ],
             Row(
               children: [
                 Expanded(

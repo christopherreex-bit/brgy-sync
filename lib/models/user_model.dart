@@ -8,6 +8,8 @@ class UserModel {
   final bool isActive;
   final bool mustChangePassword;
   final DateTime createdAt;
+  final bool hasActingCaptainAuthority;
+  final DateTime? actingCaptainUntil;
 
   UserModel({
     required this.uid,
@@ -19,6 +21,8 @@ class UserModel {
     this.isActive = true,
     this.mustChangePassword = false,
     required this.createdAt,
+    this.hasActingCaptainAuthority = false,
+    this.actingCaptainUntil,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map, String uid) {
@@ -53,6 +57,27 @@ class UserModel {
   bool get isResident => role == 'resident';
   bool get isStaff => role == 'staff';
   bool get isOfficer => role == 'officer';
-  bool get isCaptain => role == 'captain';
-  bool get canAccessDashboard => isStaff || isOfficer || isCaptain;
+  bool get isPermanentCaptain => role == 'captain';
+  bool get isCaptain => isPermanentCaptain || hasActingCaptainAuthority;
+  bool get isTreasurer => role == 'treasurer';
+  String get effectiveRole => isCaptain ? 'captain' : role;
+  bool get canAccessDashboard =>
+      isStaff || isOfficer || isCaptain || isTreasurer;
+
+  UserModel withActingCaptainAuthority({
+    required bool enabled,
+    DateTime? until,
+  }) => UserModel(
+    uid: uid,
+    name: name,
+    mobile: mobile,
+    email: email,
+    role: role,
+    isSeedData: isSeedData,
+    isActive: isActive,
+    mustChangePassword: mustChangePassword,
+    createdAt: createdAt,
+    hasActingCaptainAuthority: enabled,
+    actingCaptainUntil: enabled ? until : null,
+  );
 }

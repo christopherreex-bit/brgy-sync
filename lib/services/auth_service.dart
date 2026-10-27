@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -21,6 +22,9 @@ class AuthService extends ChangeNotifier {
 
   UserModel? _currentUserModel;
   UserModel? get currentUserModel => _currentUserModel;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+  _delegationSubscription;
+  Timer? _delegationExpiryTimer;
 
   AuthService() {
     _auth.authStateChanges().listen(_onAuthStateChanged);
@@ -30,6 +34,9 @@ class AuthService extends ChangeNotifier {
     if (user != null) {
       await _loadUserData(user.uid);
     } else {
+      await _delegationSubscription?.cancel();
+      _delegationSubscription = null;
+      _delegationExpiryTimer?.cancel();
       _currentUserModel = null;
     }
     notifyListeners();
@@ -40,12 +47,61 @@ class AuthService extends ChangeNotifier {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
         _currentUserModel = UserModel.fromMap(doc.data()!, uid);
+        _watchCaptainDelegation(uid);
       }
     } catch (e) {
       // Firestore read failed (e.g. permission-denied, network error).
       // Don't crash — the auth state is still valid, just without role data.
       debugPrint('AuthService: failed to load user data for $uid: $e');
     }
+  }
+
+  void _watchCaptainDelegation(String uid) {
+    _delegationSubscription?.cancel();
+    _delegationExpiryTimer?.cancel();
+    _delegationSubscription = _firestore
+        .collection('captainDelegations')
+        .doc('current')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final base = _currentUserModel;
+            if (base == null || base.uid != uid || base.isPermanentCaptain) {
+              return;
+            }
+            final data = snapshot.data();
+            final expiresAt = (data?['expiresAt'] as Timestamp?)?.toDate();
+            final active =
+                data?['active'] == true &&
+                data?['delegateUid'] == uid &&
+                expiresAt != null &&
+                expiresAt.isAfter(DateTime.now()) &&
+                base.isActive &&
+                (base.isStaff || base.isOfficer);
+            _currentUserModel = base.withActingCaptainAuthority(
+              enabled: active,
+              until: expiresAt,
+            );
+            if (active) {
+              _delegationExpiryTimer = Timer(
+                expiresAt.difference(DateTime.now()),
+                () {
+                  final current = _currentUserModel;
+                  if (current != null) {
+                    _currentUserModel = current.withActingCaptainAuthority(
+                      enabled: false,
+                    );
+                    notifyListeners();
+                  }
+                },
+              );
+            }
+            notifyListeners();
+          },
+          onError: (Object error) {
+            debugPrint('AuthService: delegation listener failed: $error');
+          },
+        );
   }
 
   Future<String?> register({
@@ -232,6 +288,9 @@ class AuthService extends ChangeNotifier {
   Future<void>? get userDataLoaded => _userDataFuture;
 
   Future<void> logout() async {
+    await _delegationSubscription?.cancel();
+    _delegationSubscription = null;
+    _delegationExpiryTimer?.cancel();
     await _auth.signOut();
     _currentUserModel = null;
     notifyListeners();
@@ -388,7 +447,7 @@ class AuthService extends ChangeNotifier {
     if (currentUser == null) {
       return 'Your session has expired. Please log in again.';
     }
-    if (_currentUserModel?.isCaptain != true) {
+    if (_currentUserModel?.isPermanentCaptain != true) {
       return 'Only the Barangay Captain can delete managed accounts.';
     }
     if (currentUser.uid == userId) {
@@ -562,11 +621,11 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// Queries all staff/officer/captain accounts.
+  /// Queries all staff, officer, captain, and treasurer accounts.
   Stream<QuerySnapshot> getStaffAccounts() {
     return _firestore
         .collection('users')
-        .where('role', whereIn: ['staff', 'officer', 'captain'])
+        .where('role', whereIn: ['staff', 'officer', 'captain', 'treasurer'])
         .snapshots();
   }
 

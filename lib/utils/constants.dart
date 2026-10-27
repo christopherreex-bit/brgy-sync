@@ -12,6 +12,7 @@ const String roleResident = 'resident';
 const String roleStaff = 'staff';
 const String roleOfficer = 'officer';
 const String roleCaptain = 'captain';
+const String roleTreasurer = 'treasurer';
 
 // ─── Case Statuses ──────────────────────────────────────────────
 const String statusPendingReview = 'pending_review';

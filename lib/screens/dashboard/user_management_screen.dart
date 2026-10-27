@@ -10,9 +10,12 @@ class UserManagementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUserModel;
-    if (user == null || (!user.isStaff && !user.isOfficer)) {
+    if (user == null ||
+        (!user.isStaff && !user.isOfficer && !user.isTreasurer)) {
       return const Center(
-        child: Text('User Management is available to staff and officers.'),
+        child: Text(
+          'User Management is available to staff, officers, and treasurers.',
+        ),
       );
     }
 

@@ -9,9 +9,36 @@ service cloud.firestore {
     function isResident() { return getRole() == 'resident'; }
     function isStaff()   { return getRole() in ['staff', 'officer', 'captain']; }
     function isOfficer() { return getRole() in ['officer', 'captain']; }
-    function isCaptain() { return getRole() == 'captain'; }
+    function isTreasurer() { return getRole() == 'treasurer'; }
+    function hasActiveCaptainDelegation() {
+      return request.auth != null
+             && exists(/databases/$(database)/documents/captainDelegations/current)
+             && get(/databases/$(database)/documents/captainDelegations/current).data.active == true
+             && get(/databases/$(database)/documents/captainDelegations/current).data.delegateUid == request.auth.uid
+             && get(/databases/$(database)/documents/captainDelegations/current).data.expiresAt > request.time
+             && getRole() in ['staff', 'officer'];
+    }
+    function isCaptain() {
+      return getRole() == 'captain' || hasActiveCaptainDelegation();
+    }
+    function isFinanceReader() {
+      return isCaptain() || isOfficer() || isTreasurer();
+    }
+    function isFinanceManager() {
+      return isCaptain() || isTreasurer();
+    }
     function currentUserMobile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.mobile;
+    }
+    function cashMovementAfter(movementId) {
+      return getAfter(
+        /databases/$(database)/documents/cashMovements/$(movementId)
+      ).data;
+    }
+    function cashMovementBefore(movementId) {
+      return get(
+        /databases/$(database)/documents/cashMovements/$(movementId)
+      ).data;
     }
     function canCreateCaseForResident(caseData) {
       return caseData.residentId == request.auth.uid
@@ -25,7 +52,40 @@ service cloud.firestore {
     // ─── Users ───────────────────────────────────────────────────
     match /users/{userId} {
       allow read: if request.auth.uid == userId || isStaff();
-      allow write: if request.auth.uid == userId || isCaptain();
+      allow create: if getRole() == 'captain'
+                    || (request.auth.uid == userId
+                        && request.resource.data.role == 'resident');
+      allow update: if getRole() == 'captain'
+                    || (request.auth.uid == userId
+                        && request.resource.data.role == resource.data.role);
+      allow delete: if request.auth.uid == userId || getRole() == 'captain';
+    }
+
+    // One active, expiring delegation at a time. Only the permanent captain
+    // may grant or revoke it; an acting captain cannot delegate onward.
+    match /captainDelegations/{delegationId} {
+      allow read: if request.auth != null;
+      allow create, update: if getRole() == 'captain'
+                            && delegationId == 'current'
+                            && request.resource.data.delegateUid is string
+                            && request.resource.data.delegateRole in ['staff', 'officer']
+                            && request.resource.data.expiresAt is timestamp
+                            && (request.resource.data.active == false
+                                || request.resource.data.expiresAt > request.time)
+                            && exists(/databases/$(database)/documents/users/$(request.resource.data.delegateUid))
+                            && get(/databases/$(database)/documents/users/$(request.resource.data.delegateUid)).data.role
+                                in ['staff', 'officer']
+                            && get(/databases/$(database)/documents/users/$(request.resource.data.delegateUid)).data.isActive != false;
+      allow delete: if false;
+    }
+
+    match /captainDelegationEvents/{eventId} {
+      allow read: if getRole() == 'captain';
+      allow create: if getRole() == 'captain'
+                    && request.resource.data.eventId == eventId
+                    && request.resource.data.eventType
+                        in ['granted', 'revoked', 'duration_changed'];
+      allow update, delete: if false;
     }
 
     // Mobile numbers claimed by newly created accounts. Document IDs are the
@@ -36,10 +96,12 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && mobile.matches('^09[0-9]{9}$')
                     && request.resource.data.uid is string
-                    && (request.resource.data.uid == request.auth.uid || isCaptain());
+                    && (request.resource.data.uid == request.auth.uid
+                        || getRole() == 'captain');
       allow update: if false;
       allow delete: if request.auth != null
-                    && (resource.data.uid == request.auth.uid || isCaptain());
+                    && (resource.data.uid == request.auth.uid
+                        || getRole() == 'captain');
     }
 
     // ─── Citizen Registry ────────────────────────────────────────
@@ -223,8 +285,8 @@ service cloud.firestore {
     // ─── Budget Programs ─────────────────────────────────────────
     match /budgetPrograms/{doc} {
       allow read: if request.auth != null;
-      allow create, delete: if isCaptain();
-      allow update: if isCaptain()
+      allow create, delete: if isFinanceManager();
+      allow update: if isFinanceManager()
                     || (isStaff()
                         && request.resource.data.diff(resource.data)
                             .affectedKeys()
@@ -280,9 +342,171 @@ service cloud.firestore {
 
     // ─── Budget Transactions ─────────────────────────────────────
     match /budgetTransactions/{doc} {
-      allow read: if isOfficer();
-      allow create: if isStaff();
-      allow update, delete: if isCaptain();
+      allow read: if isFinanceReader();
+      allow create: if isStaff() || isTreasurer();
+      allow update, delete: if isFinanceManager();
+    }
+
+    // Cash liquidity is separate from appropriations. The current position is
+    // updated atomically with an immutable movement record by application
+    // workflows. Only the captain may establish the opening position or
+    // request a bank withdrawal.
+    match /cashPositions/{doc} {
+      allow read: if isFinanceReader();
+      allow create: if isFinanceManager()
+                    && doc == 'current'
+                    && request.resource.data.initialized == true
+                    && request.resource.data.cashInBank >= 0
+                    && request.resource.data.cashOnHand >= 0
+                    && request.resource.data.cashInTransit == 0
+                    && request.resource.data.lastMovementId is string
+                    && existsAfter(
+                         /databases/$(database)/documents/cashMovements/$(request.resource.data.lastMovementId)
+                       )
+                    && cashMovementAfter(request.resource.data.lastMovementId).type
+                        == 'opening_balance'
+                    && cashMovementAfter(request.resource.data.lastMovementId).bankAmount
+                        == request.resource.data.cashInBank
+                    && cashMovementAfter(request.resource.data.lastMovementId).onHandAmount
+                        == request.resource.data.cashOnHand;
+      allow update: if (isStaff() || isTreasurer())
+                    && doc == 'current'
+                    && request.resource.data.cashInBank >= 0
+                    && request.resource.data.cashOnHand >= 0
+                    && request.resource.data.cashInTransit >= 0
+                    && request.resource.data.lastMovementId is string
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly([
+                          'cashInBank',
+                          'cashOnHand',
+                          'cashInTransit',
+                          'lastMovementId',
+                          'lastUpdated'
+                        ])
+                    && existsAfter(
+                         /databases/$(database)/documents/cashMovements/$(request.resource.data.lastMovementId)
+                       )
+                    && (
+                      // New funding enters through the bank and must have a
+                      // matching captain-recorded receipt.
+                      (!exists(
+                         /databases/$(database)/documents/cashMovements/$(request.resource.data.lastMovementId)
+                       )
+                       && isFinanceManager()
+                       && cashMovementAfter(request.resource.data.lastMovementId).type
+                           == 'bank_receipt'
+                       && cashMovementAfter(request.resource.data.lastMovementId).status
+                           == 'completed'
+                       && cashMovementAfter(request.resource.data.lastMovementId).requestedBy
+                           == request.auth.uid
+                       && request.resource.data.cashInBank
+                              - resource.data.cashInBank
+                           == cashMovementAfter(request.resource.data.lastMovementId).amount
+                       && request.resource.data.cashInTransit
+                           == resource.data.cashInTransit
+                       && request.resource.data.cashOnHand
+                           == resource.data.cashOnHand)
+                      ||
+                      // Captain requests a new withdrawal: bank decreases
+                      // while the exact amount enters transit.
+                      (!exists(
+                         /databases/$(database)/documents/cashMovements/$(request.resource.data.lastMovementId)
+                       )
+                       && isFinanceManager()
+                       && cashMovementAfter(request.resource.data.lastMovementId).type
+                           == 'bank_to_hand'
+                       && cashMovementAfter(request.resource.data.lastMovementId).status
+                           == 'pending'
+                       && cashMovementAfter(request.resource.data.lastMovementId).requestedBy
+                           == request.auth.uid
+                       && resource.data.cashInBank
+                              - request.resource.data.cashInBank
+                           == cashMovementAfter(request.resource.data.lastMovementId).amount
+                       && request.resource.data.cashInTransit
+                              - resource.data.cashInTransit
+                           == cashMovementAfter(request.resource.data.lastMovementId).amount
+                       && request.resource.data.cashOnHand
+                           == resource.data.cashOnHand)
+                      ||
+                      // A matured withdrawal moves the exact amount from
+                      // transit into cash on hand.
+                      (exists(
+                         /databases/$(database)/documents/cashMovements/$(request.resource.data.lastMovementId)
+                       )
+                       && cashMovementBefore(request.resource.data.lastMovementId).type
+                           == 'bank_to_hand'
+                       && cashMovementBefore(request.resource.data.lastMovementId).status
+                           == 'pending'
+                       && cashMovementAfter(request.resource.data.lastMovementId).status
+                           == 'completed'
+                       && request.resource.data.cashInBank
+                           == resource.data.cashInBank
+                       && resource.data.cashInTransit
+                              - request.resource.data.cashInTransit
+                           == cashMovementBefore(request.resource.data.lastMovementId).amount
+                       && request.resource.data.cashOnHand
+                              - resource.data.cashOnHand
+                           == cashMovementBefore(request.resource.data.lastMovementId).amount)
+                      ||
+                      // Releasing a case reduces only cash on hand and must
+                      // create the matching immutable case movement.
+                      (!exists(
+                         /databases/$(database)/documents/cashMovements/$(request.resource.data.lastMovementId)
+                       )
+                       && cashMovementAfter(request.resource.data.lastMovementId).type
+                           == 'case_disbursement'
+                       && cashMovementAfter(request.resource.data.lastMovementId).status
+                           == 'completed'
+                       && cashMovementAfter(request.resource.data.lastMovementId).requestedBy
+                           == request.auth.uid
+                       && request.resource.data.cashInBank
+                           == resource.data.cashInBank
+                       && request.resource.data.cashInTransit
+                           == resource.data.cashInTransit
+                       && resource.data.cashOnHand
+                              - request.resource.data.cashOnHand
+                           == cashMovementAfter(request.resource.data.lastMovementId).amount)
+                    );
+      allow delete: if false;
+    }
+
+    match /cashMovements/{movementId} {
+      allow read: if isFinanceReader();
+      allow create: if (isStaff() || isTreasurer())
+                    && request.resource.data.requestedBy == request.auth.uid
+                    && request.resource.data.type
+                        in ['opening_balance', 'bank_receipt', 'bank_to_hand', 'case_disbursement']
+                    && (request.resource.data.type != 'bank_to_hand'
+                        || isFinanceManager())
+                    && (request.resource.data.type != 'bank_receipt'
+                        || (isFinanceManager()
+                            && request.resource.data.status == 'completed'
+                            && request.resource.data.amount > 0
+                            && request.resource.data.source is string
+                            && request.resource.data.source.size() > 0
+                            && request.resource.data.referenceNumber is string
+                            && request.resource.data.referenceNumber.size() > 0))
+                    && (request.resource.data.type != 'opening_balance'
+                        || (isFinanceManager()
+                            && request.resource.data.status == 'completed'
+                            && request.resource.data.bankAmount >= 0
+                            && request.resource.data.onHandAmount >= 0))
+                    && (request.resource.data.type != 'bank_to_hand'
+                        || (request.resource.data.status == 'pending'
+                            && request.resource.data.amount > 0))
+                    && (request.resource.data.type != 'case_disbursement'
+                        || (request.resource.data.status == 'completed'
+                            && request.resource.data.amount > 0
+                            && request.resource.data.caseId is string));
+      allow update: if (isStaff() || isTreasurer())
+                    && resource.data.type == 'bank_to_hand'
+                    && resource.data.status == 'pending'
+                    && request.resource.data.status == 'completed'
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly(['status', 'completedAt']);
+      allow delete: if false;
     }
 
     // Immutable reversals created atomically when a released case is deleted.
@@ -310,7 +534,13 @@ service cloud.firestore {
     // ─── Distributions ───────────────────────────────────────────
     match /distributions/{doc} {
       allow read: if isStaff();
-      allow write: if isStaff();
+      allow create: if isCaptain()
+                    && request.resource.data.status == 'released'
+                    && request.resource.data.amount == 1000
+                    && request.resource.data.programType
+                        in ['senior_birthday', 'pwd_birthday']
+                    && request.resource.data.releasedBy == request.auth.uid;
+      allow update, delete: if false;
     }
 
     // ─── Reports ─────────────────────────────────────────────────

@@ -27,6 +27,7 @@ import '../screens/dashboard/account_management_screen.dart';
 import '../screens/dashboard/user_management_screen.dart';
 import '../screens/dashboard/walk_in_intake_screen.dart';
 import '../screens/dashboard/citizen_registry_screen.dart';
+import '../screens/dashboard/cash_position_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/login',
@@ -106,6 +107,10 @@ final appRouter = GoRouter(
           builder: (context, state) => const BudgetOverviewScreen(),
         ),
         GoRoute(
+          path: '/dashboard/cash-position',
+          builder: (context, state) => const CashPositionScreen(),
+        ),
+        GoRoute(
           path: '/dashboard/budget-details',
           builder: (context, state) {
             final query = state.uri.queryParameters;
@@ -170,6 +175,29 @@ final appRouter = GoRouter(
     if (!isLoggedIn && !isOnAuthScreen) return '/login';
     final user = auth.currentUserModel;
     if (isLoggedIn &&
+        user?.hasActingCaptainAuthority == true &&
+        state.matchedLocation == '/dashboard/account-management') {
+      return '/dashboard';
+    }
+    if (isLoggedIn && user?.isTreasurer == true) {
+      const financePaths = [
+        '/dashboard/budget',
+        '/dashboard/budget-details',
+        '/dashboard/allocation-setup',
+        '/dashboard/cash-position',
+        '/dashboard/expenditure',
+        '/dashboard/user-management',
+      ];
+      final allowed = financePaths.any(
+        (path) =>
+            state.matchedLocation == path ||
+            state.matchedLocation.startsWith('$path/'),
+      );
+      if (!allowed && !isChangingTemporaryPassword) {
+        return '/dashboard/budget';
+      }
+    }
+    if (isLoggedIn &&
         user?.mustChangePassword == true &&
         !isChangingTemporaryPassword) {
       return '/change-temporary-password';
@@ -177,11 +205,12 @@ final appRouter = GoRouter(
     if (isLoggedIn &&
         isChangingTemporaryPassword &&
         user?.mustChangePassword != true) {
-      return user?.isResident == true ? '/resident' : '/dashboard';
+      if (user?.isResident == true) return '/resident';
+      return user?.isTreasurer == true ? '/dashboard/budget' : '/dashboard';
     }
     if (isLoggedIn && isOnAuthScreen) {
       if (user != null && user.role == 'resident') return '/resident';
-      return '/dashboard';
+      return user?.isTreasurer == true ? '/dashboard/budget' : '/dashboard';
     }
     return null;
   },

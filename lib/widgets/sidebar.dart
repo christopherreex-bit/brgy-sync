@@ -26,7 +26,9 @@ class _SidebarState extends State<Sidebar> {
     final user = auth.currentUserModel;
     if (user == null) return const SizedBox.shrink();
 
-    final roleLabel = user.role.toUpperCase();
+    final roleLabel = user.hasActingCaptainAuthority
+        ? '${user.role.toUpperCase()} · ACTING CAPTAIN'
+        : user.role.toUpperCase();
     final initials = user.name.isNotEmpty
         ? user.name.split(' ').map((w) => w[0]).take(2).join()
         : '?';
@@ -138,6 +140,14 @@ class _SidebarState extends State<Sidebar> {
                           '/dashboard/citizen-registry',
                           currentLocation,
                         ),
+                        if (user.isOfficer || user.isCaptain)
+                          _navItem(
+                            context,
+                            Icons.card_giftcard,
+                            'Distribution Programs',
+                            '/dashboard/distributions',
+                            currentLocation,
+                          ),
                         _navItem(
                           context,
                           Icons.history,
@@ -178,7 +188,9 @@ class _SidebarState extends State<Sidebar> {
                             currentLocation,
                           ),
                       ],
-                      if (user.isOfficer || user.isCaptain) ...[
+                      if (user.isOfficer ||
+                          user.isCaptain ||
+                          user.isTreasurer) ...[
                         _sectionHeader('BUDGET TRACKING'),
                         _navItem(
                           context,
@@ -187,7 +199,14 @@ class _SidebarState extends State<Sidebar> {
                           '/dashboard/budget',
                           currentLocation,
                         ),
-                        if (user.isCaptain)
+                        _navItem(
+                          context,
+                          Icons.payments_outlined,
+                          'Cash Position',
+                          '/dashboard/cash-position',
+                          currentLocation,
+                        ),
+                        if (user.isCaptain || user.isTreasurer)
                           _navItem(
                             context,
                             Icons.tune,
@@ -227,7 +246,7 @@ class _SidebarState extends State<Sidebar> {
                           currentLocation,
                         ),
                       ],
-                      if (user.isCaptain) ...[
+                      if (user.isPermanentCaptain) ...[
                         _sectionHeader('ADMINISTRATION'),
                         _navItem(
                           context,
@@ -237,7 +256,9 @@ class _SidebarState extends State<Sidebar> {
                           currentLocation,
                         ),
                       ],
-                      if (user.isStaff || user.isOfficer) ...[
+                      if (user.isStaff ||
+                          user.isOfficer ||
+                          user.isTreasurer) ...[
                         _sectionHeader('PROFILE'),
                         _navItem(
                           context,

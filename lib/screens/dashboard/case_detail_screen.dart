@@ -37,7 +37,7 @@ class CaseDetailScreen extends StatelessWidget {
 
         final data = caseSnapshot.data!.data() as Map<String, dynamic>;
         final isCaptain =
-            context.watch<AuthService>().currentUserModel?.role == roleCaptain;
+            context.watch<AuthService>().currentUserModel?.isCaptain == true;
         final claimingApprovalPending =
             data['claimingApprovalStatus'] == 'pending';
         final isConfidential = data['isConfidential'] ?? false;
@@ -360,7 +360,7 @@ class CaseDetailScreen extends StatelessWidget {
     Map<String, dynamic> caseData,
   ) async {
     final user = context.read<AuthService>().currentUserModel;
-    if (user?.role != roleCaptain) {
+    if (user?.isCaptain != true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Only the Barangay Captain can approve this request.'),
@@ -386,7 +386,7 @@ class CaseDetailScreen extends StatelessWidget {
         notes: 'Barangay Captain approved the For Claiming request.',
         staffId: user!.uid,
         staffName: user.name,
-        staffRole: user.role,
+        staffRole: user.effectiveRole,
         referenceNumber: referenceNumber,
         smsSent: smsError == null,
         smsError: smsError,
@@ -423,7 +423,7 @@ class CaseDetailScreen extends StatelessWidget {
     Map<String, dynamic> caseData,
   ) async {
     final user = context.read<AuthService>().currentUserModel;
-    if (user?.role != roleCaptain) {
+    if (user?.isCaptain != true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Only the Barangay Captain can reject this request.'),
@@ -506,7 +506,7 @@ class CaseDetailScreen extends StatelessWidget {
         reason: reason,
         captainId: user!.uid,
         captainName: user.name,
-        captainRole: user.role,
+        captainRole: user.effectiveRole,
         referenceNumber: (caseData['referenceNumber'] ?? '').toString(),
       );
       if (context.mounted) {

@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../../services/auth_service.dart';
 import '../../utils/budget_health.dart';
 import '../../utils/budget_period.dart';
 import '../../utils/constants.dart';
@@ -250,6 +252,12 @@ class _ReservationList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (programIds.isEmpty) return const SizedBox.shrink();
+    if (context.watch<AuthService>().currentUserModel?.isTreasurer == true) {
+      return const _EmptyTransactions(
+        message:
+            'Individual case reservations are restricted. The reserved total is shown above.',
+      );
+    }
     final query = FirebaseFirestore.instance
         .collection('cases')
         .where('budgetReservedProgramId', whereIn: programIds);
@@ -338,6 +346,8 @@ class _TransactionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTreasurer =
+        context.watch<AuthService>().currentUserModel?.isTreasurer == true;
     Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
       'budgetTransactions',
     );
@@ -368,7 +378,9 @@ class _TransactionList extends StatelessWidget {
         }
 
         return FutureBuilder<Map<String, Map<String, dynamic>>>(
-          future: _loadCases(transactions),
+          future: isTreasurer
+              ? Future.value(const <String, Map<String, dynamic>>{})
+              : _loadCases(transactions),
           builder: (context, caseSnapshot) {
             final cases = caseSnapshot.data ?? {};
             return Column(
@@ -401,7 +413,7 @@ class _TransactionList extends StatelessWidget {
                           '${transactionQuarter == null ? '' : ' Q$transactionQuarter'}';
 
                 return InkWell(
-                  onTap: caseId.isEmpty
+                  onTap: caseId.isEmpty || isTreasurer
                       ? null
                       : () => context.go('/dashboard/case/$caseId'),
                   child: Container(
@@ -448,7 +460,7 @@ class _TransactionList extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (caseId.isNotEmpty) ...[
+                        if (caseId.isNotEmpty && !isTreasurer) ...[
                           const SizedBox(width: 4),
                           const Icon(Icons.chevron_right, color: Colors.grey),
                         ],

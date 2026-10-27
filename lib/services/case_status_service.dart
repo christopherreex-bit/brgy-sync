@@ -4,6 +4,7 @@ import '../utils/budget_health.dart';
 import '../utils/budget_period.dart';
 import '../utils/constants.dart';
 import 'document_vault_service.dart';
+import 'cash_position_service.dart';
 
 class CaseStatusService {
   final FirebaseFirestore _db;
@@ -29,6 +30,11 @@ class CaseStatusService {
     List<String> correctionDocuments = const [],
   }) async {
     final effectiveDate = changedAt ?? DateTime.now();
+    if (newStatus == statusReleased) {
+      await CashPositionService(
+        firestore: _db,
+      ).reconcileMaturedTransfers(asOf: effectiveDate);
+    }
     final caseRef = _db.collection('cases').doc(caseId);
     final initialCase = await caseRef.get();
     if (!initialCase.exists) throw StateError('Case not found.');
@@ -74,6 +80,10 @@ class CaseStatusService {
     final budgetTransactionRef = _db
         .collection('budgetTransactions')
         .doc(caseId);
+    final cashPositionRef = _db
+        .collection('cashPositions')
+        .doc(CashPositionService.positionDocumentId);
+    final cashMovementRef = _db.collection('cashMovements').doc('case_$caseId');
 
     await _db.runTransaction((transaction) async {
       final currentCase = await transaction.get(caseRef);
@@ -81,6 +91,12 @@ class CaseStatusService {
 
       final caseData = currentCase.data()!;
       final previousStatus = (caseData['status'] ?? '').toString();
+      final cashDisbursementAmount = newStatus == statusReleased
+          ? budgetDeductionAmountForCase(caseData)
+          : 0.0;
+      final cashPosition = cashDisbursementAmount > 0
+          ? await transaction.get(cashPositionRef)
+          : null;
       if (!validNextCaseStatuses(previousStatus).contains(newStatus)) {
         throw StateError(
           'Cannot change status from '
@@ -310,6 +326,46 @@ class CaseStatusService {
           'budgetReservedAt': FieldValue.delete(),
           'budgetReservedAmount': FieldValue.delete(),
           'budgetReservedProgramId': FieldValue.delete(),
+        });
+      }
+
+      if (newStatus == statusReleased &&
+          cashDisbursementAmount > 0 &&
+          cashPosition?.exists == true &&
+          cashPosition?.data()?['initialized'] == true) {
+        final cashData = cashPosition!.data()!;
+        final cashOnHand = (cashData['cashOnHand'] as num?)?.toDouble() ?? 0;
+        if (cashOnHand < cashDisbursementAmount) {
+          throw StateError(
+            'Cash on hand is insufficient for this release. Transfer funds '
+            'from the bank and wait for them to arrive before releasing the case.',
+          );
+        }
+        transaction.update(cashPositionRef, {
+          'cashOnHand': cashOnHand - cashDisbursementAmount,
+          'lastMovementId': cashMovementRef.id,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        transaction.set(cashMovementRef, {
+          'type': 'case_disbursement',
+          'status': 'completed',
+          'amount': cashDisbursementAmount,
+          'reason': 'Released cash assistance',
+          'caseId': caseId,
+          'referenceNumber':
+              referenceNumber ?? caseData['referenceNumber'] ?? '',
+          'residentName': caseData['residentName'] ?? '',
+          'serviceSubType': caseData['serviceSubType'] ?? '',
+          'requestedAt': FieldValue.serverTimestamp(),
+          'effectiveAt': FieldValue.serverTimestamp(),
+          'requestedBy': staffId,
+          'requestedByName': staffName,
+          'requestedByRole': staffRole,
+        });
+        updates.addAll({
+          'cashDisbursedAmount': cashDisbursementAmount,
+          'cashDisbursedAt': FieldValue.serverTimestamp(),
+          'cashMovementId': cashMovementRef.id,
         });
       }
 
