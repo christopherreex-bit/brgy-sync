@@ -57,6 +57,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   bool _requestingForSomeoneElse = false;
   bool _registryPrefillApplied = false;
   bool _verifiedRegistryAddressLocked = false;
+  final Set<String> _verifiedRegistryFields = {};
   int _registryPrefillRequest = 0;
 
   bool get _isInfrastructureConcern =>
@@ -105,6 +106,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     _addressLocations.clear();
     _fieldErrors.clear();
     _verifiedRegistryAddressLocked = false;
+    _verifiedRegistryFields.clear();
     for (final f in _fields) {
       _controllers[f.key] = TextEditingController();
       if (f.type == FormFieldType.dropdown) _dropdownValues[f.key] = null;
@@ -232,14 +234,18 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         data == null) {
       return;
     }
+    final registryVerified = data['verificationStatus'] == 'verified';
 
     void setText(String key, Object? value) {
       final controller = _controllers[key];
       final text = (value ?? '').toString().trim();
-      if (controller != null &&
-          controller.text.trim().isEmpty &&
-          text.isNotEmpty) {
-        controller.text = text;
+      if (controller != null && text.isNotEmpty) {
+        if (registryVerified) {
+          controller.text = text;
+          _verifiedRegistryFields.add(key);
+        } else if (controller.text.trim().isEmpty) {
+          controller.text = text;
+        }
       }
     }
 
@@ -297,11 +303,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             .toString()
             .trim();
         _verifiedRegistryAddressLocked =
-            data['verificationStatus'] == 'verified' &&
+            registryVerified &&
             permanentAddress.isNotEmpty &&
             _controllers['address'] != null;
         if (_verifiedRegistryAddressLocked) {
           _controllers['address']!.text = permanentAddress;
+          _verifiedRegistryFields.add('address');
         } else {
           setText('address', permanentAddress);
         }
@@ -332,6 +339,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         _controllers['address']?.clear();
         _addressLocations['address'] = null;
         _verifiedRegistryAddressLocked = false;
+        _verifiedRegistryFields.remove('address');
       }
       setText('contact', data['mobile']);
       setText('precinct', data['precinctNumber']);
@@ -346,14 +354,21 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           _dateValues['birthday'] == null &&
           birthday != null) {
         _dateValues['birthday'] = birthday;
+        if (registryVerified) _verifiedRegistryFields.add('birthday');
       }
       final gender = matchingOption('gender', data['sex']);
       if (_radioValues.containsKey('gender') && gender != null) {
-        _radioValues['gender'] ??= gender;
+        if (registryVerified || _radioValues['gender'] == null) {
+          _radioValues['gender'] = gender;
+        }
+        if (registryVerified) _verifiedRegistryFields.add('gender');
       }
       final civilStatus = matchingOption('civilStatus', data['civilStatus']);
       if (_dropdownValues.containsKey('civilStatus') && civilStatus != null) {
-        _dropdownValues['civilStatus'] ??= civilStatus;
+        if (registryVerified || _dropdownValues['civilStatus'] == null) {
+          _dropdownValues['civilStatus'] = civilStatus;
+        }
+        if (registryVerified) _verifiedRegistryFields.add('civilStatus');
       }
       _registryPrefillApplied = true;
       _fieldErrors.clear();
@@ -366,6 +381,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _requestingForSomeoneElse = value;
       _registryPrefillApplied = false;
       _verifiedRegistryAddressLocked = false;
+      _verifiedRegistryFields.clear();
       _fieldErrors.clear();
       for (final document in _bassDocs ?? <BassDocument>[]) {
         if (document.requiredWhenRequestingForSomeoneElse) {
@@ -610,6 +626,9 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             : resident.mobile,
         residentAddress: formData['address'] ?? '',
         addressLocation: _addressLocations['address']?.toMap(),
+        verifiedRegistryAddressUsed:
+            _verifiedRegistryAddressLocked && !_isInfrastructureConcern,
+        verifiedRegistryFields: _verifiedRegistryFields.toList()..sort(),
         requestedForSelf: !_requestingForSomeoneElse,
         requesterName: resident.name,
         requesterMobile: resident.mobile,
@@ -1424,6 +1443,18 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         ),
       );
     }
+    final registryLocked = _verifiedRegistryFields.contains(f.key);
+    InputDecoration decoration() => InputDecoration(
+      labelText: f.label + (f.required ? ' *' : ''),
+      hintText: f.hint,
+      prefixIcon: registryLocked
+          ? const Icon(Icons.verified_user_outlined, color: Colors.green)
+          : null,
+      filled: registryLocked,
+      fillColor: registryLocked ? Colors.green.shade50 : null,
+      border: const OutlineInputBorder(),
+      errorText: _fieldErrors[f.key],
+    );
     Widget field;
     switch (f.type) {
       case FormFieldType.text:
@@ -1432,6 +1463,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       case FormFieldType.phone:
         field = TextField(
           controller: _controllers[f.key],
+          readOnly: registryLocked,
           keyboardType: f.type == FormFieldType.number
               ? TextInputType.number
               : f.type == FormFieldType.phone
@@ -1439,36 +1471,23 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               : f.type == FormFieldType.email
               ? TextInputType.emailAddress
               : TextInputType.text,
-          onChanged: (_) => _validateField(f),
-          decoration: InputDecoration(
-            labelText: f.label + (f.required ? ' *' : ''),
-            hintText: f.hint,
-            border: const OutlineInputBorder(),
-            errorText: _fieldErrors[f.key],
-          ),
+          onChanged: registryLocked ? null : (_) => _validateField(f),
+          decoration: decoration(),
         );
         break;
       case FormFieldType.textarea:
         field = TextField(
           controller: _controllers[f.key],
+          readOnly: registryLocked,
           maxLines: 3,
-          onChanged: (_) => _validateField(f),
-          decoration: InputDecoration(
-            labelText: f.label + (f.required ? ' *' : ''),
-            hintText: f.hint,
-            border: const OutlineInputBorder(),
-            errorText: _fieldErrors[f.key],
-          ),
+          onChanged: registryLocked ? null : (_) => _validateField(f),
+          decoration: decoration(),
         );
         break;
       case FormFieldType.dropdown:
         field = DropdownButtonFormField<String>(
           value: _dropdownValues[f.key],
-          decoration: InputDecoration(
-            labelText: f.label + (f.required ? ' *' : ''),
-            border: const OutlineInputBorder(),
-            errorText: _fieldErrors[f.key],
-          ),
+          decoration: decoration(),
           items: (f.options ?? [])
               .map(
                 (o) => DropdownMenuItem(
@@ -1477,10 +1496,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 ),
               )
               .toList(),
-          onChanged: (v) {
-            setState(() => _dropdownValues[f.key] = v);
-            _validateField(f);
-          },
+          onChanged: registryLocked
+              ? null
+              : (v) {
+                  setState(() => _dropdownValues[f.key] = v);
+                  _validateField(f);
+                },
         );
         break;
       case FormFieldType.radio:
@@ -1502,10 +1523,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                         Radio<String>(
                           value: o,
                           groupValue: _radioValues[f.key],
-                          onChanged: (v) {
-                            setState(() => _radioValues[f.key] = v);
-                            _validateField(f);
-                          },
+                          onChanged: registryLocked
+                              ? null
+                              : (v) {
+                                  setState(() => _radioValues[f.key] = v);
+                                  _validateField(f);
+                                },
                         ),
                         Text(o, style: const TextStyle(fontSize: 13)),
                       ],
@@ -1526,24 +1549,22 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         break;
       case FormFieldType.date:
         field = InkWell(
-          onTap: () async {
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: DateTime.now(),
-              firstDate: DateTime(1900),
-              lastDate: DateTime.now(),
-            );
-            if (picked != null) {
-              setState(() => _dateValues[f.key] = picked);
-              _validateField(f);
-            }
-          },
+          onTap: registryLocked
+              ? null
+              : () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() => _dateValues[f.key] = picked);
+                    _validateField(f);
+                  }
+                },
           child: InputDecorator(
-            decoration: InputDecoration(
-              labelText: f.label + (f.required ? ' *' : ''),
-              border: const OutlineInputBorder(),
-              errorText: _fieldErrors[f.key],
-            ),
+            decoration: decoration(),
             child: Text(
               _dateValues[f.key] != null
                   ? '${_dateValues[f.key]!.year}-${_dateValues[f.key]!.month.toString().padLeft(2, '0')}-${_dateValues[f.key]!.day.toString().padLeft(2, '0')}'
@@ -1557,7 +1578,22 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         break;
     }
 
-    return Padding(padding: const EdgeInsets.only(bottom: 16), child: field);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          field,
+          if (registryLocked) ...[
+            const SizedBox(height: 6),
+            const Text(
+              'Verified from your Citizen Registry record. Request a correction from My Record if this is inaccurate.',
+              style: TextStyle(color: Colors.green, fontSize: 11),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   // ─── Confirmation Screen ─────────────────────────────────────────

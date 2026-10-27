@@ -8,6 +8,8 @@ class CaseModel {
   final String residentMobile;
   final String residentAddress;
   final Map<String, dynamic>? addressLocation;
+  final bool verifiedRegistryAddressUsed;
+  final List<String> verifiedRegistryFields;
   final bool requestedForSelf;
   final String requesterName;
   final String requesterMobile;
@@ -37,6 +39,8 @@ class CaseModel {
     required this.residentMobile,
     required this.residentAddress,
     this.addressLocation,
+    this.verifiedRegistryAddressUsed = false,
+    this.verifiedRegistryFields = const [],
     this.requestedForSelf = true,
     this.requesterName = '',
     this.requesterMobile = '',
@@ -70,6 +74,10 @@ class CaseModel {
       addressLocation: map['addressLocation'] is Map
           ? Map<String, dynamic>.from(map['addressLocation'] as Map)
           : null,
+      verifiedRegistryAddressUsed: map['verifiedRegistryAddressUsed'] == true,
+      verifiedRegistryFields: List<String>.from(
+        map['verifiedRegistryFields'] ?? const [],
+      ),
       requestedForSelf: map['requestedForSelf'] != false,
       requesterName: map['requesterName'] ?? map['residentName'] ?? '',
       requesterMobile: map['requesterMobile'] ?? map['residentMobile'] ?? '',
@@ -117,6 +125,8 @@ class CaseModel {
           (addressLocation!['longitude'] as num).toDouble(),
         ),
       },
+      'verifiedRegistryAddressUsed': verifiedRegistryAddressUsed,
+      'verifiedRegistryFields': verifiedRegistryFields,
       'requestedForSelf': requestedForSelf,
       'requesterName': requesterName,
       'requesterMobile': requesterMobile,

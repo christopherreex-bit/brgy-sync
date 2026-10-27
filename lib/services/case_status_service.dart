@@ -129,6 +129,18 @@ class CaseStatusService {
             'Flag at least one information field or document for correction.',
           );
         }
+        final protectedRegistryFields = _verifiedRegistryFieldsForCase(
+          caseData,
+        );
+        final invalidFields = correctionFields
+            .where(protectedRegistryFields.contains)
+            .toList();
+        if (invalidFields.isNotEmpty) {
+          throw StateError(
+            'Verified Citizen Registry information cannot be corrected from '
+            'a case. Request a Citizen Registry correction instead.',
+          );
+        }
         updates['correctionRequest'] = {
           'status': 'open',
           'reason': notes,
@@ -457,6 +469,25 @@ class CaseStatusService {
     statusReleased => 'case_released',
     _ => 'case_status',
   };
+
+  Set<String> _verifiedRegistryFieldsForCase(Map<String, dynamic> data) {
+    final isInfrastructureConcern =
+        (data['serviceCategory'] ?? '').toString() == 'community' &&
+        (data['serviceSubType'] ?? '').toString() == 'Infrastructure Concern';
+    if (isInfrastructureConcern || data['requestedForSelf'] == false) {
+      return <String>{};
+    }
+    final fields = Set<String>.from(
+      (data['verifiedRegistryFields'] as List? ?? const []).map(
+        (field) => field.toString(),
+      ),
+    );
+    if (data['verifiedRegistryAddressUsed'] == true ||
+        data['registryMatchStatus'] == 'verified_match') {
+      fields.add('address');
+    }
+    return fields;
+  }
 
   String _notificationTitle(String status) => switch (status) {
     statusNeedsCorrection => 'Corrections requested',

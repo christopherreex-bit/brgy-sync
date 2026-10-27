@@ -145,6 +145,21 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       final caseDocuments = List<Map<String, dynamic>>.from(
         caseData['documents'] ?? const [],
       );
+      final protectedRegistryFields = _verifiedRegistryFieldsForCase(caseData);
+      final invalidCorrectionFields = _correctionFields.intersection(
+        protectedRegistryFields,
+      );
+      if (_newStatus == statusNeedsCorrection &&
+          invalidCorrectionFields.isNotEmpty) {
+        setState(() {
+          _loading = false;
+          _correctionFields.removeAll(invalidCorrectionFields);
+          final labels = invalidCorrectionFields.map(_fieldLabel).join(', ');
+          _error =
+              '$labels came from a verified Citizen Registry record and cannot be corrected from the case. Use My Record to request a registry correction instead.';
+        });
+        return;
+      }
       final hasMissingRequiredDocuments = caseDocuments.any(
         (document) =>
             document['required'] == true &&
@@ -307,6 +322,25 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         .join(' ');
   }
 
+  static Set<String> _verifiedRegistryFieldsForCase(Map<String, dynamic> data) {
+    final isInfrastructureConcern =
+        (data['serviceCategory'] ?? '').toString() == 'community' &&
+        (data['serviceSubType'] ?? '').toString() == 'Infrastructure Concern';
+    if (isInfrastructureConcern || data['requestedForSelf'] == false) {
+      return <String>{};
+    }
+    final fields = Set<String>.from(
+      (data['verifiedRegistryFields'] as List? ?? const []).map(
+        (field) => field.toString(),
+      ),
+    );
+    if (data['verifiedRegistryAddressUsed'] == true ||
+        data['registryMatchStatus'] == 'verified_match') {
+      fields.add('address');
+    }
+    return fields;
+  }
+
   static String _fieldLabel(String key) => key
       .replaceAllMapped(
         RegExp(r'([a-z])([A-Z])'),
@@ -342,6 +376,12 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         final ref = data['referenceNumber'] ?? '';
         final residentMobile = data['residentMobile'] ?? '';
         final validNext = _getValidNextStatuses(currentStatus);
+        final verifiedRegistryFields = _verifiedRegistryFieldsForCase(data);
+        final correctableInformation =
+            (data['requestDetails'] as Map? ?? const {}).keys
+                .map((key) => key.toString())
+                .where((key) => !verifiedRegistryFields.contains(key))
+                .toList();
 
         // Check for missing docs
         final documents = List<Map<String, dynamic>>.from(
@@ -532,31 +572,29 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                         style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                       const SizedBox(height: 12),
-                      if ((data['requestDetails'] as Map?)?.isNotEmpty == true)
+                      if (correctableInformation.isNotEmpty)
                         const Text(
                           'Information',
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
-                      ...(data['requestDetails'] as Map? ?? const {}).keys
-                          .map((key) => key.toString())
-                          .map(
-                            (key) => CheckboxListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(_fieldLabel(key)),
-                              subtitle: Text(
-                                (data['requestDetails'][key] ?? '').toString(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              value: _correctionFields.contains(key),
-                              onChanged: (selected) => setState(() {
-                                selected == true
-                                    ? _correctionFields.add(key)
-                                    : _correctionFields.remove(key);
-                              }),
-                            ),
+                      ...correctableInformation.map(
+                        (key) => CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(_fieldLabel(key)),
+                          subtitle: Text(
+                            (data['requestDetails'][key] ?? '').toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
+                          value: _correctionFields.contains(key),
+                          onChanged: (selected) => setState(() {
+                            selected == true
+                                ? _correctionFields.add(key)
+                                : _correctionFields.remove(key);
+                          }),
+                        ),
+                      ),
                       if (documents.any(
                         (document) =>
                             document['status'] == 'uploaded' ||
