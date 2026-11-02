@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/case_status_service.dart';
-import '../../services/twilio_service.dart';
 import '../../widgets/budget_approval_preview_dialog.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
@@ -27,8 +26,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   double? _approvedAssistanceAmount;
   final Set<String> _correctionFields = {};
   final Set<String> _correctionDocuments = {};
-
-  final _twilio = TwilioService();
 
   List<String> _getValidNextStatuses(String currentStatus) {
     return validNextCaseStatuses(currentStatus);
@@ -58,32 +55,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       _budgetApprovalConfirmed = confirmation != null;
       _approvedAssistanceAmount = confirmation?.assistanceAmount;
     });
-  }
-
-  String _buildSmsPreview(
-    String currentStatus,
-    String? nextStatus,
-    String refNumber,
-    String residentMobile,
-  ) {
-    switch (nextStatus) {
-      case 'processing':
-        return 'BrgySync: Your case $refNumber is now being processed. Thank you for your patience.';
-      case 'needs_correction':
-        return 'BrgySync: Your case $refNumber needs corrections. Open My Cases to review and update the flagged items.';
-      case 'awaiting_docs':
-        return 'BrgySync: Your case $refNumber requires additional documents. Please submit the missing items to the barangay hall.';
-      case 'approved':
-        return 'BrgySync: Your case $refNumber has been approved. We will notify you when it is ready for release.';
-      case 'for_claiming':
-        return 'BrgySync: Your case $refNumber is ready for claiming. Please proceed to the barangay hall.';
-      case 'released':
-        return 'BrgySync: Your case $refNumber has been released successfully.';
-      case 'rejected':
-        return 'BrgySync: Your case $refNumber has been reviewed and could not be approved. Please visit the barangay hall for details.';
-      default:
-        return 'BrgySync: Update on your case $refNumber.';
-    }
   }
 
   Future<void> _saveUpdate() async {
@@ -127,7 +98,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       final caseData = caseDoc.data()!;
       final currentStatus = caseData['status'] ?? '';
       final refNumber = caseData['referenceNumber'] ?? '';
-      final residentMobile = caseData['residentMobile'] ?? '';
 
       // Validate transition
       final valid = _getValidNextStatuses(currentStatus);
@@ -236,37 +206,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         return;
       }
 
-      // Send SMS — seed data goes to fallback, real residents get actual number
-      String? smsError;
-      final smsTo = (caseData['isSeedData'] == true)
-          ? TwilioService.fallbackNumber
-          : (residentMobile.isNotEmpty
-                ? residentMobile
-                : TwilioService.fallbackNumber);
-      switch (_newStatus) {
-        case 'processing':
-          smsError = await _twilio.sendStatusProcessing(smsTo, refNumber);
-          break;
-        case 'awaiting_docs':
-          smsError = await _twilio.sendStatusAwaitingDocs(smsTo, refNumber);
-          break;
-        case 'needs_correction':
-          smsError = await _twilio.sendNeedsCorrection(smsTo, refNumber);
-          break;
-        case 'approved':
-          smsError = await _twilio.sendStatusApproved(smsTo, refNumber);
-          break;
-        case 'for_claiming':
-          smsError = await _twilio.sendStatusForClaiming(smsTo, refNumber);
-          break;
-        case 'released':
-          smsError = await _twilio.sendStatusReleased(smsTo, refNumber);
-          break;
-        case 'rejected':
-          smsError = await _twilio.sendStatusRejected(smsTo, refNumber);
-          break;
-      }
-
       await CaseStatusService(firestore: db).updateStatus(
         caseId: widget.caseId,
         newStatus: _newStatus!,
@@ -275,14 +214,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         staffName: user?.name ?? 'Staff',
         staffRole: user?.effectiveRole ?? '',
         referenceNumber: refNumber,
-        smsSent: smsError == null,
-        smsError: smsError,
-        smsBody: _buildSmsPreview(
-          currentStatus,
-          _newStatus,
-          refNumber,
-          residentMobile,
-        ),
         budgetApprovalConfirmed: _budgetApprovalConfirmed,
         approvedAssistanceAmount: _approvedAssistanceAmount,
         correctionFields: _correctionFields.toList(),
@@ -290,16 +221,10 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       );
 
       if (mounted) {
-        final smsSuccess = smsError == null;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              smsSuccess
-                  ? 'Status updated and SMS sent successfully.'
-                  : 'Status updated. SMS not sent: $smsError',
-            ),
-            backgroundColor: smsSuccess ? Colors.green : Colors.orange,
-            duration: const Duration(seconds: 5),
+          const SnackBar(
+            content: Text('Status updated successfully.'),
+            backgroundColor: Colors.green,
           ),
         );
         context.go('/dashboard/case/${widget.caseId}');
@@ -374,7 +299,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
             ? 'Confidential'
             : (data['residentName'] ?? '');
         final ref = data['referenceNumber'] ?? '';
-        final residentMobile = data['residentMobile'] ?? '';
         final validNext = _getValidNextStatuses(currentStatus);
         final verifiedRegistryFields = _verifiedRegistryFieldsForCase(data);
         final correctableInformation =
@@ -655,66 +579,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
               ),
               const SizedBox(height: 24),
 
-              // SMS preview
-              if (_newStatus != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.sms, color: Colors.blue, size: 18),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'SMS notification to resident',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'An automated SMS will be sent to +639397193163 upon saving this update.',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _buildSmsPreview(
-                            currentStatus,
-                            _newStatus,
-                            ref,
-                            residentMobile,
-                          ),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-
               // Error
               if (_error != null)
                 Container(
@@ -752,7 +616,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                               ),
                             )
                           : const Text(
-                              'Save update & send SMS',
+                              'Save update',
                               style: TextStyle(fontSize: 15),
                             ),
                     ),

@@ -179,8 +179,6 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                         : DateTime.now();
                     final tsStr =
                         '${ts.month}/${ts.day}/${ts.year} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
-                    final smsSent = log['smsSent'] ?? false;
-
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Material(
@@ -210,38 +208,12 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              log['action'] ?? '',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ),
-                                          if (smsSent)
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 2,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.green.shade50,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
-                                              child: const Text(
-                                                'SMS sent',
-                                                style: TextStyle(
-                                                  color: Colors.green,
-                                                  fontSize: 10,
-                                                ),
-                                              ),
-                                            ),
-                                        ],
+                                      Text(
+                                        log['action'] ?? '',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
@@ -345,14 +317,6 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
           'Budget restored',
           '₱${(log['budgetReversalAmount'] as num).toStringAsFixed(2)}',
         ),
-      MapEntry(
-        'SMS notification',
-        log['smsSent'] == true ? 'Sent' : 'Not sent',
-      ),
-      if (_text(log['smsBody']).isNotEmpty)
-        MapEntry('SMS message', _text(log['smsBody'])),
-      if (_text(log['smsError']).isNotEmpty)
-        MapEntry('SMS error', _text(log['smsError'])),
     ].where((entry) => entry.value.isNotEmpty).toList();
 
     await showDialog<void>(

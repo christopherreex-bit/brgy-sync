@@ -16,7 +16,6 @@ import '../../services/auth_service.dart';
 import '../../services/citizen_registry_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/document_vault_service.dart';
-import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
 import '../../widgets/address_location_field.dart';
@@ -67,7 +66,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   final _firestore = FirestoreService();
   final _citizenRegistry = CitizenRegistryService();
   final _documentVault = DocumentVaultService();
-  final _twilio = TwilioService();
   final _database = FirebaseDatabase.instance;
   final _encryption = AesGcm.with256bits();
   final _uuid = const Uuid();
@@ -656,10 +654,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
       final refNumber = await _firestore.createCase(caseData);
       _uploadedDatabasePaths.clear();
-      final smsTo = resident.isSeedData == true
-          ? TwilioService.fallbackNumber
-          : resident.mobile;
-      final smsResult = await _twilio.sendSubmissionAck(smsTo, refNumber);
 
       if (mounted) {
         setState(() {
@@ -667,17 +661,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           _submitted = true;
           _refNumber = refNumber;
         });
-        if (smsResult != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Case submitted. SMS notification could not be sent: $smsResult',
-              ),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 5),
-            ),
-          );
-        }
       }
     } catch (e) {
       await _deletePendingUploads();
@@ -1318,27 +1301,6 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                   );
                 }),
           ],
-          const SizedBox(height: 16),
-          // Info note
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue, size: 18),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'An SMS acknowledgment with your case reference number will be sent to your registered mobile number via Twilio.',
-                    style: TextStyle(color: Colors.blue, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 16),
           // Confirmation checkbox + Submit
           Row(

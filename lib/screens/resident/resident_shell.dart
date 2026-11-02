@@ -127,7 +127,7 @@ class ResidentShellState extends State<ResidentShell> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'You will receive SMS confirmation for your requests. Walk-in assistance is available at the barangay hall.',
+                    'Walk-in assistance is available at the barangay hall.',
                     style: TextStyle(color: Colors.blue, fontSize: 12),
                   ),
                 ),

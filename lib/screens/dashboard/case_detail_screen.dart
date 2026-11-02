@@ -9,7 +9,6 @@ import 'package:provider/provider.dart';
 import 'package:universal_html/html.dart' as html;
 import '../../services/auth_service.dart';
 import '../../services/case_status_service.dart';
-import '../../services/twilio_service.dart';
 import '../../utils/constants.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/case_location_card.dart';
@@ -407,14 +406,6 @@ class CaseDetailScreen extends StatelessWidget {
 
     try {
       final referenceNumber = (caseData['referenceNumber'] ?? '').toString();
-      final residentMobile = (caseData['residentMobile'] ?? '').toString();
-      final smsTo = caseData['isSeedData'] == true || residentMobile.isEmpty
-          ? TwilioService.fallbackNumber
-          : residentMobile;
-      final smsError = await TwilioService().sendStatusForClaiming(
-        smsTo,
-        referenceNumber,
-      );
       await CaseStatusService().updateStatus(
         caseId: caseId,
         newStatus: statusForClaiming,
@@ -423,21 +414,12 @@ class CaseDetailScreen extends StatelessWidget {
         staffName: user.name,
         staffRole: user.effectiveRole,
         referenceNumber: referenceNumber,
-        smsSent: smsError == null,
-        smsError: smsError,
-        smsBody:
-            'BrgySync: Your case $referenceNumber is ready for claiming. '
-            'Please proceed to the barangay hall.',
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              smsError == null
-                  ? 'For Claiming approved and resident notified.'
-                  : 'For Claiming approved. SMS was not sent: $smsError',
-            ),
-            backgroundColor: smsError == null ? Colors.green : Colors.orange,
+          const SnackBar(
+            content: Text('For Claiming approved successfully.'),
+            backgroundColor: Colors.green,
           ),
         );
       }
@@ -790,7 +772,6 @@ class CaseDetailScreen extends StatelessWidget {
                       : DateTime.now();
                   final tsStr =
                       '${ts.month}/${ts.day}/${ts.year} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
-                  final smsSent = log['smsSent'] ?? false;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Row(
@@ -810,36 +791,12 @@ class CaseDetailScreen extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      log['action'] ?? '',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  if (smsSent)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade50,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: const Text(
-                                        'SMS sent',
-                                        style: TextStyle(
-                                          color: Colors.green,
-                                          fontSize: 10,
-                                        ),
-                                      ),
-                                    ),
-                                ],
+                              Text(
+                                log['action'] ?? '',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
                               ),
                               const SizedBox(height: 2),
                               Text(
