@@ -97,7 +97,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Overdue Cases',
+                    'Overdue Service Requests',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -106,7 +106,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Cases that have exceeded their SLA deadline.',
+                    'Service requests that have exceeded their SLA deadline.',
                     style: TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 20),
@@ -122,7 +122,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                         border: Border.all(color: Colors.red.shade200),
                       ),
                       child: Text(
-                        '${overdueCases.length} cases are overdue. Update their '
+                        '${overdueCases.length} service requests are overdue. Update their '
                         'status or add a resolution note to document the delay.',
                         style: const TextStyle(fontSize: 13),
                       ),
@@ -134,7 +134,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                       child: Padding(
                         padding: EdgeInsets.all(32),
                         child: Text(
-                          'No overdue cases. Great job!',
+                          'No overdue service requests. Great job!',
                           style: TextStyle(color: Colors.green, fontSize: 16),
                         ),
                       ),
@@ -231,7 +231,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                                       Icons.visibility_outlined,
                                       size: 16,
                                     ),
-                                    label: const Text('View case'),
+                                    label: const Text('View service request'),
                                   ),
                                   const Spacer(),
                                   if (c['caseStatus'] != statusReleased &&
@@ -264,7 +264,7 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                   DropdownButtonFormField<String>(
                     value: _selectedCaseId,
                     decoration: const InputDecoration(
-                      labelText: 'Case Reference',
+                      labelText: 'Service Request Reference',
                       border: OutlineInputBorder(),
                     ),
                     items: overdueCases
@@ -378,6 +378,12 @@ class _OverdueCasesScreenState extends State<OverdueCasesScreen> {
                             )
                             .toList(),
                     onChanged: (value) async {
+                      if (value == statusRejected ||
+                          value == statusNeedsCorrection) {
+                        Navigator.pop(dialogCtx);
+                        context.go('/dashboard/case/${c['id']}/update-status');
+                        return;
+                      }
                       if (value != statusApproved) {
                         setState(() {
                           newStatus = value;

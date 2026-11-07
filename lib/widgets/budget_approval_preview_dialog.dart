@@ -19,7 +19,7 @@ Future<BudgetApprovalConfirmation?> showBudgetApprovalPreviewDialog(
       .collection('cases')
       .doc(caseId)
       .get();
-  if (!caseSnapshot.exists) throw StateError('Case not found.');
+  if (!caseSnapshot.exists) throw StateError('Service request not found.');
   final category = (caseSnapshot.data()?['serviceCategory'] ?? '')
       .toString()
       .trim()
@@ -230,7 +230,7 @@ class _BudgetPreviewContent extends StatelessWidget {
       return const _InfoPanel(
         icon: Icons.info_outline,
         message:
-            'This case has no assistance amount linked to a quarterly budget. '
+            'This service request has no assistance amount linked to a quarterly budget. '
             'No budget deduction will apply.',
       );
     }
@@ -273,7 +273,7 @@ class _BudgetPreviewContent extends StatelessWidget {
         ),
         const Divider(height: 24),
         _AmountRow(
-          label: 'This case assistance amount',
+          label: 'This service request assistance amount',
           amount: preview.assistanceAmount,
           emphasized: true,
         ),
@@ -309,8 +309,8 @@ class _BudgetPreviewContent extends StatelessWidget {
               ? Icons.check_circle_outline
               : Icons.error_outline,
           message: preview.hasSufficientBalance
-              ? 'Confirming acknowledges this budget impact. The deduction is posted when the case reaches Released.'
-              : 'This budget does not have enough remaining balance for the case amount.',
+              ? 'Confirming acknowledges this budget impact. The deduction is posted when the service request reaches Released.'
+              : 'This budget does not have enough remaining balance for the service request amount.',
           color: preview.hasSufficientBalance ? Colors.blue : Colors.red,
         ),
       ],

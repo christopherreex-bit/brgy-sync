@@ -14,6 +14,7 @@ class CaseListItem extends StatelessWidget {
   final bool claimingApprovalRejected;
   final String claimingRejectionReason;
   final String claimingRejectedByName;
+  final bool repeatSubmission;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
 
@@ -30,6 +31,7 @@ class CaseListItem extends StatelessWidget {
     this.claimingApprovalRejected = false,
     this.claimingRejectionReason = '',
     this.claimingRejectedByName = '',
+    this.repeatSubmission = false,
     this.onTap,
     this.onDelete,
   });
@@ -90,6 +92,39 @@ class CaseListItem extends StatelessWidget {
                     '$displayName · $subType · $dateStr',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                   ),
+                  if (repeatSubmission) ...[
+                    const SizedBox(height: 7),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        border: Border.all(color: Colors.orange.shade300),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.history,
+                            size: 14,
+                            color: Colors.orange.shade900,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Repeat request — review prior outcome',
+                            style: TextStyle(
+                              color: Colors.orange.shade900,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (awaitingCaptainApproval) ...[
                     const SizedBox(height: 7),
                     Container(
@@ -184,7 +219,7 @@ class CaseListItem extends StatelessWidget {
               const SizedBox(width: 8),
               IconButton(
                 onPressed: onDelete,
-                tooltip: 'Delete case',
+                tooltip: 'Delete service request',
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
               ),
             ],

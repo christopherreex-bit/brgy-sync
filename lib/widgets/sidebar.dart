@@ -124,7 +124,7 @@ class _SidebarState extends State<Sidebar> {
                         _navItem(
                           context,
                           Icons.list_alt,
-                          'Case Queue',
+                          'Service Request Queue',
                           '/dashboard',
                           currentLocation,
                         ),
@@ -170,7 +170,7 @@ class _SidebarState extends State<Sidebar> {
                         _navItem(
                           context,
                           Icons.warning_amber,
-                          'Overdue Cases',
+                          'Overdue Service Requests',
                           '/dashboard/overdue',
                           currentLocation,
                         ),

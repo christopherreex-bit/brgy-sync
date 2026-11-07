@@ -144,7 +144,7 @@ class ResidentShellState extends State<ResidentShell> {
               children: [
                 _tabButton('Home', 0),
                 _tabButton('Submit a Request', 1),
-                _tabButton('My Cases', 2),
+                _tabButton('My Service Requests', 2),
                 _tabButton('My Record', 3),
               ],
             ),

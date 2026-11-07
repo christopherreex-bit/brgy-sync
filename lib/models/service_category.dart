@@ -103,8 +103,9 @@ const List<ServiceCategory> kServiceCategories = [
   ServiceCategory(
     id: 'vaw',
     name: 'VAW / BCPC Report',
-    description: 'Case report, child protection',
+    description: 'Incident report, child protection service request',
     icon: Icons.shield,
+    // Keep the official BCPC program name as the stored subtype value.
     subTypes: ['VAW Desk Report', 'BCPC Child Protection Case'],
     isConfidential: true,
   ),
@@ -224,8 +225,8 @@ List<FormFieldConfig> _documentFields(String subType) {
     case 'Barangay ID':
       return const [
         FormFieldConfig(
-          key: 'surname',
-          label: 'Surname',
+          key: 'lastName',
+          label: 'Last Name',
           type: FormFieldType.text,
           required: true,
         ),
@@ -236,8 +237,8 @@ List<FormFieldConfig> _documentFields(String subType) {
           required: true,
         ),
         FormFieldConfig(
-          key: 'middleInitial',
-          label: 'Middle Initial',
+          key: 'middleName',
+          label: 'Middle Initial (optional)',
           type: FormFieldType.text,
         ),
         FormFieldConfig(
@@ -310,8 +311,19 @@ List<FormFieldConfig> _documentFields(String subType) {
     case 'Barangay Clearance':
       return const [
         FormFieldConfig(
-          key: 'fullName',
-          label: 'Full Name / Pangalan',
+          key: 'firstName',
+          label: 'First Name / Pangalan',
+          type: FormFieldType.text,
+          required: true,
+        ),
+        FormFieldConfig(
+          key: 'middleName',
+          label: 'Middle Initial (optional)',
+          type: FormFieldType.text,
+        ),
+        FormFieldConfig(
+          key: 'lastName',
+          label: 'Last Name / Apelyido',
           type: FormFieldType.text,
           required: true,
         ),
@@ -417,8 +429,19 @@ List<FormFieldConfig> _communityFields(String subType) {
   final isInfrastructure = subType == 'Infrastructure Concern';
   return [
     const FormFieldConfig(
-      key: 'fullName',
-      label: 'Full Name',
+      key: 'firstName',
+      label: 'First Name',
+      type: FormFieldType.text,
+      required: true,
+    ),
+    const FormFieldConfig(
+      key: 'middleName',
+      label: 'Middle Initial (optional)',
+      type: FormFieldType.text,
+    ),
+    const FormFieldConfig(
+      key: 'lastName',
+      label: 'Last Name',
       type: FormFieldType.text,
       required: true,
     ),
@@ -454,8 +477,19 @@ List<FormFieldConfig> _beneficiaryFields(String subType) {
 
   return [
     FormFieldConfig(
-      key: 'fullName',
-      label: 'Full Name',
+      key: 'firstName',
+      label: 'First Name',
+      type: FormFieldType.text,
+      required: true,
+    ),
+    FormFieldConfig(
+      key: 'middleName',
+      label: 'Middle Initial (optional)',
+      type: FormFieldType.text,
+    ),
+    FormFieldConfig(
+      key: 'lastName',
+      label: 'Last Name',
       type: FormFieldType.text,
       required: true,
     ),
@@ -574,8 +608,19 @@ List<FormFieldConfig> _educationFields() {
 List<FormFieldConfig> _adhocFields(String subType) {
   return const [
     FormFieldConfig(
-      key: 'fullName',
-      label: 'Full Name',
+      key: 'firstName',
+      label: 'First Name',
+      type: FormFieldType.text,
+      required: true,
+    ),
+    FormFieldConfig(
+      key: 'middleName',
+      label: 'Middle Initial (optional)',
+      type: FormFieldType.text,
+    ),
+    FormFieldConfig(
+      key: 'lastName',
+      label: 'Last Name',
       type: FormFieldType.text,
       required: true,
     ),
@@ -604,8 +649,19 @@ List<FormFieldConfig> _adhocFields(String subType) {
 List<FormFieldConfig> _genericFields() {
   return const [
     FormFieldConfig(
-      key: 'fullName',
-      label: 'Full Name',
+      key: 'firstName',
+      label: 'First Name',
+      type: FormFieldType.text,
+      required: true,
+    ),
+    FormFieldConfig(
+      key: 'middleName',
+      label: 'Middle Initial (optional)',
+      type: FormFieldType.text,
+    ),
+    FormFieldConfig(
+      key: 'lastName',
+      label: 'Last Name',
       type: FormFieldType.text,
       required: true,
     ),
@@ -663,10 +719,12 @@ class BassDocument {
 List<BassDocument> kBassDocuments(String subType) => [
   if (slaKeyFor('bass', subType) == 'bass_medical')
     BassDocument(name: 'Certificate of Admission', required: true),
-  BassDocument(
-    name: "Medical Abstract / Doctor's Certificate / Death Certificate",
-    required: true,
-  ),
+  if (slaKeyFor('bass', subType) == 'bass_medical')
+    BassDocument(name: 'Medical Abstract', required: true),
+  if (subType == 'Burial Assistance')
+    BassDocument(name: 'Death Certificate', required: true),
+  if (subType == 'Drug Rehabilitation')
+    BassDocument(name: "Doctor's Certificate", required: true),
   BassDocument(
     name: "Voter's Certificate from Comelec (patient)",
     required: true,
@@ -677,6 +735,7 @@ List<BassDocument> kBassDocuments(String subType) => [
     requiredWhenRequestingForSomeoneElse: true,
   ),
   BassDocument(name: "Barangay Certificate of Indigency", required: true),
+  BassDocument(name: 'Proof of Barangay Residency', required: true),
   BassDocument(name: "Valid ID (patient)", required: true),
   BassDocument(
     name: "Valid ID (claimant)",
@@ -689,7 +748,15 @@ List<BassDocument> kBassDocuments(String subType) => [
     requiredWhenRequestingForSomeoneElse: true,
   ),
   BassDocument(name: "Picture of patient (Whole Body)", required: true),
-  BassDocument(name: "House sketch (for medical cases)", required: false),
+  BassDocument(
+    name: "House sketch (for medical service requests)",
+    required: false,
+  ),
+];
+
+List<BassDocument> kIndigencyCertificateDocuments() => [
+  BassDocument(name: 'Proof of Barangay Residency', required: true),
+  BassDocument(name: 'Valid ID (patient)', required: true),
 ];
 
 // ─── Validation Helpers ───────────────────────────────────────────────

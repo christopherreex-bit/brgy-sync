@@ -489,7 +489,9 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
     UserModel actor,
   ) async {
     const fields = <String, String>{
-      'legalName': 'Full legal name',
+      'firstName': 'First name',
+      'middleName': 'Middle initial (optional)',
+      'lastName': 'Last name',
       'dateOfBirth': 'Date of birth (YYYY-MM-DD)',
       'sex': 'Sex',
       'civilStatus': 'Civil status',
@@ -544,12 +546,21 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
               : (data[entry.key] ?? '').toString(),
         ),
     };
+    if (controllers['firstName']!.text.trim().isEmpty &&
+        (data['legalName'] ?? '').toString().trim().isNotEmpty) {
+      final parsed = UserModel.splitLegacyName(data['legalName'].toString());
+      controllers['firstName']!.text = parsed.firstName;
+      controllers['middleName']!.text = parsed.middleName;
+      controllers['lastName']!.text = parsed.lastName;
+    }
     const sections = <Map<String, Object>>[
       {
         'title': 'Personal information',
         'icon': Icons.person_outline,
         'keys': [
-          'legalName',
+          'firstName',
+          'middleName',
+          'lastName',
           'dateOfBirth',
           'sex',
           'civilStatus',
@@ -605,8 +616,13 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
 
     String? validateField(String key, String? rawValue) {
       final value = (rawValue ?? '').trim();
-      if (key == 'legalName' && value.isEmpty) {
-        return 'Full legal name is required.';
+      if ({'firstName', 'lastName'}.contains(key) && value.isEmpty) {
+        return key == 'firstName'
+            ? 'First name is required.'
+            : 'Last name is required.';
+      }
+      if (key == 'middleName' && value.length > 1) {
+        return 'Enter one middle initial only.';
       }
       if (key == 'mobile') {
         if (value.isEmpty) return 'Mobile number is required.';
@@ -654,6 +670,9 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
     }
 
     List<TextInputFormatter>? inputFormattersFor(String key) {
+      if (key == 'middleName') {
+        return [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z]'))];
+      }
       if ({
         'houseLotNumber',
         'postalCode',
@@ -790,6 +809,14 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
                                               )
                                             : TextFormField(
                                                 controller: controllers[key],
+                                                maxLength: key == 'middleName'
+                                                    ? 1
+                                                    : null,
+                                                textCapitalization:
+                                                    key == 'middleName'
+                                                    ? TextCapitalization
+                                                          .characters
+                                                    : TextCapitalization.none,
                                                 readOnly: isDateField,
                                                 onTap: isDateField
                                                     ? () async {
@@ -933,6 +960,11 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
             .where((e) => e.isNotEmpty)
             .toList(),
       };
+      values['legalName'] = UserModel.composeName(
+        firstName: controllers['firstName']!.text,
+        middleName: controllers['middleName']!.text,
+        lastName: controllers['lastName']!.text,
+      );
       try {
         await _service.saveRecord(
           registryId: id,
@@ -1345,7 +1377,7 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
         if (snapshot.hasError) {
           return const Align(
             alignment: Alignment.centerLeft,
-            child: Text('Case history could not be loaded.'),
+            child: Text('Service request history could not be loaded.'),
           );
         }
         if (!snapshot.hasData) {
@@ -1380,7 +1412,8 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
             ...logs.map((logDocument) {
               final log = logDocument.data();
               final timestamp = log['timestamp'];
-              final action = (log['action'] ?? 'Case updated').toString();
+              final action = (log['action'] ?? 'Service request updated')
+                  .toString();
               final notes = (log['notes'] ?? '').toString().trim();
               final staffName = (log['staffName'] ?? '').toString().trim();
               return Padding(

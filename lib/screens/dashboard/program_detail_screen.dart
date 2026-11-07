@@ -158,7 +158,7 @@ class ProgramDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Approved assistance amounts held for cases that have not yet '
+                'Approved assistance amounts held for service requests that have not yet '
                 'been released.',
                 style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
@@ -182,7 +182,7 @@ class ProgramDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Amounts automatically subtracted when assistance cases are released. Select a row to view the case.',
+                'Amounts automatically subtracted when assistance service requests are released. Select a row to view the service request.',
                 style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -255,7 +255,7 @@ class _ReservationList extends StatelessWidget {
     if (context.watch<AuthService>().currentUserModel?.isTreasurer == true) {
       return const _EmptyTransactions(
         message:
-            'Individual case reservations are restricted. The reserved total is shown above.',
+            'Individual service request reservations are restricted. The reserved total is shown above.',
       );
     }
     final query = FirebaseFirestore.instance

@@ -147,6 +147,7 @@ class CitizenRegistryService {
     for (var index = 1; index <= count; index++) {
       final mobile = '0955${index.toString().padLeft(7, '0')}';
       final firstName = firstNames[(index - 1) % firstNames.length];
+      const middleName = 'M';
       final lastName =
           lastNames[((index - 1) ~/ firstNames.length) % lastNames.length];
       final legalName = '$firstName M. $lastName';
@@ -161,6 +162,9 @@ class CitizenRegistryService {
         (batch) => batch.set(ref, {
           'registryId': mobile,
           'legalName': legalName,
+          'firstName': firstName,
+          'middleName': middleName,
+          'lastName': lastName,
           'dateOfBirth':
               '${birthYear.toString().padLeft(4, '0')}-${birthMonth.toString().padLeft(2, '0')}-${birthDay.toString().padLeft(2, '0')}',
           'sex': index.isEven ? 'Female' : 'Male',
@@ -332,21 +336,45 @@ class CitizenRegistryService {
       final data = correction.data()!;
       if (approve) {
         final registryId = (data['registryId'] ?? '').toString();
+        final registryRef = _db.collection('citizenRegistry').doc(registryId);
+        final registrySnapshot = await transaction.get(registryRef);
+        final registryData =
+            registrySnapshot.data() ?? const <String, dynamic>{};
         final changes = Map<String, dynamic>.from(
           data['requestedChanges'] as Map? ?? const {},
         );
-        transaction.set(
-          _db.collection('citizenRegistry').doc(registryId),
-          {
-            ...changes,
-            'verificationStatus': 'verified',
-            'updatedAt': FieldValue.serverTimestamp(),
-            'verifiedAt': FieldValue.serverTimestamp(),
-            'verifiedBy': reviewer.uid,
-            'verifiedByName': reviewer.name,
-          },
-          SetOptions(merge: true),
-        );
+        if (changes.keys.any(
+          {'firstName', 'middleName', 'lastName'}.contains,
+        )) {
+          final legacy = UserModel.splitLegacyName(
+            (registryData['legalName'] ?? '').toString(),
+          );
+          changes['legalName'] = UserModel.composeName(
+            firstName:
+                (changes['firstName'] ??
+                        registryData['firstName'] ??
+                        legacy.firstName)
+                    .toString(),
+            middleName:
+                (changes['middleName'] ??
+                        registryData['middleName'] ??
+                        legacy.middleName)
+                    .toString(),
+            lastName:
+                (changes['lastName'] ??
+                        registryData['lastName'] ??
+                        legacy.lastName)
+                    .toString(),
+          );
+        }
+        transaction.set(registryRef, {
+          ...changes,
+          'verificationStatus': 'verified',
+          'updatedAt': FieldValue.serverTimestamp(),
+          'verifiedAt': FieldValue.serverTimestamp(),
+          'verifiedBy': reviewer.uid,
+          'verifiedByName': reviewer.name,
+        }, SetOptions(merge: true));
       }
       transaction.update(correctionRef, {
         'status': approve ? 'approved' : 'rejected',

@@ -5,6 +5,7 @@ import '../utils/budget_period.dart';
 import '../utils/constants.dart';
 import 'document_vault_service.dart';
 import 'cash_position_service.dart';
+import 'indigency_certificate_service.dart';
 
 class CaseStatusService {
   final FirebaseFirestore _db;
@@ -28,6 +29,9 @@ class CaseStatusService {
     double? approvedAssistanceAmount,
     List<String> correctionFields = const [],
     List<String> correctionDocuments = const [],
+    String? rejectionReasonCode,
+    String? rejectionReasonLabel,
+    String? rejectionReasonDetails,
   }) async {
     final effectiveDate = changedAt ?? DateTime.now();
     if (newStatus == statusReleased) {
@@ -37,7 +41,7 @@ class CaseStatusService {
     }
     final caseRef = _db.collection('cases').doc(caseId);
     final initialCase = await caseRef.get();
-    if (!initialCase.exists) throw StateError('Case not found.');
+    if (!initialCase.exists) throw StateError('Service request not found.');
 
     final initialData = initialCase.data()!;
     final registryRef = await _registryReferenceForCase(initialData);
@@ -50,7 +54,7 @@ class CaseStatusService {
       );
       if (programName == null) {
         throw StateError(
-          'No budget program mapping exists for this assistance case type.',
+          'No budget program mapping exists for this assistance service request type.',
         );
       }
       programRef = await _findQuarterlyProgram(programName, effectiveDate);
@@ -89,7 +93,7 @@ class CaseStatusService {
 
     await _db.runTransaction((transaction) async {
       final currentCase = await transaction.get(caseRef);
-      if (!currentCase.exists) throw StateError('Case not found.');
+      if (!currentCase.exists) throw StateError('Service request not found.');
 
       final caseData = currentCase.data()!;
       final previousStatus = (caseData['status'] ?? '').toString();
@@ -107,7 +111,7 @@ class CaseStatusService {
       }
       if (newStatus == statusForClaiming && staffRole != roleCaptain) {
         throw StateError(
-          'Barangay Captain approval is required before a case can move to '
+          'Barangay Captain approval is required before a service request can move to '
           'For Claiming.',
         );
       }
@@ -115,7 +119,7 @@ class CaseStatusService {
           _requiresBudgetReview(caseData) &&
           !budgetApprovalConfirmed) {
         throw StateError(
-          'Review and confirm the budget impact before approving this case.',
+          'Review and confirm the budget impact before approving this service request.',
         );
       }
       final updates = <String, dynamic>{
@@ -123,6 +127,20 @@ class CaseStatusService {
         'lastUpdated': FieldValue.serverTimestamp(),
         'statusUpdatedAt': FieldValue.serverTimestamp(),
       };
+      if (newStatus == statusRejected) {
+        if ((rejectionReasonCode ?? '').trim().isEmpty ||
+            (rejectionReasonLabel ?? '').trim().isEmpty) {
+          throw StateError('Select a reason for rejection.');
+        }
+        updates.addAll({
+          'rejectionReasonCode': rejectionReasonCode,
+          'rejectionReasonLabel': rejectionReasonLabel,
+          'rejectionReasonDetails': (rejectionReasonDetails ?? '').trim(),
+          'rejectedAt': FieldValue.serverTimestamp(),
+          'rejectedBy': staffId,
+          'rejectedByName': staffName,
+        });
+      }
       if (newStatus == statusNeedsCorrection) {
         if (correctionFields.isEmpty && correctionDocuments.isEmpty) {
           throw StateError(
@@ -138,7 +156,7 @@ class CaseStatusService {
         if (invalidFields.isNotEmpty) {
           throw StateError(
             'Verified Citizen Registry information cannot be corrected from '
-            'a case. Request a Citizen Registry correction instead.',
+            'a service request. Request a Citizen Registry correction instead.',
           );
         }
         updates['correctionRequest'] = {
@@ -248,7 +266,7 @@ class CaseStatusService {
         if (!hasReservation && allocated - utilized - reserved < amount) {
           throw StateError(
             'The applicable budget no longer has enough remaining balance '
-            'for this case.',
+            'for this service request.',
           );
         }
         final newUtilized = utilized + amount;
@@ -352,7 +370,7 @@ class CaseStatusService {
         if (cashOnHand < cashDisbursementAmount) {
           throw StateError(
             'Cash on hand is insufficient for this release. Transfer funds '
-            'from the bank and wait for them to arrive before releasing the case.',
+            'from the bank and wait for them to arrive before releasing the service request.',
           );
         }
         transaction.update(cashPositionRef, {
@@ -409,10 +427,16 @@ class CaseStatusService {
         'timestamp': FieldValue.serverTimestamp(),
         'staffId': staffId,
         'staffName': staffName,
+        'staffRole': staffRole,
         'action': 'Status changed: $previousStatus → $newStatus',
         'previousStatus': previousStatus,
         'newStatus': newStatus,
         'notes': notes,
+        if (newStatus == statusRejected) ...{
+          'rejectionReasonCode': rejectionReasonCode,
+          'rejectionReasonLabel': rejectionReasonLabel,
+          'rejectionReasonDetails': (rejectionReasonDetails ?? '').trim(),
+        },
         'smsSent': smsSent,
         'smsError': smsError,
         'smsBody': smsBody,
@@ -448,7 +472,7 @@ class CaseStatusService {
           'type': 'claiming_approved',
           'title': 'For Claiming request approved',
           'message':
-              'Case ${referenceNumber ?? caseData['referenceNumber'] ?? ''} was approved by the Barangay Captain.',
+              'Service request ${referenceNumber ?? caseData['referenceNumber'] ?? ''} was approved by the Barangay Captain.',
           'caseId': caseId,
           'referenceNumber':
               referenceNumber ?? caseData['referenceNumber'] ?? '',
@@ -461,6 +485,41 @@ class CaseStatusService {
         });
       }
     });
+
+    if (newStatus == statusReleased &&
+        (initialData['serviceCategory'] ?? '').toString() == 'documents' &&
+        (initialData['serviceSubType'] ?? '').toString() ==
+            'Indigency Certificate') {
+      try {
+        await IndigencyCertificateService(firestore: _db).issueForReleasedCase(
+          caseId: caseId,
+          staffId: staffId,
+          staffName: staffName,
+          staffRole: staffRole,
+        );
+      } catch (error) {
+        await caseRef.update({
+          'certificateIssuanceStatus': 'failed',
+          'certificateIssuanceError': error.toString(),
+          'certificateIssuanceLastAttemptAt': FieldValue.serverTimestamp(),
+        });
+        await _db.collection('notifications').add({
+          'type': 'document_issuance_failed',
+          'title': 'Certificate issuance needs attention',
+          'message':
+              'The Certificate of Indigency for ${referenceNumber ?? initialData['referenceNumber'] ?? caseId} could not be generated. Open the service request to review the registry details.',
+          'caseId': caseId,
+          'referenceNumber':
+              referenceNumber ?? initialData['referenceNumber'] ?? '',
+          'recipientId': '',
+          'audienceRoles': const ['staff', 'officer', 'captain'],
+          'createdById': staffId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'readBy': <String>[],
+          'deletedBy': <String>[],
+        });
+      }
+    }
   }
 
   String _notificationType(String status) => switch (status) {
@@ -490,13 +549,13 @@ class CaseStatusService {
   }
 
   String _notificationTitle(String status) => switch (status) {
-    statusNeedsCorrection => 'Corrections requested',
+    statusNeedsCorrection => 'Revision requested',
     statusApproved => 'Request approved',
     statusForClaiming => 'Ready for claiming',
     statusReleased => 'Assistance released',
     statusRejected => 'Request rejected',
     statusProcessing => 'Request is being processed',
-    _ => 'Case status updated',
+    _ => 'Service request status updated',
   };
 
   String _notificationMessage({
@@ -506,7 +565,7 @@ class CaseStatusService {
   }) {
     final statusText = caseStatusLabel(newStatus);
     final reason = notes.trim();
-    return 'Case $referenceNumber is now $statusText.'
+    return 'Service request $referenceNumber is now $statusText.'
         '${reason.isEmpty ? '' : ' Note: $reason'}';
   }
 
@@ -670,10 +729,17 @@ class CaseStatusService {
       'studentName',
       'reporterName',
     ]);
+    final first = (details['firstName'] ?? '').toString().trim();
+    final middle = (details['middleName'] ?? details['middleInitial'] ?? '')
+        .toString()
+        .trim();
+    final surname = (details['lastName'] ?? details['surname'] ?? '')
+        .toString()
+        .trim();
+    if (first.isNotEmpty) result['firstName'] = first;
+    if (middle.isNotEmpty) result['middleName'] = middle;
+    if (surname.isNotEmpty) result['lastName'] = surname;
     if (!result.containsKey('legalName')) {
-      final first = (details['firstName'] ?? '').toString().trim();
-      final middle = (details['middleInitial'] ?? '').toString().trim();
-      final surname = (details['surname'] ?? '').toString().trim();
       final name = [
         first,
         middle,
@@ -717,7 +783,7 @@ class CaseStatusService {
     String? referenceNumber,
   }) async {
     if (staffRole == roleCaptain) {
-      throw StateError('Captains should approve the case directly.');
+      throw StateError('Captains should approve the service request directly.');
     }
     if (staffRole != roleStaff && staffRole != roleOfficer) {
       throw StateError(
@@ -730,16 +796,18 @@ class CaseStatusService {
     final notificationRef = _db.collection('notifications').doc();
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(caseRef);
-      if (!snapshot.exists) throw StateError('Case not found.');
+      if (!snapshot.exists) throw StateError('Service request not found.');
       final data = snapshot.data()!;
       final status = normalizeCaseStatus((data['status'] ?? '').toString());
       if (status != statusApproved) {
         throw StateError(
-          'Only Approved cases can be submitted for claiming approval.',
+          'Only Approved service requests can be submitted for claiming approval.',
         );
       }
       if (data['claimingApprovalStatus'] == 'pending') {
-        throw StateError('This case is already awaiting captain approval.');
+        throw StateError(
+          'This service request is already awaiting captain approval.',
+        );
       }
 
       transaction.update(caseRef, {
@@ -767,7 +835,7 @@ class CaseStatusService {
         'type': 'claiming_approval',
         'title': 'For Claiming approval needed',
         'message':
-            '$staffName requested approval for case ${referenceNumber ?? data['referenceNumber'] ?? ''}.',
+            '$staffName requested approval for service request ${referenceNumber ?? data['referenceNumber'] ?? ''}.',
         'caseId': caseId,
         'referenceNumber': referenceNumber ?? data['referenceNumber'] ?? '',
         'recipientId': '',
@@ -801,7 +869,7 @@ class CaseStatusService {
 
     final caseRef = _db.collection('cases').doc(caseId);
     final initialCase = await caseRef.get();
-    if (!initialCase.exists) throw StateError('Case not found.');
+    if (!initialCase.exists) throw StateError('Service request not found.');
     final initialData = initialCase.data()!;
     final reservedProgramId = (initialData['budgetReservedProgramId'] ?? '')
         .toString();
@@ -813,7 +881,9 @@ class CaseStatusService {
 
     await _db.runTransaction((transaction) async {
       final caseSnapshot = await transaction.get(caseRef);
-      if (!caseSnapshot.exists) throw StateError('Case not found.');
+      if (!caseSnapshot.exists) {
+        throw StateError('Service request not found.');
+      }
       final caseData = caseSnapshot.data()!;
       final currentStatus = normalizeCaseStatus(
         (caseData['status'] ?? '').toString(),
@@ -823,7 +893,7 @@ class CaseStatusService {
       if (currentStatus != statusApproved ||
           caseData['claimingApprovalStatus'] != 'pending') {
         throw StateError(
-          'This case is not awaiting Barangay Captain approval.',
+          'This service request is not awaiting Barangay Captain approval.',
         );
       }
 
@@ -899,7 +969,7 @@ class CaseStatusService {
           'type': 'claiming_rejected',
           'title': 'For Claiming request rejected',
           'message':
-              'Case ${referenceNumber ?? caseData['referenceNumber'] ?? ''} returned to Processing. Reason: $trimmedReason',
+              'Service request ${referenceNumber ?? caseData['referenceNumber'] ?? ''} returned to Processing. Reason: $trimmedReason',
           'caseId': caseId,
           'referenceNumber':
               referenceNumber ?? caseData['referenceNumber'] ?? '',
@@ -921,7 +991,9 @@ class CaseStatusService {
   }) async {
     final effectiveDate = asOf ?? DateTime.now();
     final caseSnapshot = await _db.collection('cases').doc(caseId).get();
-    if (!caseSnapshot.exists) throw StateError('Case not found.');
+    if (!caseSnapshot.exists) {
+      throw StateError('Service request not found.');
+    }
 
     final caseData = caseSnapshot.data()!;
     final amount =

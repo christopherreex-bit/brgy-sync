@@ -47,12 +47,16 @@ const Map<String, List<String>> validCaseStatusTransitions = {
 List<String> validNextCaseStatuses(String currentStatus) =>
     validCaseStatusTransitions[normalizeCaseStatus(currentStatus)] ?? const [];
 
-String caseStatusLabel(String status) => normalizeCaseStatus(status)
-    .replaceAll('_', ' ')
-    .split(' ')
-    .where((word) => word.isNotEmpty)
-    .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
-    .join(' ');
+String caseStatusLabel(String status) {
+  final normalized = normalizeCaseStatus(status);
+  if (normalized == statusNeedsCorrection) return 'For Revision';
+  return normalized
+      .replaceAll('_', ' ')
+      .split(' ')
+      .where((word) => word.isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+}
 
 // ─── SLA Statuses ───────────────────────────────────────────────
 const String slaOnTime = 'on_time';

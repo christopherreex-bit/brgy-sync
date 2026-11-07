@@ -21,7 +21,9 @@ class TrackRequestScreen extends StatelessWidget {
 
     if (residentId == null) {
       return const Center(
-        child: Text('Unable to load your cases. Please sign in again.'),
+        child: Text(
+          'Unable to load your service requests. Please sign in again.',
+        ),
       );
     }
 
@@ -38,7 +40,7 @@ class TrackRequestScreen extends StatelessWidget {
         if (snapshot.hasError) {
           return _MessageState(
             icon: Icons.error_outline,
-            title: 'Could not load your cases',
+            title: 'Could not load your service requests',
             message: snapshot.error.toString(),
             color: Colors.red,
           );
@@ -61,7 +63,7 @@ class TrackRequestScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'My Cases',
+                'My Service Requests',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -72,14 +74,14 @@ class TrackRequestScreen extends StatelessWidget {
               Text(
                 cases.isEmpty
                     ? 'Your submitted requests will appear here.'
-                    : '${cases.length} ${cases.length == 1 ? 'case' : 'cases'} submitted',
+                    : '${cases.length} ${cases.length == 1 ? 'service request' : 'service requests'} submitted',
                 style: const TextStyle(color: Colors.grey, fontSize: 14),
               ),
               const SizedBox(height: 24),
               if (cases.isEmpty)
                 const _MessageState(
                   icon: Icons.folder_open_outlined,
-                  title: 'No cases yet',
+                  title: 'No service requests yet',
                   message:
                       'Submit a request and it will appear here automatically.',
                   color: kNavy,
@@ -154,7 +156,7 @@ class _CaseCard extends StatelessWidget {
               const SizedBox(width: 8),
               IconButton(
                 onPressed: () => _confirmDelete(context, ref.toString()),
-                tooltip: 'Delete case',
+                tooltip: 'Delete service request',
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
               ),
             ],
@@ -202,7 +204,7 @@ class _CaseCard extends StatelessWidget {
                       _CaseCorrectionDialog(caseId: caseId, caseData: data),
                 ),
                 icon: const Icon(Icons.edit_document),
-                label: const Text('Correct and resubmit this case'),
+                label: const Text('Revise and resubmit this service request'),
               ),
             ),
             const SizedBox(height: 8),
@@ -251,7 +253,7 @@ class _CaseCard extends StatelessWidget {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Delete case?'),
+          title: const Text('Delete service request?'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,7 +320,7 @@ class _CaseCard extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not delete case: $error'),
+            content: Text('Could not delete service request: $error'),
             backgroundColor: Colors.red,
           ),
         );
@@ -352,7 +354,7 @@ class _CorrectionNotice extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Corrections requested',
+            'For Revision',
             style: TextStyle(
               color: Colors.orange.shade900,
               fontWeight: FontWeight.bold,
@@ -560,7 +562,7 @@ class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
         'type': 'correction_submitted',
         'title': 'Resident corrections submitted',
         'message':
-            '${user.name} resubmitted case ${widget.caseData['referenceNumber'] ?? ''} for review.',
+            '${user.name} resubmitted service request ${widget.caseData['referenceNumber'] ?? ''} for review.',
         'caseId': widget.caseId,
         'referenceNumber': widget.caseData['referenceNumber'] ?? '',
         'recipientId': '',
@@ -575,7 +577,9 @@ class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Corrections submitted for review in the same case.'),
+            content: Text(
+              'Corrections submitted for review in the same service request.',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -594,7 +598,7 @@ class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Correct case information'),
+    title: const Text('Revise service request information'),
     content: SizedBox(
       width: 620,
       child: SingleChildScrollView(
@@ -646,7 +650,7 @@ class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
       ),
       FilledButton(
         onPressed: _saving ? null : _submit,
-        child: Text(_saving ? 'Submitting…' : 'Resubmit case'),
+        child: Text(_saving ? 'Submitting…' : 'Resubmit service request'),
       ),
     ],
   );

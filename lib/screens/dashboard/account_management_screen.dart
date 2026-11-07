@@ -47,7 +47,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     }
     if (!mounted) return;
 
-    final nameCtrl = TextEditingController();
+    final firstNameCtrl = TextEditingController();
+    final middleNameCtrl = TextEditingController();
+    final lastNameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final mobileCtrl = TextEditingController();
     final passCtrl = TextEditingController();
@@ -68,9 +70,32 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
-                    controller: nameCtrl,
+                    controller: firstNameCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Full Name',
+                      labelText: 'First Name *',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: middleNameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Middle Initial (optional)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                    maxLength: 1,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z]')),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: lastNameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Last Name *',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.person),
                     ),
@@ -79,7 +104,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   TextField(
                     controller: emailCtrl,
                     decoration: InputDecoration(
-                      labelText: 'Email',
+                      labelText: 'Email *',
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.email),
                       errorText: emailError,
@@ -100,7 +125,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   TextField(
                     controller: mobileCtrl,
                     decoration: InputDecoration(
-                      labelText: 'Mobile (09XXXXXXXXX)',
+                      labelText: 'Mobile (09XXXXXXXXX) *',
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.phone),
                       errorText: mobileError,
@@ -121,7 +146,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   TextField(
                     controller: passCtrl,
                     decoration: InputDecoration(
-                      labelText: 'Password',
+                      labelText: 'Password *',
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.lock),
                       errorText: passwordError,
@@ -189,9 +214,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   mobileError = nextMobileError;
                   passwordError = nextPasswordError;
                 });
-                if (nameCtrl.text.trim().isEmpty) {
+                if (firstNameCtrl.text.trim().isEmpty ||
+                    lastNameCtrl.text.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Full name is required.')),
+                    const SnackBar(
+                      content: Text('First name and last name are required.'),
+                    ),
                   );
                   return;
                 }
@@ -214,21 +242,27 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     );
     if (shouldConfirm == true && mounted) {
       await _showConfirmPasswordDialog(
-        name: nameCtrl.text.trim(),
+        firstName: firstNameCtrl.text.trim(),
+        middleName: middleNameCtrl.text.trim(),
+        lastName: lastNameCtrl.text.trim(),
         email: emailCtrl.text.trim().toLowerCase(),
         mobile: mobileCtrl.text.trim(),
         password: passCtrl.text,
         role: selectedRole,
       );
     }
-    nameCtrl.dispose();
+    firstNameCtrl.dispose();
+    middleNameCtrl.dispose();
+    lastNameCtrl.dispose();
     emailCtrl.dispose();
     mobileCtrl.dispose();
     passCtrl.dispose();
   }
 
   Future<void> _showConfirmPasswordDialog({
-    required String name,
+    required String firstName,
+    required String middleName,
+    required String lastName,
     required String email,
     required String mobile,
     required String password,
@@ -300,7 +334,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                       }
 
                       final err = await auth.createStaffAccount(
-                        name: name,
+                        firstName: firstName,
+                        middleName: middleName,
+                        lastName: lastName,
                         email: email,
                         mobile: mobile,
                         password: password,

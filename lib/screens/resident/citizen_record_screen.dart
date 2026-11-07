@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/citizen_registry_service.dart';
+import '../../services/indigency_certificate_service.dart';
+import '../../models/user_model.dart';
 import '../../utils/constants.dart';
 
 class CitizenRecordScreen extends StatelessWidget {
@@ -34,6 +36,15 @@ class CitizenRecordScreen extends StatelessWidget {
         }
         final record = snapshot.data!.docs.first;
         final data = record.data();
+        final parsedName = UserModel.splitLegacyName(
+          (data['legalName'] ?? '').toString(),
+        );
+        final displayData = <String, dynamic>{
+          ...data,
+          'firstName': data['firstName'] ?? parsedName.firstName,
+          'middleName': data['middleName'] ?? parsedName.middleName,
+          'lastName': data['lastName'] ?? parsedName.lastName,
+        };
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -60,7 +71,9 @@ class CitizenRecordScreen extends StatelessWidget {
                     Chip(label: Text(_status(data['verificationStatus']))),
                     const SizedBox(height: 10),
                     ...<String, String>{
-                      'legalName': 'Full legal name',
+                      'firstName': 'First name',
+                      'middleName': 'Middle initial',
+                      'lastName': 'Last name',
                       'dateOfBirth': 'Date of birth',
                       'sex': 'Sex',
                       'civilStatus': 'Civil status',
@@ -93,7 +106,8 @@ class CitizenRecordScreen extends StatelessWidget {
                             ),
                             Expanded(
                               child: Text(
-                                (data[entry.key] ?? 'Not recorded').toString(),
+                                (displayData[entry.key] ?? 'Not recorded')
+                                    .toString(),
                               ),
                             ),
                           ],
@@ -108,6 +122,8 @@ class CitizenRecordScreen extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            _ResidentVerifiedDocuments(registryId: record.id),
             const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerLeft,
@@ -130,7 +146,7 @@ class CitizenRecordScreen extends StatelessWidget {
     user,
     String registryId,
   ) async {
-    String field = 'legalName';
+    String field = 'firstName';
     final value = TextEditingController();
     final reason = TextEditingController();
     final submitted = await showDialog<bool>(
@@ -151,7 +167,9 @@ class CitizenRecordScreen extends StatelessWidget {
                   ),
                   items:
                       const {
-                            'legalName': 'Full legal name',
+                            'firstName': 'First name',
+                            'middleName': 'Middle initial',
+                            'lastName': 'Last name',
                             'dateOfBirth': 'Date of birth',
                             'sex': 'Sex',
                             'civilStatus': 'Civil status',
@@ -247,4 +265,112 @@ class CitizenRecordScreen extends StatelessWidget {
     'pending_verification' => 'Pending verification',
     _ => 'Unverified record',
   };
+}
+
+class _ResidentVerifiedDocuments extends StatelessWidget {
+  const _ResidentVerifiedDocuments({required this.registryId});
+
+  final String registryId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Issued and verified documents',
+              style: TextStyle(
+                color: kNavy,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Valid documents shown here may be reused automatically in future service requests.',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('citizenRegistry')
+                  .doc(registryId)
+                  .collection('verifiedDocuments')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final now = DateTime.now();
+                final documents = snapshot.data!.docs.where((document) {
+                  final data = document.data();
+                  if (data['verificationStatus'] != 'verified') return false;
+                  final validUntil = data['validUntil'];
+                  return validUntil is! Timestamp ||
+                      !validUntil.toDate().isBefore(now);
+                }).toList();
+                if (documents.isEmpty) {
+                  return const Text('No valid issued documents on file.');
+                }
+                return Column(
+                  children: documents.map((document) {
+                    final data = document.data();
+                    final expiry = data['validUntil'];
+                    final expiryText = expiry is Timestamp
+                        ? 'Valid until ${_shortDate(expiry.toDate())}'
+                        : 'No expiry recorded';
+                    final canOpen =
+                        (data['databasePath'] ?? '').toString().isNotEmpty &&
+                        (data['encryptionKey'] ?? '').toString().isNotEmpty;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(
+                        Icons.verified_outlined,
+                        color: Colors.green,
+                      ),
+                      title: Text(
+                        (data['name'] ?? 'Verified document').toString(),
+                      ),
+                      subtitle: Text(
+                        '${data['certificateNumber'] ?? data['fileName'] ?? ''}'
+                        '${(data['certificateNumber'] ?? data['fileName'] ?? '').toString().isEmpty ? '' : ' · '}$expiryText',
+                      ),
+                      trailing: canOpen
+                          ? OutlinedButton.icon(
+                              onPressed: () async {
+                                try {
+                                  await IndigencyCertificateService()
+                                      .previewStored(data);
+                                } catch (error) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Could not open document: $error',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.open_in_new, size: 16),
+                              label: const Text('Open'),
+                            )
+                          : null,
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _shortDate(DateTime date) =>
+      '${date.month}/${date.day}/${date.year}';
 }

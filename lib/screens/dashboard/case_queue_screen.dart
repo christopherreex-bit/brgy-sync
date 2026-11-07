@@ -31,7 +31,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     {'key': 'all', 'label': 'All statuses'},
     {'key': 'pending_review', 'label': 'Pending Review'},
     {'key': 'processing', 'label': 'Processing'},
-    {'key': 'needs_correction', 'label': 'Needs Correction'},
+    {'key': 'needs_correction', 'label': 'For Revision'},
     {'key': 'approved', 'label': 'Approved'},
     {'key': 'for_claiming', 'label': 'For Claiming'},
     {'key': 'released', 'label': 'Released'},
@@ -103,7 +103,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Case Queue',
+            'Service Request Queue',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -112,7 +112,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
           ),
           const SizedBox(height: 4),
           const Text(
-            "Active cases monitored against Citizens' Charter deadlines",
+            "Active service requests monitored against Citizens' Charter deadlines",
             style: TextStyle(color: Colors.grey, fontSize: 13),
           ),
           const SizedBox(height: 20),
@@ -122,7 +122,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
             controller: _searchCtrl,
             decoration: InputDecoration(
               hintText:
-                  'Search cases using any combination of name, phone, reference, service, or status',
+                  'Search service requests using any combination of name, phone, reference, service, or status',
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
               suffixIcon: _searchCtrl.text.isEmpty
                   ? null
@@ -252,7 +252,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'CASE',
+                    'SERVICE REQUEST',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
@@ -393,7 +393,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'No cases found',
+                          'No service requests found',
                           style: TextStyle(
                             color: Colors.grey.shade400,
                             fontSize: 16,
@@ -401,7 +401,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Cases will appear here once residents submit requests.',
+                          'Service requests will appear here once residents submit them.',
                           style: TextStyle(
                             color: Colors.grey.shade400,
                             fontSize: 13,
@@ -420,8 +420,8 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           docs.length == 1
-                              ? '1 case shown'
-                              : '${docs.length} cases shown',
+                              ? '1 service request shown'
+                              : '${docs.length} service requests shown',
                           style: TextStyle(
                             color: Colors.grey.shade700,
                             fontSize: 12,
@@ -469,6 +469,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                             claimingRejectedByName:
                                 (data['claimingRejectedByName'] ?? '')
                                     .toString(),
+                            repeatSubmission: data['repeatSubmission'] == true,
                             onTap: () =>
                                 context.go('/dashboard/case/${doc.id}'),
                             onDelete: canDelete
@@ -524,7 +525,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Delete case?'),
+          title: const Text('Delete service request?'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,7 +575,9 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
     try {
       final user = context.read<AuthService>().currentUserModel;
       if (user == null || !user.isCaptain) {
-        throw StateError('Only the Barangay Captain can delete cases.');
+        throw StateError(
+          'Only the Barangay Captain can delete service requests.',
+        );
       }
       await FirestoreService().deleteCase(
         caseId,
@@ -593,7 +596,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not delete case: $error'),
+            content: Text('Could not delete service request: $error'),
             backgroundColor: Colors.red,
           ),
         );

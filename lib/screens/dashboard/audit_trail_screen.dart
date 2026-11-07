@@ -33,7 +33,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Chronological log of case activity and staff actions.',
+            'Chronological log of service request activity and staff actions.',
             style: TextStyle(color: Colors.grey, fontSize: 13),
           ),
           const SizedBox(height: 20),
@@ -160,7 +160,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Actions will appear here as staff update cases.',
+                          'Actions will appear here as staff update service requests.',
                           style: TextStyle(
                             color: Colors.grey.shade400,
                             fontSize: 13,
@@ -285,7 +285,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
         : null;
     final details = <MapEntry<String, String>>[
       MapEntry('Action', _text(log['action'])),
-      MapEntry('Case reference', _text(log['caseRef'])),
+      MapEntry('Service request reference', _text(log['caseRef'])),
       MapEntry('Performed by', _text(log['staffName'])),
       if (_text(log['actorRole']).isNotEmpty)
         MapEntry('Role', _titleCase(_text(log['actorRole']))),

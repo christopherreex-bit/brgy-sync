@@ -29,6 +29,9 @@ class IndigencyCertificateService {
     required Map<String, dynamic> citizen,
     required UserModel actor,
     required String reason,
+    String? sourceCaseId,
+    String? sourceReferenceNumber,
+    bool openPrintDialog = true,
   }) async {
     if (citizen['verificationStatus'] != 'verified') {
       throw StateError(
@@ -107,16 +110,122 @@ class IndigencyCertificateService {
             'verifiedBy': actor.uid,
             'verifiedByName': actor.name,
             'source': 'system_generated',
+            if (sourceCaseId != null) 'sourceCaseId': sourceCaseId,
+            if (sourceReferenceNumber != null)
+              'sourceReferenceNumber': sourceReferenceNumber,
+            'issuanceStatus': 'issued',
           }, SetOptions(merge: true));
     } catch (_) {
       await _database.ref(databasePath).remove();
       rethrow;
     }
 
-    await Printing.layoutPdf(
-      name: '$certificateNumber.pdf',
-      onLayout: (_) async => bytes,
+    if (openPrintDialog) {
+      await Printing.layoutPdf(
+        name: '$certificateNumber.pdf',
+        onLayout: (_) async => bytes,
+      );
+    }
+  }
+
+  /// Generates the official certificate for a completed Indigency Certificate
+  /// service request and stores it in the resident's verified document vault.
+  Future<void> issueForReleasedCase({
+    required String caseId,
+    required String staffId,
+    required String staffName,
+    required String staffRole,
+  }) async {
+    final caseRef = _firestore.collection('cases').doc(caseId);
+    final caseSnapshot = await caseRef.get();
+    if (!caseSnapshot.exists) throw StateError('Service request not found.');
+    final caseData = caseSnapshot.data()!;
+    if ((caseData['status'] ?? '').toString() != 'released' ||
+        (caseData['serviceCategory'] ?? '').toString() != 'documents' ||
+        (caseData['serviceSubType'] ?? '').toString() !=
+            'Indigency Certificate') {
+      return;
+    }
+    if (caseData['certificateIssuanceStatus'] == 'issued') return;
+    if (caseData['requestedForSelf'] == false) {
+      throw StateError(
+        'Automatic issuance requires the beneficiary to have a linked Citizen Registry record.',
+      );
+    }
+
+    var registryId = (caseData['registryId'] ?? '').toString();
+    if (registryId.isEmpty) {
+      final mobile = (caseData['residentMobile'] ?? '').toString().replaceAll(
+        RegExp(r'\D'),
+        '',
+      );
+      final matches = await _firestore
+          .collection('citizenRegistry')
+          .where('mobile', isEqualTo: mobile)
+          .limit(1)
+          .get();
+      if (matches.docs.isEmpty) {
+        throw StateError('No linked Citizen Registry record was found.');
+      }
+      registryId = matches.docs.first.id;
+    }
+    final registry = await _firestore
+        .collection('citizenRegistry')
+        .doc(registryId)
+        .get();
+    if (!registry.exists) {
+      throw StateError('The linked Citizen Registry record was not found.');
+    }
+    final requestDetails = caseData['requestDetails'] is Map
+        ? Map<String, dynamic>.from(caseData['requestDetails'] as Map)
+        : <String, dynamic>{};
+    final reason = (requestDetails['purpose'] ?? 'Proof of indigency')
+        .toString()
+        .trim();
+    final actor = UserModel(
+      uid: staffId,
+      name: staffName,
+      mobile: '',
+      email: '',
+      role: staffRole,
+      createdAt: DateTime.now(),
     );
+    await generateAndStore(
+      registryId: registryId,
+      citizen: registry.data()!,
+      actor: actor,
+      reason: reason.isEmpty ? 'Proof of indigency' : reason,
+      sourceCaseId: caseId,
+      sourceReferenceNumber: (caseData['referenceNumber'] ?? '').toString(),
+      openPrintDialog: false,
+    );
+    await caseRef.update({
+      'registryId': registryId,
+      'certificateIssuanceStatus': 'issued',
+      'certificateIssuedAt': FieldValue.serverTimestamp(),
+      'certificateIssuedBy': staffId,
+      'certificateIssuedByName': staffName,
+      'issuedDocumentKey': DocumentVaultService.documentKey(
+        'Barangay Certificate of Indigency',
+      ),
+    });
+    final residentId = (caseData['residentId'] ?? '').toString();
+    if (residentId.isNotEmpty) {
+      await _firestore.collection('notifications').add({
+        'type': 'document_issued',
+        'title': 'Certificate of Indigency issued',
+        'message':
+            'Your Certificate of Indigency for ${caseData['referenceNumber'] ?? ''} is available under My Record.',
+        'caseId': caseId,
+        'referenceNumber': (caseData['referenceNumber'] ?? '').toString(),
+        'recipientId': residentId,
+        'audienceRoles': <String>[],
+        'createdById': staffId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'readBy': <String>[],
+        'deletedBy': <String>[],
+      });
+    }
   }
 
   Future<void> previewStored(Map<String, dynamic> document) async {

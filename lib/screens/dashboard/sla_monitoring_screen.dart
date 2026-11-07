@@ -61,6 +61,12 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                             )
                             .toList(),
                     onChanged: (value) async {
+                      if (value == statusRejected ||
+                          value == statusNeedsCorrection) {
+                        Navigator.pop(dialogCtx);
+                        context.go('/dashboard/case/${c['id']}/update-status');
+                        return;
+                      }
                       if (value != statusApproved) {
                         setState(() {
                           newStatus = value;
@@ -297,7 +303,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    "Active cases monitored against Citizens' Charter deadlines",
+                    "Active service requests monitored against Citizens' Charter deadlines",
                     style: TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 20),
@@ -364,7 +370,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '$overdue overdue cases require immediate attention.',
+                            '$overdue overdue service requests require immediate attention.',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
@@ -376,7 +382,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
 
                   // Active cases list
                   const Text(
-                    'Active cases — SLA status',
+                    'Active service requests — SLA status',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -389,7 +395,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                       child: Padding(
                         padding: EdgeInsets.all(32),
                         child: Text(
-                          'No active cases.',
+                          'No active service requests.',
                           style: TextStyle(color: Colors.grey),
                         ),
                       ),
@@ -479,7 +485,7 @@ class _SlaMonitoringScreenState extends State<SlaMonitoringScreen> {
                                       Icons.visibility_outlined,
                                       size: 16,
                                     ),
-                                    label: const Text('View case'),
+                                    label: const Text('View service request'),
                                   ),
                                   const Spacer(),
                                   if (c['caseStatus'] != statusReleased &&

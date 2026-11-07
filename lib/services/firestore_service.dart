@@ -13,6 +13,9 @@ class FirestoreService {
     final counterRef = _db.collection('caseCounters').doc('$year');
     final docRef = _db.collection('cases').doc();
     final notificationRef = _db.collection('notifications').doc();
+    final repeatNotificationRef = caseData.repeatSubmission
+        ? _db.collection('notifications').doc()
+        : null;
     final accountMobile =
         (caseData.requesterMobile.isNotEmpty
                 ? caseData.requesterMobile
@@ -37,6 +40,22 @@ class FirestoreService {
         isWalkIn || registryData?['verificationStatus'] == 'verified';
     final registryLegalName =
         (registryData?['legalName'] ?? caseData.requesterName).toString();
+    final requestDetails = caseData.requestDetails;
+    final registryFirstName =
+        (registryData?['firstName'] ?? requestDetails['firstName'] ?? '')
+            .toString()
+            .trim();
+    final registryMiddleName =
+        (registryData?['middleName'] ?? requestDetails['middleName'] ?? '')
+            .toString()
+            .trim();
+    final registryLastName =
+        (registryData?['lastName'] ??
+                requestDetails['lastName'] ??
+                requestDetails['surname'] ??
+                '')
+            .toString()
+            .trim();
     final registryName = _normalizeIdentity(registryLegalName);
     final caseName = _normalizeIdentity(caseData.residentName);
     final identityMatches =
@@ -66,6 +85,9 @@ class FirestoreService {
         transaction.set(registryRef, {
           'registryId': registryRef.id,
           'legalName': registryLegalName,
+          if (registryFirstName.isNotEmpty) 'firstName': registryFirstName,
+          if (registryMiddleName.isNotEmpty) 'middleName': registryMiddleName,
+          if (registryLastName.isNotEmpty) 'lastName': registryLastName,
           'mobile': accountMobile,
           'verificationStatus': 'verified',
           'source': registryData?['source'] ?? 'walk_in_intake',
@@ -90,7 +112,9 @@ class FirestoreService {
       });
       transaction.set(notificationRef, {
         'type': 'case_submitted',
-        'title': isWalkIn ? 'New walk-in case' : 'New resident request',
+        'title': isWalkIn
+            ? 'New walk-in service request'
+            : 'New resident service request',
         'message':
             '${caseData.residentName} submitted ${caseData.serviceSubType} ($referenceNumber).',
         'caseId': docRef.id,
@@ -102,6 +126,36 @@ class FirestoreService {
         'readBy': <String>[],
         'deletedBy': <String>[],
       });
+      if (repeatNotificationRef != null) {
+        final priorRefs = caseData.priorRequests
+            .map((request) => request['referenceNumber'])
+            .whereType<String>()
+            .join(', ');
+        transaction.set(repeatNotificationRef, {
+          'type': 'repeat_service_request',
+          'title': 'Repeat service request requires review',
+          'message':
+              '${caseData.residentName} submitted ${caseData.serviceSubType} ($referenceNumber) after a previous request${priorRefs.isEmpty ? '' : ' ($priorRefs)'}. Review the earlier outcome before deciding.',
+          'caseId': docRef.id,
+          'referenceNumber': referenceNumber,
+          'recipientId': '',
+          'audienceRoles': const ['staff', 'officer', 'captain'],
+          'createdById': caseData.encodedById ?? caseData.residentId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'readBy': <String>[],
+          'deletedBy': <String>[],
+        });
+        transaction.set(docRef.collection('actionLog').doc(), {
+          'action': 'Repeat service request flagged for staff review',
+          'reason': priorRefs.isEmpty
+              ? 'A previous request for the same service exists.'
+              : 'Related previous service requests: $priorRefs',
+          'staffId': caseData.encodedById ?? caseData.residentId,
+          'staffName': caseData.encodedByName ?? caseData.requesterName,
+          'staffRole': caseData.encodedByRole ?? 'resident',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
       transaction.set(_db.collection('registryObservations').doc(docRef.id), {
         'caseId': docRef.id,
         'residentId': caseData.residentId,
@@ -156,7 +210,9 @@ class FirestoreService {
 
     final caseRef = _db.collection('cases').doc(caseId);
     final caseSnapshot = await caseRef.get();
-    if (!caseSnapshot.exists) throw StateError('Case no longer exists.');
+    if (!caseSnapshot.exists) {
+      throw StateError('Service request no longer exists.');
+    }
 
     final actionLog = caseRef.collection('actionLog');
 
@@ -174,7 +230,9 @@ class FirestoreService {
 
       await _db.runTransaction((transaction) async {
         final currentCase = await transaction.get(caseRef);
-        if (!currentCase.exists) throw StateError('Case no longer exists.');
+        if (!currentCase.exists) {
+          throw StateError('Service request no longer exists.');
+        }
 
         final caseData = currentCase.data()!;
         final referenceNumber = (caseData['referenceNumber'] ?? '').toString();
@@ -208,7 +266,7 @@ class FirestoreService {
           final programSnapshot = await transaction.get(programRef);
           if (!programSnapshot.exists) {
             throw StateError(
-              'Cannot delete this case because its linked budget no longer exists.',
+              'Cannot delete this service request because its linked budget no longer exists.',
             );
           }
 
@@ -270,10 +328,10 @@ class FirestoreService {
         transaction.set(auditRef, {
           'eventType': 'case_deleted',
           'action': shouldReverseDeduction
-              ? 'Case deleted and budget deduction reversed'
+              ? 'Service request deleted and budget deduction reversed'
               : shouldReleaseReservation
-              ? 'Case deleted and reserved budget released'
-              : 'Case deleted',
+              ? 'Service request deleted and reserved budget released'
+              : 'Service request deleted',
           'caseId': caseId,
           'referenceNumber': referenceNumber,
           'actorId': actorId,

@@ -166,7 +166,7 @@ class TwilioService {
   Future<String?> sendStatusProcessing(String mobile, String refNumber) async {
     return sendSms(
       mobile,
-      'BrgySync: Your case $refNumber is now being processed. Thank you for your patience.',
+      'BrgySync: Your service request $refNumber is now being processed. Thank you for your patience.',
     );
   }
 
@@ -176,42 +176,42 @@ class TwilioService {
   ) async {
     return sendSms(
       mobile,
-      'BrgySync: Your case $refNumber requires additional documents. Please submit the missing items to the barangay hall.',
+      'BrgySync: Your service request $refNumber requires additional documents. Please submit the missing items to the barangay hall.',
     );
   }
 
   Future<String?> sendNeedsCorrection(String mobile, String refNumber) async {
     return sendSms(
       mobile,
-      'BrgySync: Your case $refNumber needs corrections. Open My Cases to review the flagged information or documents and resubmit the same case.',
+      'BrgySync: Your service request $refNumber is for revision. Open My Service Requests to review the flagged information or documents and resubmit the same service request.',
     );
   }
 
   Future<String?> sendStatusApproved(String mobile, String refNumber) async {
     return sendSms(
       mobile,
-      'BrgySync: Your case $refNumber has been approved. We will notify you when it is ready for release.',
+      'BrgySync: Your service request $refNumber has been approved. We will notify you when it is ready for release.',
     );
   }
 
   Future<String?> sendStatusForClaiming(String mobile, String refNumber) async {
     return sendSms(
       mobile,
-      'BrgySync: Your case $refNumber is ready for claiming. Please proceed to the barangay hall.',
+      'BrgySync: Your service request $refNumber is ready for claiming. Please proceed to the barangay hall.',
     );
   }
 
   Future<String?> sendStatusReleased(String mobile, String refNumber) async {
     return sendSms(
       mobile,
-      'BrgySync: Your case $refNumber has been released successfully.',
+      'BrgySync: Your service request $refNumber has been released successfully.',
     );
   }
 
   Future<String?> sendStatusRejected(String mobile, String refNumber) async {
     return sendSms(
       mobile,
-      'BrgySync: Your case $refNumber has been reviewed and could not be approved. Please visit the barangay hall for details.',
+      'BrgySync: Your service request $refNumber has been reviewed and could not be approved. Please visit the barangay hall for details.',
     );
   }
 }

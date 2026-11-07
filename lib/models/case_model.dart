@@ -30,6 +30,9 @@ class CaseModel {
   final Map<String, dynamic> requestDetails;
   final double? assistanceAmount;
   final String? budgetProgramId;
+  final bool repeatSubmission;
+  final String? repeatPolicyCode;
+  final List<Map<String, dynamic>> priorRequests;
 
   CaseModel({
     this.id,
@@ -61,6 +64,9 @@ class CaseModel {
     this.requestDetails = const {},
     this.assistanceAmount,
     this.budgetProgramId,
+    this.repeatSubmission = false,
+    this.repeatPolicyCode,
+    this.priorRequests = const [],
   }) : submissionTimestamp = submissionTimestamp ?? DateTime.now();
 
   factory CaseModel.fromMap(Map<String, dynamic> map, String id) {
@@ -108,6 +114,11 @@ class CaseModel {
           : const {},
       assistanceAmount: (map['assistanceAmount'] as num?)?.toDouble(),
       budgetProgramId: map['budgetProgramId'],
+      repeatSubmission: map['repeatSubmission'] == true,
+      repeatPolicyCode: map['repeatPolicyCode'],
+      priorRequests: List<Map<String, dynamic>>.from(
+        map['priorRequests'] ?? const [],
+      ),
     );
   }
 
@@ -147,6 +158,9 @@ class CaseModel {
       'requestDetails': requestDetails,
       if (assistanceAmount != null) 'assistanceAmount': assistanceAmount,
       if (budgetProgramId != null) 'budgetProgramId': budgetProgramId,
+      'repeatSubmission': repeatSubmission,
+      if (repeatPolicyCode != null) 'repeatPolicyCode': repeatPolicyCode,
+      if (priorRequests.isNotEmpty) 'priorRequests': priorRequests,
     };
   }
 }

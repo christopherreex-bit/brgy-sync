@@ -329,6 +329,9 @@ class NotificationBell extends StatelessWidget {
     'needs_correction' => Icons.edit_note_outlined,
     'case_rejected' => Icons.cancel_outlined,
     'case_released' => Icons.payments_outlined,
+    'repeat_service_request' => Icons.history,
+    'document_issued' => Icons.description_outlined,
+    'document_issuance_failed' => Icons.error_outline,
     _ => Icons.info_outline,
   };
 
@@ -336,6 +339,9 @@ class NotificationBell extends StatelessWidget {
     'needs_correction' || 'claiming_approval' => Colors.orange.shade800,
     'case_rejected' => Colors.red.shade700,
     'case_released' => Colors.green.shade700,
+    'repeat_service_request' => Colors.orange.shade800,
+    'document_issued' => Colors.green.shade700,
+    'document_issuance_failed' => Colors.red.shade700,
     _ => kNavy,
   };
 

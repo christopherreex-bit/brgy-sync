@@ -31,7 +31,8 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
 
   String get _reportTypeLabel {
     if (_reportType.startsWith('DSWD')) return 'DSWD Social Services Summary';
-    if (_reportType.startsWith('DILG')) return 'DILG Operational Compliance Report';
+    if (_reportType.startsWith('DILG'))
+      return 'DILG Operational Compliance Report';
     return "Citizens' Charter Compliance Report";
   }
 
@@ -42,16 +43,27 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Report Generator',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+          const Text(
+            'Report Generator',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: kNavy,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text('Generate operational reports for DSWD, DILG, and Charter compliance.',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+          const Text(
+            'Generate operational reports for DSWD, DILG, and Charter compliance.',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
           const SizedBox(height: 16),
 
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: const Row(
               children: [
                 Icon(Icons.info_outline, color: Colors.blue, size: 18),
@@ -67,15 +79,27 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           ),
           const SizedBox(height: 20),
 
-          const Text('Report Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const Text(
+            'Report Type',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             value: _reportType,
             decoration: const InputDecoration(border: OutlineInputBorder()),
             items: const [
-              DropdownMenuItem(value: 'DSWD Social Services Summary', child: Text('DSWD Social Services Summary')),
-              DropdownMenuItem(value: 'DILG Operational Compliance Report', child: Text('DILG Operational Compliance Report')),
-              DropdownMenuItem(value: "Citizens' Charter Compliance Report", child: Text("Citizens' Charter Compliance Report")),
+              DropdownMenuItem(
+                value: 'DSWD Social Services Summary',
+                child: Text('DSWD Social Services Summary'),
+              ),
+              DropdownMenuItem(
+                value: 'DILG Operational Compliance Report',
+                child: Text('DILG Operational Compliance Report'),
+              ),
+              DropdownMenuItem(
+                value: "Citizens' Charter Compliance Report",
+                child: Text("Citizens' Charter Compliance Report"),
+              ),
             ],
             onChanged: (v) => setState(() => _reportType = v!),
           ),
@@ -95,12 +119,17 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
                     if (d != null) setState(() => _periodFrom = d);
                   },
                   child: InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Period From', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      labelText: 'Period From',
+                      border: OutlineInputBorder(),
+                    ),
                     child: Text(
                       _periodFrom != null
                           ? '${_periodFrom!.month}/${_periodFrom!.day}/${_periodFrom!.year}'
                           : 'Select date',
-                      style: TextStyle(color: _periodFrom != null ? Colors.black : Colors.grey),
+                      style: TextStyle(
+                        color: _periodFrom != null ? Colors.black : Colors.grey,
+                      ),
                     ),
                   ),
                 ),
@@ -118,12 +147,17 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
                     if (d != null) setState(() => _periodTo = d);
                   },
                   child: InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Period To', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      labelText: 'Period To',
+                      border: OutlineInputBorder(),
+                    ),
                     child: Text(
                       _periodTo != null
                           ? '${_periodTo!.month}/${_periodTo!.day}/${_periodTo!.year}'
                           : 'Select date',
-                      style: TextStyle(color: _periodTo != null ? Colors.black : Colors.grey),
+                      style: TextStyle(
+                        color: _periodTo != null ? Colors.black : Colors.grey,
+                      ),
                     ),
                   ),
                 ),
@@ -132,13 +166,19 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           ),
           const SizedBox(height: 16),
 
-          const Text('Output Format', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const Text(
+            'Output Format',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             value: _outputFormat,
             decoration: const InputDecoration(border: OutlineInputBorder()),
             items: const [
-              DropdownMenuItem(value: 'PDF', child: Text('PDF (formatted report)')),
+              DropdownMenuItem(
+                value: 'PDF',
+                child: Text('PDF (formatted report)'),
+              ),
               DropdownMenuItem(value: 'Excel', child: Text('Excel (.xlsx)')),
             ],
             onChanged: (v) => setState(() => _outputFormat = v!),
@@ -150,16 +190,36 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
             height: 48,
             child: ElevatedButton(
               onPressed: _isGenerating ? null : _generateReport,
-              style: ElevatedButton.styleFrom(backgroundColor: kNavy, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kNavy,
+                foregroundColor: Colors.white,
+              ),
               child: _isGenerating
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Generate Report', style: TextStyle(fontSize: 16)),
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'Generate Report',
+                      style: TextStyle(fontSize: 16),
+                    ),
             ),
           ),
           const SizedBox(height: 20),
 
           // Preview pane
-          const Text('Preview', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kNavy)),
+          const Text(
+            'Preview',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: kNavy,
+            ),
+          ),
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
@@ -172,15 +232,23 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_reportTypeLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(
+                  _reportTypeLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   'Reporting Period: ${_periodFrom != null ? '${_periodFrom!.month}/${_periodFrom!.day}/${_periodFrom!.year}' : 'All'} - ${_periodTo != null ? '${_periodTo!.month}/${_periodTo!.day}/${_periodTo!.year}' : 'Present'}',
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
-                const Text('Select parameters and click Generate to populate this report.',
-                    style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const Text(
+                  'Select parameters and click Generate to populate this report.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
               ],
             ),
           ),
@@ -191,13 +259,28 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
 
   List<String> get _reportCategories {
     if (_reportType.startsWith('DSWD')) {
-      return ['bass', 'documents', 'community', 'beneficiary', 'education', 'adhoc'];
+      return [
+        'bass',
+        'documents',
+        'community',
+        'beneficiary',
+        'education',
+        'adhoc',
+      ];
     }
     if (_reportType.startsWith('DILG')) {
       return ['documents', 'bass', 'vaw', 'community'];
     }
     // Charter: all categories
-    return ['bass', 'documents', 'community', 'beneficiary', 'vaw', 'education', 'adhoc'];
+    return [
+      'bass',
+      'documents',
+      'community',
+      'beneficiary',
+      'vaw',
+      'education',
+      'adhoc',
+    ];
   }
 
   Future<void> _generateReport() async {
@@ -205,13 +288,23 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     try {
       Query query = FirebaseFirestore.instance.collection('cases');
       if (_periodFrom != null) {
-        query = query.where('submissionTimestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(_periodFrom!));
+        query = query.where(
+          'submissionTimestamp',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(_periodFrom!),
+        );
       }
       if (_periodTo != null) {
-        query = query.where('submissionTimestamp', isLessThanOrEqualTo: Timestamp.fromDate(_periodTo!.add(const Duration(days: 1))));
+        query = query.where(
+          'submissionTimestamp',
+          isLessThanOrEqualTo: Timestamp.fromDate(
+            _periodTo!.add(const Duration(days: 1)),
+          ),
+        );
       }
       final snapshot = await query.get();
-      final allCases = snapshot.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+      final allCases = snapshot.docs
+          .map((d) => d.data() as Map<String, dynamic>)
+          .toList();
 
       // Filter cases by report type categories
       final cases = allCases.where((c) {
@@ -220,8 +313,15 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       }).toList();
 
       final totalCases = cases.length;
-      final resolved = cases.where((c) => c['status'] == 'released' || c['status'] == 'rejected').length;
-      final pending = cases.where((c) => c['status'] == 'pending_review' || c['status'] == 'processing').length;
+      final resolved = cases
+          .where((c) => c['status'] == 'released' || c['status'] == 'rejected')
+          .length;
+      final pending = cases
+          .where(
+            (c) =>
+                c['status'] == 'pending_review' || c['status'] == 'processing',
+          )
+          .length;
 
       final categoryCounts = <String, int>{};
       final categoryResolved = <String, int>{};
@@ -235,8 +335,10 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           categoryResolved[cat] = (categoryResolved[cat] ?? 0) + 1;
         }
         final sla = (c['slaStatus'] ?? 'on_time').toString();
-        if (sla == 'on_time') categoryOnTime[cat] = (categoryOnTime[cat] ?? 0) + 1;
-        if (sla == 'overdue') categoryOverdue[cat] = (categoryOverdue[cat] ?? 0) + 1;
+        if (sla == 'on_time')
+          categoryOnTime[cat] = (categoryOnTime[cat] ?? 0) + 1;
+        if (sla == 'overdue')
+          categoryOverdue[cat] = (categoryOverdue[cat] ?? 0) + 1;
       }
 
       // Generate file bytes based on selected format
@@ -253,7 +355,8 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           categoryOverdue: categoryOverdue,
         );
         fileBytes = utf8.encode(csv);
-        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.csv';
+        fileName =
+            '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.csv';
       } else {
         fileBytes = await _buildPdfBytes(
           totalCases: totalCases,
@@ -264,7 +367,8 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
           categoryOnTime: categoryOnTime,
           categoryOverdue: categoryOverdue,
         );
-        fileName = '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        fileName =
+            '${_reportTypeKey}_${DateTime.now().millisecondsSinceEpoch}.pdf';
       }
 
       // Build CSV content for storage (works for both PDF and Excel reports)
@@ -283,7 +387,8 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       await FirebaseFirestore.instance.collection('reports').add({
         'type': _reportTypeKey,
         'typeName': _reportTypeLabel,
-        'period': '${_periodFrom?.toIso8601String() ?? 'all'} - ${_periodTo?.toIso8601String() ?? 'present'}',
+        'period':
+            '${_periodFrom?.toIso8601String() ?? 'all'} - ${_periodTo?.toIso8601String() ?? 'present'}',
         'format': _outputFormat.toLowerCase(),
         'fileName': fileName,
         'fileBytes': fileBytes,
@@ -335,7 +440,8 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
   }) async {
     final pdf = pw.Document();
     final now = DateTime.now();
-    final periodStr = '${_periodFrom != null ? '${_periodFrom!.month}/${_periodFrom!.day}/${_periodFrom!.year}' : 'All'} - ${_periodTo != null ? '${_periodTo!.month}/${_periodTo!.day}/${_periodTo!.year}' : 'Present'}';
+    final periodStr =
+        '${_periodFrom != null ? '${_periodFrom!.month}/${_periodFrom!.day}/${_periodFrom!.year}' : 'All'} - ${_periodTo != null ? '${_periodTo!.month}/${_periodTo!.day}/${_periodTo!.year}' : 'Present'}';
 
     pdf.addPage(
       pw.MultiPage(
@@ -370,20 +476,26 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
             pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey300),
               children: [
-                pw.TableRow(children: [
-                  _pdfCell('Total Cases', bold: true),
-                  _pdfCell('Resolved', bold: true),
-                  _pdfCell('Pending', bold: true),
-                  _pdfCell('Resolution Rate', bold: true),
-                ]),
-                pw.TableRow(children: [
-                  _pdfCell('$totalCases'),
-                  _pdfCell('$resolved'),
-                  _pdfCell('$pending'),
-                  _pdfCell(
-                    totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A',
-                  ),
-                ]),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('Total Service Requests', bold: true),
+                    _pdfCell('Resolved', bold: true),
+                    _pdfCell('Pending', bold: true),
+                    _pdfCell('Resolution Rate', bold: true),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('$totalCases'),
+                    _pdfCell('$resolved'),
+                    _pdfCell('$pending'),
+                    _pdfCell(
+                      totalCases > 0
+                          ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%'
+                          : 'N/A',
+                    ),
+                  ],
+                ),
               ],
             ),
             pw.SizedBox(height: 16),
@@ -417,13 +529,15 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
                   final total = entry.value;
                   final onTime = categoryOnTime[cat] ?? 0;
                   final overdue = categoryOverdue[cat] ?? 0;
-                  return pw.TableRow(children: [
-                    _pdfCell(cat.toUpperCase()),
-                    _pdfCell('$total'),
-                    _pdfCell('${categoryResolved[cat] ?? 0}'),
-                    _pdfCell('$onTime'),
-                    _pdfCell('$overdue'),
-                  ]);
+                  return pw.TableRow(
+                    children: [
+                      _pdfCell(cat.toUpperCase()),
+                      _pdfCell('$total'),
+                      _pdfCell('${categoryResolved[cat] ?? 0}'),
+                      _pdfCell('$onTime'),
+                      _pdfCell('$overdue'),
+                    ],
+                  );
                 }),
               ],
             ),
@@ -441,7 +555,10 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       padding: const pw.EdgeInsets.all(6),
       child: pw.Text(
         text,
-        style: pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : null),
+        style: pw.TextStyle(
+          fontSize: 10,
+          fontWeight: bold ? pw.FontWeight.bold : null,
+        ),
       ),
     );
   }
@@ -456,17 +573,20 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
     required Map<String, int> categoryOverdue,
   }) {
     final buffer = StringBuffer();
-    final periodLabel = '${_periodFrom != null ? '${_periodFrom!.month}/${_periodFrom!.day}/${_periodFrom!.year}' : 'All'} - ${_periodTo != null ? '${_periodTo!.month}/${_periodTo!.day}/${_periodTo!.year}' : 'Present'}';
+    final periodLabel =
+        '${_periodFrom != null ? '${_periodFrom!.month}/${_periodFrom!.day}/${_periodFrom!.year}' : 'All'} - ${_periodTo != null ? '${_periodTo!.month}/${_periodTo!.day}/${_periodTo!.year}' : 'Present'}';
 
     buffer.writeln('BrgySync - $_reportTypeLabel');
     buffer.writeln('Barangay Calzada-Tipas, Taguig City');
     buffer.writeln('Period: $periodLabel');
     buffer.writeln();
     buffer.writeln('Summary');
-    buffer.writeln('Total Cases,$totalCases');
+    buffer.writeln('Total Service Requests,$totalCases');
     buffer.writeln('Resolved,$resolved');
     buffer.writeln('Pending,$pending');
-    buffer.writeln('Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}');
+    buffer.writeln(
+      'Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}',
+    );
     buffer.writeln();
     buffer.writeln('Breakdown by Category');
     buffer.writeln('Category,Total,Resolved,On Time,Overdue');
@@ -476,7 +596,9 @@ class _ReportBuilderScreenState extends State<ReportBuilderScreen> {
       final total = entry.value;
       final onTime = categoryOnTime[cat] ?? 0;
       final overdue = categoryOverdue[cat] ?? 0;
-      buffer.writeln('${cat.toUpperCase()},$total,${categoryResolved[cat] ?? 0},$onTime,$overdue');
+      buffer.writeln(
+        '${cat.toUpperCase()},$total,${categoryResolved[cat] ?? 0},$onTime,$overdue',
+      );
     }
 
     return buffer.toString();

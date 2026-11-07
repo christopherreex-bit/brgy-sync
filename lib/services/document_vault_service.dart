@@ -20,6 +20,7 @@ class DocumentVaultService {
     if (normalized.startsWith('valid id')) return 365;
     if (normalized.contains("voter's certificate")) return 1095;
     if (normalized.contains('proof of relationship')) return 1095;
+    if (normalized.contains('proof of barangay residency')) return 365;
     return null;
   }
 

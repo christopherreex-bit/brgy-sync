@@ -194,8 +194,8 @@ class _ComplianceReportScreenState extends State<ComplianceReportScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              'Monthly workload includes cases received during the month and '
-              'unfinished cases carried over from earlier months. Past months '
+              'Monthly workload includes service requests received during the month and '
+              'unfinished service requests carried over from earlier months. Past months '
               'are evaluated as of the final day of that month; the current '
               'month is evaluated as of today.',
               style: TextStyle(fontSize: 12),

@@ -105,15 +105,31 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<String?> register({
-    required String name,
+    required String firstName,
+    required String middleName,
+    required String lastName,
     required String email,
     required String mobile,
     required String password,
   }) async {
+    if (middleName.trim().length > 1) {
+      return 'Middle initial must contain one letter only.';
+    }
     final mobileError = validatePhilippineMobile(mobile);
     if (mobileError != null) return mobileError;
     final normalizedMobile = mobile.trim();
     final normalizedEmail = email.trim().toLowerCase();
+    if (await emailAddressExists(normalizedEmail)) {
+      return 'This email address is already in use.';
+    }
+    if (await mobileNumberExists(normalizedMobile)) {
+      return 'This mobile number is already in use.';
+    }
+    final name = UserModel.composeName(
+      firstName: firstName,
+      middleName: middleName,
+      lastName: lastName,
+    );
     User? createdUser;
     var firestoreProfileCreated = false;
     var registrationStage = 'authentication';
@@ -127,6 +143,9 @@ class AuthService extends ChangeNotifier {
         final user = UserModel(
           uid: cred.user!.uid,
           name: name.trim(),
+          firstName: firstName.trim(),
+          middleName: middleName.trim(),
+          lastName: lastName.trim(),
           mobile: normalizedMobile,
           email: normalizedEmail,
           role: 'resident',
@@ -177,6 +196,9 @@ class AuthService extends ChangeNotifier {
           await registryRef.set({
             'registryId': registryId,
             'legalName': name.trim(),
+            'firstName': firstName.trim(),
+            'middleName': middleName.trim(),
+            'lastName': lastName.trim(),
             'mobile': normalizedMobile,
             'email': normalizedEmail,
             'verificationStatus': 'pending_verification',
@@ -330,12 +352,22 @@ class AuthService extends ChangeNotifier {
   /// Uses an isolated Firebase Auth instance so the manager's primary browser
   /// session is never replaced by the newly created account.
   Future<String?> createStaffAccount({
-    required String name,
+    required String firstName,
+    required String middleName,
+    required String lastName,
     required String email,
     required String mobile,
     required String password,
     required String role,
   }) async {
+    if (middleName.trim().length > 1) {
+      return 'Middle initial must contain one letter only.';
+    }
+    final name = UserModel.composeName(
+      firstName: firstName,
+      middleName: middleName,
+      lastName: lastName,
+    );
     final emailError = validateAccountEmail(email);
     if (emailError != null) return emailError;
     final mobileError = validatePhilippineMobile(mobile);
@@ -375,6 +407,9 @@ class AuthService extends ChangeNotifier {
       final user = UserModel(
         uid: createdUser.uid,
         name: name,
+        firstName: firstName.trim(),
+        middleName: middleName.trim(),
+        lastName: lastName.trim(),
         mobile: mobile,
         email: email,
         role: role,
@@ -701,11 +736,24 @@ class AuthService extends ChangeNotifier {
   /// member's current Firebase session. The temporary password is sent only
   /// to the account service and is never stored in Firestore.
   Future<({UserModel? resident, String? error})> createWalkInResident({
-    required String name,
+    required String firstName,
+    required String middleName,
+    required String lastName,
     required String email,
     required String mobile,
     required String temporaryPassword,
   }) async {
+    if (middleName.trim().length > 1) {
+      return (
+        resident: null,
+        error: 'Middle initial must contain one letter only.',
+      );
+    }
+    final name = UserModel.composeName(
+      firstName: firstName,
+      middleName: middleName,
+      lastName: lastName,
+    );
     final currentUser = _auth.currentUser;
     if (currentUser == null || _currentUserModel?.canAccessDashboard != true) {
       return (resident: null, error: 'Your staff session has expired.');
@@ -734,6 +782,9 @@ class AuthService extends ChangeNotifier {
             },
             body: jsonEncode({
               'name': name.trim(),
+              'firstName': firstName.trim(),
+              'middleName': middleName.trim(),
+              'lastName': lastName.trim(),
               'email': email.trim().toLowerCase(),
               'mobile': mobile.trim(),
               'password': temporaryPassword,
@@ -760,6 +811,9 @@ class AuthService extends ChangeNotifier {
       final resident = UserModel(
         uid: uid,
         name: name.trim(),
+        firstName: firstName.trim(),
+        middleName: middleName.trim(),
+        lastName: lastName.trim(),
         mobile: mobile.trim(),
         email: email.trim().toLowerCase(),
         role: 'resident',

@@ -80,7 +80,7 @@ class _DistributionsScreenState extends State<DistributionsScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              'A payout requires a completed beneficiary registration, an available current-quarter allocation, and enough cash on hand. Education Incentives continue through the normal case workflow.',
+              'A payout requires a completed beneficiary registration, an available current-quarter allocation, and enough cash on hand. Education Incentives continue through the normal service request workflow.',
               style: TextStyle(fontSize: 12),
             ),
           ),

@@ -276,7 +276,7 @@ class _UserManagementPanelState extends State<UserManagementPanel> {
               children: [
                 const Text(
                   'This removes your login and user profile permanently. '
-                  'Official case and audit records are retained.',
+                  'Official service request and audit records are retained.',
                 ),
                 const SizedBox(height: 16),
                 TextField(

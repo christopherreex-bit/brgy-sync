@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:file_picker/file_picker.dart';
@@ -16,6 +17,7 @@ import '../../services/auth_service.dart';
 import '../../services/citizen_registry_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/document_vault_service.dart';
+import '../../services/repeat_request_policy_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/sla_calculator.dart' as sla;
 import '../../widgets/address_location_field.dart';
@@ -66,6 +68,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   final _firestore = FirestoreService();
   final _citizenRegistry = CitizenRegistryService();
   final _documentVault = DocumentVaultService();
+  final _repeatRequestPolicy = RepeatRequestPolicyService();
   final _database = FirebaseDatabase.instance;
   final _encryption = AesGcm.with256bits();
   final _uuid = const Uuid();
@@ -116,9 +119,13 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _prefillLoggedInResident();
       unawaited(_prefillFromCitizenRegistry());
     }
-    // BASS doc checklist
+    // Reusable/required document checklist.
     if (_selectedCategoryId == 'bass') {
       _bassDocs = kBassDocuments(_selectedSubType!);
+      unawaited(_loadReusableDocuments());
+    } else if (_selectedCategoryId == 'documents' &&
+        _selectedSubType == 'Indigency Certificate') {
+      _bassDocs = kIndigencyCertificateDocuments();
       unawaited(_loadReusableDocuments());
     } else {
       _bassDocs = null;
@@ -189,17 +196,23 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
     final user = _resident;
     if (user == null) return;
 
-    final nameParts = user.name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-    if (_controllers['firstName'] != null && nameParts.isNotEmpty) {
-      _controllers['firstName']!.text = nameParts.first;
-      if (_controllers['surname'] != null && nameParts.length > 1) {
-        _controllers['surname']!.text = nameParts.last;
-      }
-    }
+    final parsed = UserModel.splitLegacyName(user.name);
+    final firstName = user.firstName.trim().isNotEmpty
+        ? user.firstName.trim()
+        : parsed.firstName;
+    final middleName = user.middleName.trim().isNotEmpty
+        ? user.middleName.trim()
+        : parsed.middleName;
+    final lastName = user.lastName.trim().isNotEmpty
+        ? user.lastName.trim()
+        : parsed.lastName;
+    _controllers['firstName']?.text = firstName;
+    _controllers['middleName']?.text = middleName;
+    _controllers['lastName']?.text = lastName;
+    _controllers['surname']?.text = lastName;
+    _controllers['middleInitial']?.text = middleName.isEmpty
+        ? ''
+        : middleName.substring(0, 1).toUpperCase();
 
     for (final key in _personNameKeys) {
       final controller = _controllers[key];
@@ -284,16 +297,19 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         if (_selectedCategoryId == 'bass') {
           setText('claimantName', legalName);
         }
-        final parts = legalName
-            .split(RegExp(r'\s+'))
-            .where((part) => part.isNotEmpty)
-            .toList();
-        if (parts.isNotEmpty) {
-          setText('firstName', parts.first);
-          if (parts.length > 1) setText('surname', parts.last);
-          if (parts.length > 2) {
-            setText('middleInitial', parts[1].substring(0, 1).toUpperCase());
-          }
+        final parsed = UserModel.splitLegacyName(legalName);
+        final firstName = (data['firstName'] ?? parsed.firstName).toString();
+        final middleName = (data['middleName'] ?? parsed.middleName).toString();
+        final lastName = (data['lastName'] ?? parsed.lastName).toString();
+        setText('firstName', firstName);
+        setText('middleName', middleName);
+        setText('lastName', lastName);
+        setText('surname', lastName);
+        if (middleName.trim().isNotEmpty) {
+          setText(
+            'middleInitial',
+            middleName.trim().substring(0, 1).toUpperCase(),
+          );
         }
       }
       if (!isInfrastructureConcern) {
@@ -426,10 +442,12 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
     final firstName = formData['firstName']?.toString().trim() ?? '';
     final middleInitial = formData['middleInitial']?.toString().trim() ?? '';
-    final surname = formData['surname']?.toString().trim() ?? '';
+    final middleName = formData['middleName']?.toString().trim() ?? '';
+    final surname =
+        (formData['lastName'] ?? formData['surname'])?.toString().trim() ?? '';
     final composedName = [
       firstName,
-      middleInitial,
+      middleName.isNotEmpty ? middleName : middleInitial,
       surname,
     ].where((part) => part.isNotEmpty).join(' ');
     return composedName.isNotEmpty ? composedName : fallbackName;
@@ -553,7 +571,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           .get();
       if ((recentCases.count ?? 0) >= 5) {
         _showError(
-          'Rate limit exceeded. You can submit up to 5 cases per hour.',
+          'Rate limit exceeded. You can submit up to 5 service requests per hour.',
         );
         return;
       }
@@ -564,6 +582,26 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
 
     // Validate all fields using new validation
     if (!_validateAllFields()) {
+      return;
+    }
+
+    late final RepeatRequestDecision repeatDecision;
+    try {
+      repeatDecision = await _repeatRequestPolicy.evaluate(
+        residentId: resident.uid,
+        residentMobile: resident.mobile,
+        serviceCategory: _selectedCategoryId!,
+        serviceSubType: _selectedSubType!,
+      );
+    } catch (e) {
+      debugPrint('Repeat request policy check failed: $e');
+      _showError(
+        'The system could not verify whether a similar service request already exists. Please try again.',
+      );
+      return;
+    }
+    if (repeatDecision.blocked) {
+      _showError(repeatDecision.message);
       return;
     }
 
@@ -650,6 +688,13 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 formData['assistanceAmount'].toString().isNotEmpty
             ? double.tryParse(formData['assistanceAmount'].toString())
             : null,
+        repeatSubmission: repeatDecision.shouldFlag,
+        repeatPolicyCode: repeatDecision.shouldFlag
+            ? repeatDecision.code
+            : null,
+        priorRequests: repeatDecision.relatedRequests
+            .map((request) => request.toMap())
+            .toList(),
       );
 
       final refNumber = await _firestore.createCase(caseData);
@@ -859,7 +904,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _isWalkIn ? 'Create Walk-in Case' : 'Submit a Request',
+            _isWalkIn ? 'Create Walk-in Service Request' : 'Submit a Request',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -869,7 +914,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           const SizedBox(height: 4),
           Text(
             _isWalkIn
-                ? 'Creating a case for ${widget.residentOverride!.name}. Select a service category.'
+                ? 'Creating a service request for ${widget.residentOverride!.name}. Select a service category.'
                 : 'Select a service category to begin.',
             style: TextStyle(color: Colors.grey, fontSize: 14),
           ),
@@ -1426,6 +1471,13 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         field = TextField(
           controller: _controllers[f.key],
           readOnly: registryLocked,
+          maxLength: f.key == 'middleName' ? 1 : null,
+          textCapitalization: f.key == 'middleName'
+              ? TextCapitalization.characters
+              : TextCapitalization.none,
+          inputFormatters: f.key == 'middleName'
+              ? [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z]'))]
+              : null,
           keyboardType: f.type == FormFieldType.number
               ? TextInputType.number
               : f.type == FormFieldType.phone
@@ -1576,13 +1628,13 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
             const SizedBox(height: 16),
             Text(
               _isWalkIn
-                  ? 'The walk-in case has been successfully created.'
+                  ? 'The walk-in service request has been successfully created.'
                   : 'Good day! Your request has been successfully submitted.',
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),
             const Text(
-              'Case Reference Number:',
+              'Service Request Reference Number:',
               style: TextStyle(color: Colors.grey, fontSize: 13),
             ),
             Text(

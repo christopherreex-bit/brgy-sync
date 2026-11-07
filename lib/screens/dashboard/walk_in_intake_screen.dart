@@ -21,7 +21,9 @@ class WalkInIntakeScreen extends StatefulWidget {
 class _WalkInIntakeScreenState extends State<WalkInIntakeScreen> {
   final _search = TextEditingController();
   final _email = TextEditingController();
-  final _name = TextEditingController();
+  final _firstName = TextEditingController();
+  final _middleName = TextEditingController();
+  final _lastName = TextEditingController();
   final _mobile = TextEditingController();
   bool _working = false;
   UserModel? _resident;
@@ -39,7 +41,9 @@ class _WalkInIntakeScreenState extends State<WalkInIntakeScreen> {
     _mobileValidationTimer?.cancel();
     _search.dispose();
     _email.dispose();
-    _name.dispose();
+    _firstName.dispose();
+    _middleName.dispose();
+    _lastName.dispose();
     _mobile.dispose();
     super.dispose();
   }
@@ -116,9 +120,8 @@ class _WalkInIntakeScreenState extends State<WalkInIntakeScreen> {
   }
 
   Future<void> _createResident() async {
-    final name = _name.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = 'Resident name is required.');
+    if (_firstName.text.trim().isEmpty || _lastName.text.trim().isEmpty) {
+      setState(() => _error = 'First name and last name are required.');
       return;
     }
     final emailFormatError = validateAccountEmail(_email.text);
@@ -155,7 +158,9 @@ class _WalkInIntakeScreenState extends State<WalkInIntakeScreen> {
     }
     final password = _generateTemporaryPassword();
     final result = await context.read<AuthService>().createWalkInResident(
-      name: name,
+      firstName: _firstName.text.trim(),
+      middleName: _middleName.text.trim(),
+      lastName: _lastName.text.trim(),
       email: _email.text,
       mobile: _mobile.text,
       temporaryPassword: password,
@@ -179,7 +184,9 @@ class _WalkInIntakeScreenState extends State<WalkInIntakeScreen> {
       _searchResults = const [];
       _search.clear();
       _email.clear();
-      _name.clear();
+      _firstName.clear();
+      _middleName.clear();
+      _lastName.clear();
       _mobile.clear();
     });
   }
@@ -322,9 +329,30 @@ class _WalkInIntakeScreenState extends State<WalkInIntakeScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
-                      controller: _name,
+                      controller: _firstName,
                       decoration: const InputDecoration(
-                        labelText: 'Full name *',
+                        labelText: 'First name *',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _middleName,
+                      decoration: const InputDecoration(
+                        labelText: 'Middle initial (optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLength: 1,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z]')),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _lastName,
+                      decoration: const InputDecoration(
+                        labelText: 'Last name *',
                         border: OutlineInputBorder(),
                       ),
                     ),

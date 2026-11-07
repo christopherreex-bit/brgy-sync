@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
@@ -12,7 +13,9 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameCtrl = TextEditingController();
+  final _firstNameCtrl = TextEditingController();
+  final _middleNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _mobileCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -20,20 +23,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _error;
 
   Future<void> _register() async {
-    if (_nameCtrl.text.isEmpty || _emailCtrl.text.isEmpty ||
-        _mobileCtrl.text.isEmpty || _passCtrl.text.isEmpty) {
+    if (_firstNameCtrl.text.trim().isEmpty ||
+        _lastNameCtrl.text.trim().isEmpty ||
+        _emailCtrl.text.isEmpty ||
+        _mobileCtrl.text.isEmpty ||
+        _passCtrl.text.isEmpty) {
       setState(() => _error = 'All fields are required');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     final result = await context.read<AuthService>().register(
-      name: _nameCtrl.text.trim(),
+      firstName: _firstNameCtrl.text.trim(),
+      middleName: _middleNameCtrl.text.trim(),
+      lastName: _lastNameCtrl.text.trim(),
       email: _emailCtrl.text.trim(),
       mobile: _mobileCtrl.text.trim(),
       password: _passCtrl.text,
     );
     if (mounted) {
-      setState(() { _loading = false; _error = result; });
+      setState(() {
+        _loading = false;
+        _error = result;
+      });
       if (result == null) {
         // Account created and the new resident is signed in. Confirm success,
         // then route to the resident portal. (Do NOT navigate to /login — the
@@ -61,11 +75,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('Create Account',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: kNavy)),
+                const Text(
+                  'Create Account',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: kNavy,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                const Text('Resident Registration',
-                    style: TextStyle(color: Colors.grey)),
+                const Text(
+                  'Resident Registration',
+                  style: TextStyle(color: Colors.grey),
+                ),
                 const SizedBox(height: 24),
                 if (_error != null)
                   Container(
@@ -75,12 +97,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       color: Colors.red.shade50,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
                   ),
                 TextField(
-                  controller: _nameCtrl,
+                  controller: _firstNameCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Full Name',
+                    labelText: 'First Name *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _middleNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Middle Initial (optional)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  maxLength: 1,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z]')),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _lastNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Last Name *',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.person),
                   ),
@@ -89,7 +137,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextField(
                   controller: _emailCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Email',
+                    labelText: 'Email *',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.email),
                   ),
@@ -99,7 +147,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextField(
                   controller: _mobileCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Mobile (09XXXXXXXXX)',
+                    labelText: 'Mobile (09XXXXXXXXX) *',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.phone),
                   ),
@@ -109,7 +157,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextField(
                   controller: _passCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Password',
+                    labelText: 'Password *',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.lock),
                   ),
@@ -127,10 +175,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     child: _loading
                         ? const SizedBox(
-                            width: 20, height: 20,
+                            width: 20,
+                            height: 20,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2))
-                        : const Text('Register', style: TextStyle(fontSize: 16)),
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Register',
+                            style: TextStyle(fontSize: 16),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -148,7 +203,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
+    _firstNameCtrl.dispose();
+    _middleNameCtrl.dispose();
+    _lastNameCtrl.dispose();
     _emailCtrl.dispose();
     _mobileCtrl.dispose();
     _passCtrl.dispose();

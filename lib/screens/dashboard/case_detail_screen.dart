@@ -36,7 +36,7 @@ class CaseDetailScreen extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (!caseSnapshot.hasData || !caseSnapshot.data!.exists) {
-          return const Center(child: Text('Case not found.'));
+          return const Center(child: Text('Service request not found.'));
         }
 
         final data = caseSnapshot.data!.data() as Map<String, dynamic>;
@@ -59,6 +59,9 @@ class CaseDetailScreen extends StatelessWidget {
             : '';
         final documents = List<Map<String, dynamic>>.from(
           data['documents'] ?? [],
+        );
+        final priorRequests = List<Map<String, dynamic>>.from(
+          data['priorRequests'] ?? const [],
         );
 
         return SingleChildScrollView(
@@ -94,7 +97,7 @@ class CaseDetailScreen extends StatelessWidget {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Read-only case view opened from the Audit Trail. No case changes can be made here.',
+                          'Read-only service request view opened from the Audit Trail. No changes can be made here.',
                           style: TextStyle(
                             color: kNavy,
                             fontWeight: FontWeight.w600,
@@ -131,6 +134,11 @@ class CaseDetailScreen extends StatelessWidget {
               if (!readOnly &&
                   normalizeCaseStatus(status.toString()) == statusReleased)
                 _ReleasedRegistrySync(caseId: caseId),
+              if (data['repeatSubmission'] == true &&
+                  priorRequests.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _RepeatRequestNotice(priorRequests: priorRequests),
+              ],
               if (claimingApprovalPending) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -168,7 +176,7 @@ class CaseDetailScreen extends StatelessWidget {
                                 Text(
                                   'Requested by '
                                   '${data['claimingRequestedByName'] ?? 'Staff'} '
-                                  'to move this case to For Claiming.',
+                                  'to move this service request to For Claiming.',
                                   style: TextStyle(
                                     color: Colors.amber.shade900,
                                   ),
@@ -469,7 +477,7 @@ class CaseDetailScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'The case will return to Processing and its reserved '
+                  'The service request will return to Processing and its reserved '
                   'assistance amount will be returned to the available budget.',
                 ),
                 const SizedBox(height: 16),
@@ -530,7 +538,7 @@ class CaseDetailScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'For Claiming request rejected. The case is back in Processing.',
+              'For Claiming request rejected. The service request is back in Processing.',
             ),
             backgroundColor: Colors.orange,
           ),
@@ -644,7 +652,7 @@ class CaseDetailScreen extends StatelessWidget {
     'verified_match' => 'Verified registry match',
     'needs_review' => 'Registry record needs review',
     'not_registered' => 'No registry record found',
-    _ => 'Not checked (older case)',
+    _ => 'Not checked (older service request)',
   };
 
   String _requestFieldLabel(String key) {
@@ -657,6 +665,8 @@ class CaseDetailScreen extends StatelessWidget {
       'studentName': 'Student name',
       'reporterName': 'Reporter name',
       'firstName': 'First name',
+      'middleName': 'Middle initial',
+      'lastName': 'Last name',
       'middleInitial': 'Middle initial',
       'surname': 'Surname',
       'address': 'Address',
@@ -909,7 +919,7 @@ class _ReleasedRegistrySyncState extends State<_ReleasedRegistrySync> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'No existing Citizen Registry record is linked to this case. No registry record was created.',
+                    'No existing Citizen Registry record is linked to this service request. No registry record was created.',
                   ),
                 ),
               ],
@@ -931,6 +941,74 @@ class _ReleasedRegistrySyncState extends State<_ReleasedRegistrySync> {
           ),
         );
       },
+    );
+  }
+}
+
+class _RepeatRequestNotice extends StatelessWidget {
+  const _RepeatRequestNotice({required this.priorRequests});
+
+  final List<Map<String, dynamic>> priorRequests;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        border: Border.all(color: Colors.orange.shade300),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.history, color: Colors.orange.shade900),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Repeat service request — review previous outcome',
+                  style: TextStyle(
+                    color: Colors.orange.shade900,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'This request was allowed for staff review and was not automatically rejected.',
+          ),
+          const SizedBox(height: 8),
+          ...priorRequests.map((prior) {
+            final caseId = (prior['caseId'] ?? '').toString();
+            final reference = (prior['referenceNumber'] ?? caseId).toString();
+            final status = caseStatusLabel((prior['status'] ?? '').toString());
+            final reason = (prior['rejectionReason'] ?? '').toString().trim();
+            return Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$reference · $status${reason.isEmpty ? '' : '\nReason: $reason'}',
+                    ),
+                  ),
+                  if (caseId.isNotEmpty)
+                    TextButton(
+                      onPressed: () => context.push('/dashboard/case/$caseId'),
+                      child: const Text('View'),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

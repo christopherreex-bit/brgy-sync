@@ -305,7 +305,7 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
                     if (reference.isNotEmpty)
                       type == 'bank_receipt'
                           ? 'Reference: $reference'
-                          : 'Case $reference',
+                          : 'Service request $reference',
                     if (requestedAt is Timestamp)
                       'Recorded ${DateFormat('MMM d, yyyy h:mm a').format(requestedAt.toDate())}',
                     if (status == 'pending' && effectiveAt is Timestamp)
@@ -586,7 +586,7 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          'Cash on hand is ${_money.format(-onHandCoverageDifference)} below the amount reserved for approved but unreleased cases. This is allowed, but bank funds must arrive before all of those cases can be released.',
+                          'Cash on hand is ${_money.format(-onHandCoverageDifference)} below the amount reserved for approved but unreleased service requests. This is allowed, but bank funds must arrive before all of those service requests can be released.',
                           style: TextStyle(color: Colors.blue.shade900),
                         ),
                       ),

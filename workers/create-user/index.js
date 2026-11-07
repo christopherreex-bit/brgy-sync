@@ -136,8 +136,24 @@ async function deleteAccount(body, callerUid, accessToken) {
 }
 
 async function createAccount(body, accessToken, caller) {
-  const { email, password, name, mobile, role } = body ?? {};
-  if (!email || !password || !name || !mobile || !role) {
+  const { email, password, mobile, role } = body ?? {};
+  const legacyName = String(body?.name ?? '').trim();
+  const legacyParts = legacyName.split(/\s+/).filter(Boolean);
+  const firstName = String(body?.firstName ?? legacyParts[0] ?? '').trim();
+  const middleName = String(
+    body?.middleName ?? (legacyParts.length > 2 ? legacyParts.slice(1, -1).join(' ') : ''),
+  ).trim();
+  const lastName = String(
+    body?.lastName ?? (legacyParts.length > 1 ? legacyParts.at(-1) : ''),
+  ).trim();
+  const name = [firstName, middleName, lastName]
+    .map((part) => String(part).trim())
+    .filter(Boolean)
+    .join(' ') || legacyName;
+  if (middleName.length > 1) {
+    return jsonResponse({ error: 'Middle initial must contain one letter only.' }, 400);
+  }
+  if (!email || !password || !firstName || !lastName || !mobile || !role) {
     return jsonResponse({ error: 'Missing required fields.' }, 400);
   }
   if (!['resident', 'staff', 'officer', 'captain', 'treasurer'].includes(role)) {
@@ -185,6 +201,9 @@ async function createAccount(body, accessToken, caller) {
       body: JSON.stringify({
         fields: {
           name: { stringValue: name },
+          firstName: { stringValue: firstName.trim() },
+          middleName: { stringValue: middleName.trim() },
+          lastName: { stringValue: lastName.trim() },
           mobile: { stringValue: normalizedMobile },
           email: { stringValue: normalizedEmail },
           role: { stringValue: role },
@@ -272,6 +291,9 @@ async function createAccount(body, accessToken, caller) {
           fields: {
             registryId: { stringValue: registryId },
             legalName: { stringValue: name.trim() },
+            firstName: { stringValue: firstName.trim() },
+            middleName: { stringValue: middleName.trim() },
+            lastName: { stringValue: lastName.trim() },
             mobile: { stringValue: normalizedMobile },
             email: { stringValue: normalizedEmail },
             verificationStatus: { stringValue: 'pending_verification' },

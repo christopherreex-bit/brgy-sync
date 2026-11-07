@@ -207,7 +207,7 @@ class DelegationHistoryScreen extends StatelessWidget {
         uidField: 'staffId',
         nameField: 'staffName',
         timeField: 'timestamp',
-        title: (data['action'] ?? 'Case action').toString(),
+        title: (data['action'] ?? 'Service request action').toString(),
         detailsField: 'notes',
       );
     }

@@ -20,11 +20,19 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Report Archive',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kNavy)),
+          const Text(
+            'Report Archive',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: kNavy,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text('Previously generated reports.',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+          const Text(
+            'Previously generated reports.',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
           const SizedBox(height: 20),
 
           // Filter tabs
@@ -42,12 +50,15 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _filter == 'all'
-                  ? FirebaseFirestore.instance.collection('reports').orderBy('generatedAt', descending: true).snapshots()
+                  ? FirebaseFirestore.instance
+                        .collection('reports')
+                        .orderBy('generatedAt', descending: true)
+                        .snapshots()
                   : FirebaseFirestore.instance
-                      .collection('reports')
-                      .where('type', isEqualTo: _filter)
-                      .orderBy('generatedAt', descending: true)
-                      .snapshots(),
+                        .collection('reports')
+                        .where('type', isEqualTo: _filter)
+                        .orderBy('generatedAt', descending: true)
+                        .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -58,13 +69,27 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.archive_outlined, size: 48, color: Colors.grey.shade300),
+                        Icon(
+                          Icons.archive_outlined,
+                          size: 48,
+                          color: Colors.grey.shade300,
+                        ),
                         const SizedBox(height: 12),
-                        Text('No reports generated yet.',
-                            style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
+                        Text(
+                          'No reports generated yet.',
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text('Use the Report Builder to generate reports.',
-                            style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                        Text(
+                          'Use the Report Builder to generate reports.',
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 13,
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -78,7 +103,9 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
                     final format = data['format'] ?? 'pdf';
                     final period = data['period'] ?? '';
                     final ts = data['generatedAt'];
-                    final dateStr = ts is Timestamp ? '${ts.toDate().month}/${ts.toDate().day}/${ts.toDate().year}' : '';
+                    final dateStr = ts is Timestamp
+                        ? '${ts.toDate().month}/${ts.toDate().day}/${ts.toDate().year}'
+                        : '';
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
@@ -96,24 +123,44 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                Text('$period · $dateStr',
-                                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                                Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                Text(
+                                  '$period · $dateStr',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade500,
+                                    fontSize: 11,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: format == 'pdf' ? Colors.red.shade50 : Colors.green.shade50,
+                              color: format == 'pdf'
+                                  ? Colors.red.shade50
+                                  : Colors.green.shade50,
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text(format.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: format == 'pdf' ? Colors.red : Colors.green,
-                                )),
+                            child: Text(
+                              format.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: format == 'pdf'
+                                    ? Colors.red
+                                    : Colors.green,
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 8),
                           IconButton(
@@ -146,14 +193,19 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
     final period = (data['period'] ?? '').toString();
 
     // For PDF reports: download stored PDF bytes
-    if (format == 'pdf' && storedBytes != null && storedBytes is List && storedBytes.isNotEmpty) {
+    if (format == 'pdf' &&
+        storedBytes != null &&
+        storedBytes is List &&
+        storedBytes.isNotEmpty) {
       ExportService.downloadBytes(
         bytes: List<int>.from(storedBytes),
         filename: fileName.endsWith('.pdf') ? fileName : '$fileName.pdf',
       );
     } else if (csvContent.isNotEmpty) {
       // For Excel reports or fallback: download CSV content
-      final csvFileName = fileName.endsWith('.csv') ? fileName : '$fileName.csv';
+      final csvFileName = fileName.endsWith('.csv')
+          ? fileName
+          : '$fileName.csv';
       ExportService.downloadCsv(
         headers: <String>[],
         rows: <List<String>>[],
@@ -168,10 +220,12 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
       buffer.writeln('Period: $period');
       buffer.writeln();
       buffer.writeln('Summary');
-      buffer.writeln('Total Cases,$totalCases');
+      buffer.writeln('Total Service Requests,$totalCases');
       buffer.writeln('Resolved,$resolved');
       buffer.writeln('Pending,$pending');
-      buffer.writeln('Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}');
+      buffer.writeln(
+        'Resolution Rate,${totalCases > 0 ? '${(resolved / totalCases * 100).toStringAsFixed(1)}%' : 'N/A'}',
+      );
 
       ExportService.downloadCsv(
         headers: <String>[],
@@ -181,7 +235,10 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
       );
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Downloaded: $name ($format)'), backgroundColor: Colors.green),
+      SnackBar(
+        content: Text('Downloaded: $name ($format)'),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
@@ -196,11 +253,14 @@ class _ReportArchiveScreenState extends State<ReportArchiveScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: isActive ? kNavy : Colors.grey.shade300),
         ),
-        child: Text(label,
-            style: TextStyle(
-                color: isActive ? Colors.white : Colors.grey.shade700,
-                fontSize: 12,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? Colors.white : Colors.grey.shade700,
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
       ),
     );
   }

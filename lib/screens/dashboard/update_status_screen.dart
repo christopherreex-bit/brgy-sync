@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../services/case_status_service.dart';
 import '../../widgets/budget_approval_preview_dialog.dart';
 import '../../utils/constants.dart';
+import '../../utils/rejection_reasons.dart';
 import '../../widgets/status_badge.dart';
 
 class UpdateStatusScreen extends StatefulWidget {
@@ -26,10 +27,50 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   double? _approvedAssistanceAmount;
   final Set<String> _correctionFields = {};
   final Set<String> _correctionDocuments = {};
+  String? _rejectionReasonCode;
 
   List<String> _getValidNextStatuses(String currentStatus) {
     return validNextCaseStatuses(currentStatus);
   }
+
+  String get _notesLabel => switch (_newStatus) {
+    statusRejected =>
+      _rejectionReasonCode == 'other'
+          ? 'Additional explanation *'
+          : 'Additional explanation (optional)',
+    statusNeedsCorrection => 'Revision instructions *',
+    statusProcessing => 'Processing notes *',
+    statusApproved => 'Approval notes *',
+    statusForClaiming => 'Claiming instructions *',
+    statusReleased => 'Release details *',
+    _ => 'Status update notes *',
+  };
+
+  String get _notesHint => switch (_newStatus) {
+    statusRejected =>
+      'Add specific details that will help explain the decision',
+    statusNeedsCorrection =>
+      'Explain what is incorrect and what the resident should revise',
+    statusProcessing =>
+      'Describe the initial review or processing action completed',
+    statusApproved =>
+      'Record the basis for approval and any important approval details',
+    statusForClaiming =>
+      'Provide any instructions or details needed for claiming',
+    statusReleased =>
+      'Record how, when, or to whom the assistance was released',
+    _ => 'Describe the reason and relevant details for this status update',
+  };
+
+  String get _missingNotesMessage => switch (_newStatus) {
+    statusRejected => 'Please provide the reason for rejection.',
+    statusNeedsCorrection => 'Please provide revision instructions.',
+    statusProcessing => 'Please provide processing notes.',
+    statusApproved => 'Please provide approval notes.',
+    statusForClaiming => 'Please provide claiming instructions.',
+    statusReleased => 'Please provide release details.',
+    _ => 'Please provide notes for this status update.',
+  };
 
   Future<void> _selectStatus(String? status) async {
     if (status != statusNeedsCorrection) {
@@ -39,6 +80,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
     if (status != statusApproved) {
       setState(() {
         _newStatus = status;
+        if (status != statusRejected) _rejectionReasonCode = null;
         _budgetApprovalConfirmed = false;
         _approvedAssistanceAmount = null;
       });
@@ -62,8 +104,18 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       setState(() => _error = 'Please select a new status.');
       return;
     }
-    if (_actionNotesCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Please describe the action taken.');
+    if (_newStatus == statusRejected && _rejectionReasonCode == null) {
+      setState(() => _error = 'Please select a reason for rejection.');
+      return;
+    }
+    if (_newStatus == statusRejected &&
+        _rejectionReasonCode == 'other' &&
+        _actionNotesCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Please explain the other rejection reason.');
+      return;
+    }
+    if (_newStatus != statusRejected && _actionNotesCtrl.text.trim().isEmpty) {
+      setState(() => _error = _missingNotesMessage);
       return;
     }
     if (_newStatus == statusNeedsCorrection &&
@@ -91,13 +143,22 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       if (!caseDoc.exists) {
         setState(() {
           _loading = false;
-          _error = 'Case not found.';
+          _error = 'Service request not found.';
         });
         return;
       }
       final caseData = caseDoc.data()!;
       final currentStatus = caseData['status'] ?? '';
       final refNumber = caseData['referenceNumber'] ?? '';
+      final rejectionLabel = _newStatus == statusRejected
+          ? rejectionReasonLabel(_rejectionReasonCode)
+          : null;
+      final enteredNotes = _actionNotesCtrl.text.trim();
+      final statusNotes = rejectionLabel == null
+          ? enteredNotes
+          : enteredNotes.isEmpty
+          ? rejectionLabel
+          : '$rejectionLabel — $enteredNotes';
 
       // Validate transition
       final valid = _getValidNextStatuses(currentStatus);
@@ -126,7 +187,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           _correctionFields.removeAll(invalidCorrectionFields);
           final labels = invalidCorrectionFields.map(_fieldLabel).join(', ');
           _error =
-              '$labels came from a verified Citizen Registry record and cannot be corrected from the case. Use My Record to request a registry correction instead.';
+              '$labels came from a verified Citizen Registry record and cannot be corrected from the service request. Use My Record to request a registry correction instead.';
         });
         return;
       }
@@ -140,8 +201,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         setState(() {
           _loading = false;
           _error =
-              'Cases cannot be rejected only because documents are missing. '
-              'Choose Needs Correction and flag the missing documents.';
+              'Service requests cannot be rejected only because documents are missing. '
+              'Choose For Revision and flag the missing documents.';
         });
         return;
       }
@@ -164,7 +225,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           setState(() {
             _loading = false;
             _error =
-                'Cannot approve: Certificate of Admission is required for BASS medical cases.';
+                'Cannot approve: Certificate of Admission is required for BASS medical service requests.';
           });
           return;
         }
@@ -172,12 +233,12 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
 
       // Business rule: VAW/BCPC cannot reject without reason
       if (_newStatus == 'rejected' &&
-          (serviceCategory == 'vaw' ||
-              _actionNotesCtrl.text.trim().length < 10)) {
-        if (serviceCategory == 'vaw' && _actionNotesCtrl.text.trim().isEmpty) {
+          (serviceCategory == 'vaw' || statusNotes.length < 10)) {
+        if (serviceCategory == 'vaw' && statusNotes.isEmpty) {
           setState(() {
             _loading = false;
-            _error = 'VAW/BCPC cases require a reason for rejection.';
+            _error =
+                'VAW/BCPC service requests require a reason for rejection.';
           });
           return;
         }
@@ -186,7 +247,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       if (_newStatus == statusForClaiming && user?.isCaptain != true) {
         await CaseStatusService(firestore: db).requestForClaimingApproval(
           caseId: widget.caseId,
-          notes: _actionNotesCtrl.text.trim(),
+          notes: statusNotes,
           staffId: user?.uid ?? '',
           staffName: user?.name ?? 'Staff',
           staffRole: user?.effectiveRole ?? '',
@@ -209,7 +270,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
       await CaseStatusService(firestore: db).updateStatus(
         caseId: widget.caseId,
         newStatus: _newStatus!,
-        notes: _actionNotesCtrl.text.trim(),
+        notes: statusNotes,
         staffId: user?.uid ?? '',
         staffName: user?.name ?? 'Staff',
         staffRole: user?.effectiveRole ?? '',
@@ -218,6 +279,13 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         approvedAssistanceAmount: _approvedAssistanceAmount,
         correctionFields: _correctionFields.toList(),
         correctionDocuments: _correctionDocuments.toList(),
+        rejectionReasonCode: _newStatus == statusRejected
+            ? _rejectionReasonCode
+            : null,
+        rejectionReasonLabel: rejectionLabel,
+        rejectionReasonDetails: _newStatus == statusRejected
+            ? enteredNotes
+            : null,
       );
 
       if (mounted) {
@@ -289,7 +357,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const Center(child: Text('Case not found.'));
+          return const Center(child: Text('Service request not found.'));
         }
 
         final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -328,11 +396,11 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
               TextButton.icon(
                 onPressed: () => context.go('/dashboard/case/${widget.caseId}'),
                 icon: const Icon(Icons.arrow_back, size: 18),
-                label: const Text('Back to case detail'),
+                label: const Text('Back to service request details'),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Update Case Status',
+                'Update Service Request Status',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -367,7 +435,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'This case has ${missingDocs.length} missing required documents. Proceeding to Released/Approved requires all documents to be validated first.',
+                          'This service request has ${missingDocs.length} missing required documents. Proceeding to Released/Approved requires all documents to be validated first.',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ),
@@ -466,7 +534,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Text(
-                    'Rejected is a final decision. Use Needs Correction when '
+                    'Rejected is a final decision. Use For Revision when '
                     'information or documents can still be corrected.',
                     style: TextStyle(fontSize: 12),
                   ),
@@ -492,7 +560,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                       ),
                       const SizedBox(height: 4),
                       const Text(
-                        'The resident will edit only these items in the same case.',
+                        'The resident will edit only these items in the same service request.',
                         style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                       const SizedBox(height: 12),
@@ -559,11 +627,37 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                 const SizedBox(height: 24),
               ],
 
-              // Action taken
+              if (_newStatus == statusRejected) ...[
+                const Text(
+                  'Reason for rejection *',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _rejectionReasonCode,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Select the primary rejection reason',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: rejectionReasonLabels.entries
+                      .map(
+                        (entry) => DropdownMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() {
+                    _rejectionReasonCode = value;
+                    _error = null;
+                  }),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               Text(
-                _newStatus == statusNeedsCorrection
-                    ? 'Correction instructions *'
-                    : 'Action Taken *',
+                _notesLabel,
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               const SizedBox(height: 8),
@@ -571,9 +665,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                 controller: _actionNotesCtrl,
                 maxLines: 4,
                 decoration: InputDecoration(
-                  hintText: _newStatus == statusNeedsCorrection
-                      ? 'Explain what is wrong and what the resident should provide'
-                      : 'Describe what was done, reviewed, or decided on this case',
+                  hintText: _notesHint,
                   border: const OutlineInputBorder(),
                 ),
               ),
