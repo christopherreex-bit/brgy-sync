@@ -27,7 +27,7 @@ export default {
 
       const prompt = `Read this Philippine bank deposit or withdrawal slip.
 Return ONLY valid JSON with this exact shape:
-{"amount":number|null,"transactionNumber":"","transactionDate":"YYYY-MM-DD or original printed date","financialInstitution":"","confidence":0.0,"rawText":""}
+{"amount":number|null,"transactionNumber":"","transactionDate":"YYYY-MM-DD","financialInstitution":"","confidence":0.0,"rawText":""}
 Rules:
 - Never invent a value. Use null or an empty string when unclear.
 - amount is the final transaction amount in Philippine pesos, without commas or currency symbols.
@@ -35,6 +35,7 @@ Rules:
 - Carefully inspect text immediately beside or below labels such as Transaction Reference, Reference No.,
   Transaction No., Trace No., or Slip No. Preserve every letter, digit, and hyphen exactly.
 - financialInstitution is the printed bank, remittance provider, or government institution.
+- transactionDate must contain the calendar date only in YYYY-MM-DD format. Do not include the time.
 - confidence is from 0 to 1 for the structured fields overall.
 - rawText is a short transcription of the relevant printed fields only.`;
 

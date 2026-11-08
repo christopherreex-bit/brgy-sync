@@ -19,17 +19,9 @@ class StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        _formatLabel(normalizedStatus),
+        caseStatusLabel(normalizedStatus),
         style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
       ),
     );
-  }
-
-  static String _formatLabel(String status) {
-    return status
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map((w) => w[0].toUpperCase() + w.substring(1))
-        .join(' ');
   }
 }

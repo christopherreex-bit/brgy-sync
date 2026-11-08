@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../services/financial_slip_ocr_service.dart';
 
@@ -119,7 +120,10 @@ class _FinancialSlipSectionState extends State<FinancialSlipSection> {
         widget.referenceController.text = extracted.transactionNumber;
       }
       if (extracted.transactionDate.isNotEmpty) {
-        widget.transactionDateController.text = extracted.transactionDate;
+        final parsedDate = _parseTransactionDate(extracted.transactionDate);
+        if (parsedDate != null) {
+          widget.transactionDateController.text = _dateText(parsedDate);
+        }
       }
       if (extracted.financialInstitution.isNotEmpty) {
         widget.institutionController.text = extracted.financialInstitution;
@@ -150,6 +154,49 @@ class _FinancialSlipSectionState extends State<FinancialSlipSection> {
   String _amountText(double value) => value == value.roundToDouble()
       ? value.toStringAsFixed(0)
       : value.toStringAsFixed(2);
+
+  String _dateText(DateTime value) => DateFormat('yyyy-MM-dd').format(value);
+
+  DateTime? _parseTransactionDate(String value) {
+    final text = value.trim();
+    final isoDate = RegExp(r'\b(\d{4}-\d{2}-\d{2})\b').firstMatch(text);
+    if (isoDate != null) return DateTime.tryParse(isoDate.group(1)!);
+
+    const patterns = [
+      'MMMM d, yyyy, h:mm a',
+      'MMMM d, yyyy h:mm a',
+      'MMMM d, yyyy',
+      'MMM d, yyyy, h:mm a',
+      'MMM d, yyyy',
+      'MM/dd/yyyy',
+      'M/d/yyyy',
+    ];
+    for (final pattern in patterns) {
+      try {
+        return DateFormat(pattern, 'en_US').parseStrict(text);
+      } catch (_) {
+        // Try the next supported printed-date format.
+      }
+    }
+    return null;
+  }
+
+  Future<void> _selectTransactionDate() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    var initialDate =
+        _parseTransactionDate(widget.transactionDateController.text) ?? today;
+    if (initialDate.isAfter(today)) initialDate = today;
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: today,
+      helpText: 'Select transaction date',
+    );
+    if (selected != null) {
+      widget.transactionDateController.text = _dateText(selected);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,9 +262,12 @@ class _FinancialSlipSectionState extends State<FinancialSlipSection> {
             Expanded(
               child: TextField(
                 controller: widget.transactionDateController,
+                readOnly: true,
+                onTap: _selectTransactionDate,
                 decoration: const InputDecoration(
                   labelText: 'Transaction date *',
                   hintText: 'YYYY-MM-DD',
+                  suffixIcon: Icon(Icons.calendar_month_outlined),
                   border: OutlineInputBorder(),
                 ),
               ),

@@ -20,7 +20,9 @@ class CaptainDelegationService {
     required String delegateName,
     required String delegateRole,
     required DateTime expiresAt,
-    required String reason,
+    required String reasonCode,
+    required String reasonLabel,
+    String reasonDetails = '',
   }) async {
     if (!captain.isPermanentCaptain) {
       throw StateError(
@@ -35,19 +37,38 @@ class CaptainDelegationService {
     if (!expiresAt.isAfter(DateTime.now())) {
       throw StateError('The delegation expiry must be in the future.');
     }
-    if (reason.trim().isEmpty) {
-      throw StateError('Enter a reason for the delegation.');
+    final normalizedCode = reasonCode.trim();
+    final normalizedLabel = reasonLabel.trim();
+    final normalizedDetails = reasonDetails.trim();
+    if (normalizedCode.isEmpty || normalizedLabel.isEmpty) {
+      throw StateError('Select a reason for the delegation.');
     }
+    if ({
+          'emergency_absence',
+          'conflict_of_interest',
+          'other',
+        }.contains(normalizedCode) &&
+        normalizedDetails.isEmpty) {
+      throw StateError('Enter supporting details for the selected reason.');
+    }
+    final reason = normalizedDetails.isEmpty
+        ? normalizedLabel
+        : '$normalizedLabel — $normalizedDetails';
     final event = _db.collection('captainDelegationEvents').doc();
+    final sessionId = event.id;
     final batch = _db.batch();
     final delegation = {
+      'sessionId': sessionId,
       'active': true,
       'delegateUid': delegateUid,
       'delegateName': delegateName,
       'delegateRole': delegateRole,
       'startsAt': FieldValue.serverTimestamp(),
       'expiresAt': Timestamp.fromDate(expiresAt),
-      'reason': reason.trim(),
+      'reason': reason,
+      'assignmentReasonCode': normalizedCode,
+      'assignmentReasonLabel': normalizedLabel,
+      'assignmentReasonDetails': normalizedDetails,
       'grantedBy': captain.uid,
       'grantedByName': captain.name,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -61,12 +82,34 @@ class CaptainDelegationService {
     await batch.commit();
   }
 
-  Future<void> revoke({required UserModel captain}) async {
+  Future<void> revoke({
+    required UserModel captain,
+    required String reasonCode,
+    required String reasonLabel,
+    String reasonDetails = '',
+  }) async {
     if (!captain.isPermanentCaptain) {
       throw StateError(
         'Only the permanent Barangay Captain can revoke access.',
       );
     }
+    final normalizedCode = reasonCode.trim();
+    final normalizedLabel = reasonLabel.trim();
+    final normalizedDetails = reasonDetails.trim();
+    if (normalizedCode.isEmpty || normalizedLabel.isEmpty) {
+      throw StateError('Select a reason for revoking temporary access.');
+    }
+    if ({
+          'suspected_misuse',
+          'security_concern',
+          'other',
+        }.contains(normalizedCode) &&
+        normalizedDetails.isEmpty) {
+      throw StateError('Enter supporting details for the selected reason.');
+    }
+    final reason = normalizedDetails.isEmpty
+        ? normalizedLabel
+        : '$normalizedLabel — $normalizedDetails';
     final event = _db.collection('captainDelegationEvents').doc();
     await _db.runTransaction((transaction) async {
       final current = await transaction.get(_current);
@@ -79,16 +122,25 @@ class CaptainDelegationService {
         'revokedAt': FieldValue.serverTimestamp(),
         'revokedBy': captain.uid,
         'revokedByName': captain.name,
+        'revocationReasonCode': normalizedCode,
+        'revocationReasonLabel': normalizedLabel,
+        'revocationReasonDetails': normalizedDetails,
+        'revocationReason': reason,
         'updatedAt': FieldValue.serverTimestamp(),
       });
       transaction.set(event, {
         'eventType': 'revoked',
         'eventId': event.id,
+        'sessionId': data['sessionId'] ?? '',
         'delegateUid': data['delegateUid'],
         'delegateName': data['delegateName'],
         'expiresAt': data['expiresAt'],
         'actorId': captain.uid,
         'actorName': captain.name,
+        'reason': reason,
+        'revocationReasonCode': normalizedCode,
+        'revocationReasonLabel': normalizedLabel,
+        'revocationReasonDetails': normalizedDetails,
         'createdAt': FieldValue.serverTimestamp(),
       });
     });
@@ -128,6 +180,7 @@ class CaptainDelegationService {
       transaction.set(event, {
         'eventType': 'duration_changed',
         'eventId': event.id,
+        'sessionId': data['sessionId'] ?? '',
         'delegateUid': data['delegateUid'],
         'delegateName': data['delegateName'],
         'previousExpiresAt': data['expiresAt'],

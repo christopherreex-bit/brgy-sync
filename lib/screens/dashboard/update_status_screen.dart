@@ -329,13 +329,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
     }
   }
 
-  static String _formatStatus(String status) {
-    return status
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map((w) => w[0].toUpperCase() + w.substring(1))
-        .join(' ');
-  }
+  static String _formatStatus(String status) => caseStatusLabel(status);
 
   static Set<String> _verifiedRegistryFieldsForCase(Map<String, dynamic> data) {
     final isInfrastructureConcern =
