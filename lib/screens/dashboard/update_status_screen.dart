@@ -191,6 +191,28 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         });
         return;
       }
+      final protectedRegistryDocuments = caseDocuments
+          .where(
+            (document) =>
+                document['status'] == 'reused' ||
+                document['reusedFromVault'] == true,
+          )
+          .map((document) => (document['name'] ?? '').toString())
+          .where((name) => name.isNotEmpty)
+          .toSet();
+      final invalidCorrectionDocuments = _correctionDocuments.intersection(
+        protectedRegistryDocuments,
+      );
+      if (_newStatus == statusNeedsCorrection &&
+          invalidCorrectionDocuments.isNotEmpty) {
+        setState(() {
+          _loading = false;
+          _correctionDocuments.removeAll(invalidCorrectionDocuments);
+          _error =
+              'Verified Citizen Registry documents cannot be marked for revision. Request a registry correction if the source document must be reviewed.';
+        });
+        return;
+      }
       final hasMissingRequiredDocuments = caseDocuments.any(
         (document) =>
             document['required'] == true &&
@@ -307,13 +329,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
     }
   }
 
-  static String _formatStatus(String status) {
-    return status
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map((w) => w[0].toUpperCase() + w.substring(1))
-        .join(' ');
-  }
+  static String _formatStatus(String status) => caseStatusLabel(status);
 
   static Set<String> _verifiedRegistryFieldsForCase(Map<String, dynamic> data) {
     final isInfrastructureConcern =
@@ -372,7 +388,11 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
         final correctableInformation =
             (data['requestDetails'] as Map? ?? const {}).keys
                 .map((key) => key.toString())
-                .where((key) => !verifiedRegistryFields.contains(key))
+                .where(
+                  (key) =>
+                      key != 'assistanceAmount' &&
+                      !verifiedRegistryFields.contains(key),
+                )
                 .toList();
 
         // Check for missing docs
@@ -588,9 +608,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                         ),
                       ),
                       if (documents.any(
-                        (document) =>
-                            document['status'] == 'uploaded' ||
-                            document['status'] == 'reused',
+                        (document) => document['status'] == 'uploaded',
                       )) ...[
                         const SizedBox(height: 8),
                         const Text(
@@ -600,8 +618,8 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                         ...documents
                             .where(
                               (document) =>
-                                  document['status'] == 'uploaded' ||
-                                  document['status'] == 'reused',
+                                  document['status'] == 'uploaded' &&
+                                  document['reusedFromVault'] != true,
                             )
                             .map((document) {
                               final name = (document['name'] ?? '').toString();

@@ -29,6 +29,7 @@ class CaseModel {
   final List<Map<String, dynamic>> documents;
   final Map<String, dynamic> requestDetails;
   final double? assistanceAmount;
+  final double? requestedAssistanceAmount;
   final String? budgetProgramId;
   final bool repeatSubmission;
   final String? repeatPolicyCode;
@@ -63,6 +64,7 @@ class CaseModel {
     this.documents = const [],
     this.requestDetails = const {},
     this.assistanceAmount,
+    this.requestedAssistanceAmount,
     this.budgetProgramId,
     this.repeatSubmission = false,
     this.repeatPolicyCode,
@@ -113,6 +115,14 @@ class CaseModel {
           ? Map<String, dynamic>.from(map['requestDetails'] as Map)
           : const {},
       assistanceAmount: (map['assistanceAmount'] as num?)?.toDouble(),
+      requestedAssistanceAmount:
+          (map['requestedAssistanceAmount'] as num?)?.toDouble() ??
+          (map['requestDetails'] is Map
+              ? double.tryParse(
+                  ((map['requestDetails'] as Map)['assistanceAmount'] ?? '')
+                      .toString(),
+                )
+              : null),
       budgetProgramId: map['budgetProgramId'],
       repeatSubmission: map['repeatSubmission'] == true,
       repeatPolicyCode: map['repeatPolicyCode'],
@@ -157,6 +167,8 @@ class CaseModel {
       'documents': documents,
       'requestDetails': requestDetails,
       if (assistanceAmount != null) 'assistanceAmount': assistanceAmount,
+      if (requestedAssistanceAmount != null)
+        'requestedAssistanceAmount': requestedAssistanceAmount,
       if (budgetProgramId != null) 'budgetProgramId': budgetProgramId,
       'repeatSubmission': repeatSubmission,
       if (repeatPolicyCode != null) 'repeatPolicyCode': repeatPolicyCode,

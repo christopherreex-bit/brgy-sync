@@ -50,6 +50,21 @@ class CaseDetailScreen extends StatelessWidget {
             : (data['residentName'] ?? '');
         final ref = data['referenceNumber'] ?? '';
         final status = data['status'] ?? '';
+        final requestDetails = data['requestDetails'] is Map
+            ? Map<String, dynamic>.from(data['requestDetails'] as Map)
+            : <String, dynamic>{};
+        final requestedAssistanceAmount =
+            (data['requestedAssistanceAmount'] as num?)?.toDouble() ??
+            double.tryParse(
+              (requestDetails['assistanceAmount'] ?? '').toString(),
+            );
+        final finalAssistanceAmount = (data['assistanceAmount'] as num?)
+            ?.toDouble();
+        final hasFinalAssistanceAmount = {
+          statusApproved,
+          statusForClaiming,
+          statusReleased,
+        }.contains(normalizeCaseStatus(status.toString()));
         final category = data['serviceCategory'] ?? '';
         final subType = data['serviceSubType'] ?? '';
         final channel = data['submissionChannel'] ?? 'portal';
@@ -59,6 +74,14 @@ class CaseDetailScreen extends StatelessWidget {
             : '';
         final documents = List<Map<String, dynamic>>.from(
           data['documents'] ?? [],
+        );
+        final correctionRequest = data['correctionRequest'] is Map
+            ? Map<String, dynamic>.from(data['correctionRequest'] as Map)
+            : <String, dynamic>{};
+        final revisionDocuments = Set<String>.from(
+          (correctionRequest['documents'] as List? ?? const []).map(
+            (document) => document.toString(),
+          ),
         );
         final priorRequests = List<Map<String, dynamic>>.from(
           data['priorRequests'] ?? const [],
@@ -138,6 +161,10 @@ class CaseDetailScreen extends StatelessWidget {
                   priorRequests.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 _RepeatRequestNotice(priorRequests: priorRequests),
+              ],
+              if (correctionRequest.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _revisionNotice(correctionRequest),
               ],
               if (claimingApprovalPending) ...[
                 const SizedBox(height: 12),
@@ -270,10 +297,8 @@ class CaseDetailScreen extends StatelessWidget {
                         _infoCard('Service Request Details', [
                           _row('Service Type', category.toUpperCase()),
                           _row('Sub-type', subType),
-                          if (data['requestDetails'] is Map)
-                            ...Map<String, dynamic>.from(
-                                  data['requestDetails'] as Map,
-                                ).entries
+                          if (requestDetails.isNotEmpty)
+                            ...requestDetails.entries
                                 .where(
                                   (entry) =>
                                       entry.key != 'assistanceAmount' &&
@@ -286,10 +311,16 @@ class CaseDetailScreen extends StatelessWidget {
                                     _requestFieldValue(entry.value),
                                   ),
                                 ),
-                          if (data['assistanceAmount'] != null)
+                          if (requestedAssistanceAmount != null)
                             _row(
-                              'Assistance Amount',
-                              '₱${data['assistanceAmount']}',
+                              'Requested Assistance Amount',
+                              '₱$requestedAssistanceAmount',
+                            ),
+                          if (hasFinalAssistanceAmount &&
+                              finalAssistanceAmount != null)
+                            _row(
+                              'Final Approved Amount',
+                              '₱$finalAssistanceAmount',
                             ),
                         ]),
                       ],
@@ -314,6 +345,8 @@ class CaseDetailScreen extends StatelessWidget {
                               final uploaded =
                                   d['status'] == 'uploaded' ||
                                   d['status'] == 'reused';
+                              final markedForRevision = revisionDocuments
+                                  .contains((d['name'] ?? '').toString());
                               final databasePath = (d['databasePath'] ?? '')
                                   .toString();
                               final fileName = (d['fileName'] ?? '').toString();
@@ -322,10 +355,14 @@ class CaseDetailScreen extends StatelessWidget {
                                 child: Row(
                                   children: [
                                     Icon(
-                                      uploaded
+                                      markedForRevision
+                                          ? Icons.edit_note_outlined
+                                          : uploaded
                                           ? Icons.check_circle
                                           : Icons.cancel,
-                                      color: uploaded
+                                      color: markedForRevision
+                                          ? Colors.orange.shade800
+                                          : uploaded
                                           ? Colors.green
                                           : Colors.red,
                                       size: 18,
@@ -334,6 +371,7 @@ class CaseDetailScreen extends StatelessWidget {
                                     Expanded(
                                       child: Text(
                                         '${d['name'] ?? ''}'
+                                        '${markedForRevision ? '\nMarked for revision' : ''}'
                                         '${d['status'] == 'reused'
                                             ? '\nVerified document reused from Citizen Registry'
                                             : fileName.isEmpty
@@ -341,7 +379,9 @@ class CaseDetailScreen extends StatelessWidget {
                                             : '\n$fileName'}',
                                         style: TextStyle(
                                           fontSize: 13,
-                                          color: uploaded
+                                          color: markedForRevision
+                                              ? Colors.orange.shade800
+                                              : uploaded
                                               ? Colors.green.shade700
                                               : Colors.red.shade700,
                                         ),
@@ -646,6 +686,151 @@ class CaseDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _revisionNotice(Map<String, dynamic> correction) {
+    final fields = List<String>.from(
+      (correction['fields'] as List? ?? const []).map(
+        (field) => field.toString(),
+      ),
+    );
+    final documents = List<String>.from(
+      (correction['documents'] as List? ?? const []).map(
+        (document) => document.toString(),
+      ),
+    );
+    final status = (correction['status'] ?? 'open').toString();
+    final submitted = status == 'submitted';
+    final requestedAt = correction['requestedAt'];
+    final submittedAt = correction['submittedAt'];
+    final requestedDate = requestedAt is Timestamp
+        ? _formatRevisionDate(requestedAt.toDate())
+        : '';
+    final submittedDate = submittedAt is Timestamp
+        ? _formatRevisionDate(submittedAt.toDate())
+        : '';
+    final accent = submitted ? Colors.blue : Colors.orange;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accent.shade50,
+        border: Border.all(color: accent.shade300),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                submitted ? Icons.task_alt_outlined : Icons.edit_note_outlined,
+                color: accent.shade900,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      submitted
+                          ? 'Revision submitted for staff review'
+                          : 'Items marked for revision',
+                      style: TextStyle(
+                        color: accent.shade900,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        if ((correction['requestedByName'] ?? '')
+                            .toString()
+                            .isNotEmpty)
+                          'Requested by ${correction['requestedByName']}',
+                        if (requestedDate.isNotEmpty) requestedDate,
+                        if (submitted && submittedDate.isNotEmpty)
+                          'Resident resubmitted $submittedDate',
+                      ].join(' · '),
+                      style: TextStyle(color: accent.shade900, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if ((correction['reason'] ?? '').toString().trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Instructions: ${correction['reason']}',
+              style: TextStyle(color: accent.shade900),
+            ),
+          ],
+          if (fields.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Information to revise',
+              style: TextStyle(
+                color: accent.shade900,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: fields
+                  .map(
+                    (field) => Chip(
+                      avatar: const Icon(Icons.edit_outlined, size: 16),
+                      label: Text(_requestFieldLabel(field)),
+                      backgroundColor: Colors.white,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          if (documents.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Documents to replace',
+              style: TextStyle(
+                color: accent.shade900,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: documents
+                  .map(
+                    (document) => Chip(
+                      avatar: const Icon(Icons.description_outlined, size: 16),
+                      label: Text(document),
+                      backgroundColor: Colors.white,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _formatRevisionDate(DateTime value) {
+    final hour = value.hour == 0
+        ? 12
+        : value.hour > 12
+        ? value.hour - 12
+        : value.hour;
+    final minute = value.minute.toString().padLeft(2, '0');
+    final period = value.hour >= 12 ? 'PM' : 'AM';
+    return '${value.month}/${value.day}/${value.year} $hour:$minute $period';
   }
 
   String _registryStatusLabel(dynamic value) => switch (value) {

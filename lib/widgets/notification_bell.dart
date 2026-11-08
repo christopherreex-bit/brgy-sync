@@ -186,6 +186,12 @@ class NotificationBell extends StatelessWidget {
                                   Navigator.of(dialogContext).pop();
                                   onResidentCasesRequested!();
                                 }
+                              } else if (!user.isResident &&
+                                  item.type == 'cash_transfer_recommended') {
+                                if (dialogContext.mounted) {
+                                  Navigator.of(dialogContext).pop();
+                                  context.push('/dashboard/cash-position');
+                                }
                               }
                             },
                             child: Padding(
@@ -332,6 +338,7 @@ class NotificationBell extends StatelessWidget {
     'repeat_service_request' => Icons.history,
     'document_issued' => Icons.description_outlined,
     'document_issuance_failed' => Icons.error_outline,
+    'cash_transfer_recommended' => Icons.account_balance_outlined,
     _ => Icons.info_outline,
   };
 
@@ -342,6 +349,7 @@ class NotificationBell extends StatelessWidget {
     'repeat_service_request' => Colors.orange.shade800,
     'document_issued' => Colors.green.shade700,
     'document_issuance_failed' => Colors.red.shade700,
+    'cash_transfer_recommended' => Colors.orange.shade800,
     _ => kNavy,
   };
 

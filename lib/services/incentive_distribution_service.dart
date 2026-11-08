@@ -192,6 +192,13 @@ class IncentiveDistributionService {
         'requestedByRole': actor.effectiveRole,
       });
     });
+    try {
+      await CashPositionService(
+        firestore: _db,
+      ).notifyTreasurerIfCashIsLow(asOf: date);
+    } catch (_) {
+      // The completed release remains valid if notification delivery fails.
+    }
   }
 
   Future<IncentiveReleasePreview> getReleasePreview({

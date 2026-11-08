@@ -1497,11 +1497,6 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
   }
 
   String _caseStatusLabel(dynamic value) {
-    final normalized = (value ?? 'unknown').toString().replaceAll('_', ' ');
-    return normalized
-        .split(' ')
-        .where((part) => part.isNotEmpty)
-        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-        .join(' ');
+    return caseStatusLabel((value ?? 'unknown').toString());
   }
 }
