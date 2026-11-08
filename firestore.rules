@@ -69,6 +69,11 @@ service cloud.firestore {
                       || getRole() in resource.data.audienceRoles);
       allow create: if request.auth != null
                     && (isStaff()
+                        || (isTreasurer()
+                            && request.resource.data.type
+                                == 'cash_transfer_recommended'
+                            && request.resource.data.audienceRoles
+                                == ['treasurer'])
                         || (request.resource.data.type
                                 in ['case_submitted', 'correction_submitted']
                             && request.resource.data.createdById == request.auth.uid
@@ -505,6 +510,18 @@ service cloud.firestore {
                     && request.resource.data.requestedBy == request.auth.uid
                     && request.resource.data.type
                         in ['opening_balance', 'bank_receipt', 'bank_to_hand', 'case_disbursement']
+                    && (request.resource.data.type
+                            in ['bank_receipt', 'bank_to_hand']
+                        ? request.resource.data.ocrConfirmed == true
+                          && request.resource.data.referenceNumber is string
+                          && request.resource.data.referenceNumber.size() > 0
+                          && request.resource.data.slipTransactionDate is string
+                          && request.resource.data.slipTransactionDate.size() > 0
+                          && request.resource.data.financialInstitution is string
+                          && request.resource.data.financialInstitution.size() > 0
+                          && request.resource.data.evidence.databasePath is string
+                          && request.resource.data.evidence.databasePath.size() > 0
+                        : true)
                     && (request.resource.data.type != 'bank_to_hand'
                         || isFinanceManager())
                     && (request.resource.data.type != 'bank_receipt'

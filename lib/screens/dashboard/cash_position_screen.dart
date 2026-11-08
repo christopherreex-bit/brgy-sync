@@ -4,11 +4,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:universal_html/html.dart' as html;
 
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/cash_position_service.dart';
+import '../../services/financial_slip_ocr_service.dart';
+import '../../services/financial_evidence_service.dart';
 import '../../utils/constants.dart';
+import '../../widgets/financial_slip_section.dart';
 
 class CashPositionScreen extends StatefulWidget {
   const CashPositionScreen({super.key});
@@ -145,7 +149,7 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Budget remaining shows spending authority. Cash on hand shows money physically available for release. A bank withdrawal stays in transit for 24 hours before becoming cash on hand.',
+                        'Budget remaining shows spending authority. Cash on hand shows money physically available for release. A bank withdrawal takes one Philippine banking day; weekend and holiday requests start on the next banking day.',
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
@@ -288,8 +292,12 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
                         ((movement['onHandAmount'] as num?)?.toDouble() ?? 0)
                   : (movement['amount'] as num?)?.toDouble() ?? 0;
               final requestedAt = movement['requestedAt'];
+              final transitStartsAt = movement['transitStartsAt'];
               final effectiveAt = movement['effectiveAt'];
               final reference = (movement['referenceNumber'] ?? '').toString();
+              final evidence = movement['evidence'] is Map
+                  ? Map<String, dynamic>.from(movement['evidence'] as Map)
+                  : const <String, dynamic>{};
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: _movementColor(type).withValues(alpha: .12),
@@ -305,21 +313,44 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
                     if (reference.isNotEmpty)
                       type == 'bank_receipt'
                           ? 'Reference: $reference'
+                          : type == 'bank_to_hand'
+                          ? 'Slip: $reference'
                           : 'Service request $reference',
+                    if ((movement['financialInstitution'] ?? '')
+                        .toString()
+                        .isNotEmpty)
+                      'Institution: ${movement['financialInstitution']}',
+                    if ((movement['slipTransactionDate'] ?? '')
+                        .toString()
+                        .isNotEmpty)
+                      'Slip date: ${movement['slipTransactionDate']}',
                     if (requestedAt is Timestamp)
                       'Recorded ${DateFormat('MMM d, yyyy h:mm a').format(requestedAt.toDate())}',
+                    if (status == 'pending' && transitStartsAt is Timestamp)
+                      'Transit starts ${DateFormat('MMM d, yyyy h:mm a').format(transitStartsAt.toDate())}',
                     if (status == 'pending' && effectiveAt is Timestamp)
-                      'Expected ${DateFormat('MMM d, yyyy h:mm a').format(effectiveAt.toDate())}',
+                      'Expected arrival ${DateFormat('MMM d, yyyy h:mm a').format(effectiveAt.toDate())}',
                   ].join(' · '),
                 ),
-                trailing: Text(
-                  _money.format(amount),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: type == 'case_disbursement'
-                        ? Colors.red
-                        : _movementColor(type),
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (evidence.isNotEmpty)
+                      IconButton(
+                        tooltip: 'Open uploaded slip',
+                        onPressed: () => _openFinancialEvidence(evidence),
+                        icon: const Icon(Icons.open_in_new),
+                      ),
+                    Text(
+                      _money.format(amount),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: type == 'case_disbursement'
+                            ? Colors.red
+                            : _movementColor(type),
+                      ),
+                    ),
+                  ],
                 ),
               );
             }).toList(),
@@ -353,95 +384,124 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
     _ => 'Opening cash position',
   };
 
+  Future<void> _openFinancialEvidence(Map<String, dynamic> metadata) async {
+    try {
+      final file = await FinancialEvidenceService().download(metadata);
+      final blob = html.Blob([file.bytes], file.contentType);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.window.open(url, '_blank');
+      Future<void>.delayed(
+        const Duration(minutes: 1),
+        () => html.Url.revokeObjectUrl(url),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open the uploaded slip: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _showBankReceiptDialog(UserModel actor) async {
     final amount = TextEditingController();
     final source = TextEditingController();
     final reference = TextEditingController();
+    final transactionDate = TextEditingController(
+      text: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+    );
+    final institution = TextEditingController();
     final reason = TextEditingController();
+    FinancialEvidenceDraft? evidence;
+    var evidenceConfirmed = false;
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Record funds received'),
-        content: SizedBox(
-          width: 500,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Record funds received'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Upload the deposit or receipt evidence. OCR suggestions remain editable and must be reviewed before the amount is added to cash in bank.',
+                    ),
                   ),
-                  child: const Text(
-                    'Incoming funds are recorded in cash in bank. This increases actual cash but does not create or increase a program allocation.',
+                  const SizedBox(height: 14),
+                  FinancialSlipSection(
+                    slipLabel: 'Deposit / funds-received slip',
+                    amountController: amount,
+                    referenceController: reference,
+                    transactionDateController: transactionDate,
+                    institutionController: institution,
+                    onChanged: (value, valueConfirmed) {
+                      setDialogState(() {
+                        evidence = value;
+                        evidenceConfirmed = valueConfirmed;
+                      });
+                    },
                   ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: amount,
-                  autofocus: true,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const Divider(height: 28),
+                  TextField(
+                    controller: source,
+                    decoration: const InputDecoration(
+                      labelText: 'Funding source *',
+                      hintText: 'Example: City Government transfer',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Amount received',
-                    prefixText: '₱ ',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: reason,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Purpose or accounting note *',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: source,
-                  decoration: const InputDecoration(
-                    labelText: 'Funding source',
-                    hintText: 'Example: City Government transfer',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: reference,
-                  decoration: const InputDecoration(
-                    labelText: 'Deposit or reference number',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: reason,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Purpose or accounting note',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: evidence != null && evidenceConfirmed
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
+              child: const Text('Confirm and record'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Record receipt'),
-          ),
-        ],
       ),
     );
-    if (confirmed == true) {
+    if (confirmed == true && evidence != null) {
       await _runAction(
         () => _service.recordBankReceipt(
           amount: double.tryParse(amount.text.replaceAll(',', '')) ?? -1,
           source: source.text,
           referenceNumber: reference.text,
+          transactionDate: transactionDate.text,
+          financialInstitution: institution.text,
           reason: reason.text,
           actor: actor,
+          evidence: evidence!,
+          ocrConfirmed: evidenceConfirmed,
         ),
         'Incoming funds recorded in cash in bank.',
       );
@@ -449,6 +509,8 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
     amount.dispose();
     source.dispose();
     reference.dispose();
+    transactionDate.dispose();
+    institution.dispose();
     reason.dispose();
   }
 
@@ -697,74 +759,97 @@ class _CashPositionScreenState extends State<CashPositionScreen> {
 
   Future<void> _showTransferDialog(UserModel actor) async {
     final amount = TextEditingController();
+    final reference = TextEditingController();
+    final transactionDate = TextEditingController(
+      text: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+    );
+    final institution = TextEditingController();
     final reason = TextEditingController();
+    FinancialEvidenceDraft? evidence;
+    var evidenceConfirmed = false;
     final result = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Transfer bank funds to cash on hand'),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'The amount leaves cash in bank immediately, remains in transit, and arrives in cash on hand after 24 hours.',
-                ),
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Transfer bank funds to cash on hand'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Upload the withdrawal slip. Confirmed funds leave cash in bank immediately, then follow the Philippine banking-day transit schedule.',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  FinancialSlipSection(
+                    slipLabel: 'Bank withdrawal slip',
+                    amountController: amount,
+                    referenceController: reference,
+                    transactionDateController: transactionDate,
+                    institutionController: institution,
+                    onChanged: (value, valueConfirmed) {
+                      setDialogState(() {
+                        evidence = value;
+                        evidenceConfirmed = valueConfirmed;
+                      });
+                    },
+                  ),
+                  const Divider(height: 28),
+                  TextField(
+                    controller: reason,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Reason for withdrawal *',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: amount,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Amount',
-                  prefixText: '₱ ',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: reason,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Reason for withdrawal',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: evidence != null && evidenceConfirmed
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
+              child: const Text('Confirm transfer'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Request transfer'),
-          ),
-        ],
       ),
     );
-    if (result == true) {
+    if (result == true && evidence != null) {
       await _runAction(
         () => _service.requestBankToHandTransfer(
           amount: double.tryParse(amount.text.replaceAll(',', '')) ?? -1,
+          referenceNumber: reference.text,
+          transactionDate: transactionDate.text,
+          financialInstitution: institution.text,
           reason: reason.text,
           actor: actor,
+          evidence: evidence!,
+          ocrConfirmed: evidenceConfirmed,
         ),
-        'Transfer requested. Funds will arrive in 24 hours.',
+        'Transfer requested. The banking-day start and expected arrival are shown in cash movement history.',
       );
     }
     amount.dispose();
+    reference.dispose();
+    transactionDate.dispose();
+    institution.dispose();
     reason.dispose();
   }
 

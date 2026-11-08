@@ -1,0 +1,10 @@
+name = "brgy-sync-financial-slip-ocr"
+account_id = "105e8bda24de104b6e909360f74a7a7d"
+main = "index.js"
+compatibility_date = "2026-08-25"
+
+[ai]
+binding = "AI"
+
+# Set the Firebase Web API key used only to validate Firebase ID tokens:
+# npx wrangler secret put FIREBASE_WEB_API_KEY --config workers/financial-slip-ocr/wrangler.toml

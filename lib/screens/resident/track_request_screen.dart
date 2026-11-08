@@ -114,6 +114,11 @@ class _CaseCard extends StatelessWidget {
     final subType = data['serviceSubType'] ?? '';
     final status = data['status'] ?? statusPendingReview;
     final assistanceAmount = (data['assistanceAmount'] as num?)?.toDouble();
+    final hasFinalAssistanceAmount = {
+      statusApproved,
+      statusForClaiming,
+      statusReleased,
+    }.contains(normalizeCaseStatus(status.toString()));
     final timestamp = data['submissionTimestamp'];
     final submitted = timestamp is Timestamp ? timestamp.toDate() : null;
     final dateText = submitted == null
@@ -186,7 +191,8 @@ class _CaseCard extends StatelessWidget {
               if (assistanceAmount != null && assistanceAmount > 0)
                 _DetailChip(
                   icon: Icons.payments_outlined,
-                  label: 'Assistance ₱${_formatAmount(assistanceAmount)}',
+                  label:
+                      '${hasFinalAssistanceAmount ? 'Approved' : 'Requested'} assistance ₱${_formatAmount(assistanceAmount)}',
                 ),
             ],
           ),

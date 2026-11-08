@@ -418,9 +418,10 @@ List<FormFieldConfig> _bassFields() {
     ),
     FormFieldConfig(
       key: 'assistanceAmount',
-      label: 'Assistance Amount (₱)',
+      label: 'Requested Assistance Amount (₱)',
       type: FormFieldType.number,
       required: true,
+      hint: 'Staff will determine the final approved amount',
     ),
   ];
 }

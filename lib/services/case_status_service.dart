@@ -147,9 +147,8 @@ class CaseStatusService {
             'Flag at least one information field or document for correction.',
           );
         }
-        final protectedRegistryFields = _verifiedRegistryFieldsForCase(
-          caseData,
-        );
+        final protectedRegistryFields = _verifiedRegistryFieldsForCase(caseData)
+          ..add('assistanceAmount');
         final invalidFields = correctionFields
             .where(protectedRegistryFields.contains)
             .toList();
@@ -157,6 +156,27 @@ class CaseStatusService {
           throw StateError(
             'Verified Citizen Registry information cannot be corrected from '
             'a service request. Request a Citizen Registry correction instead.',
+          );
+        }
+        final documents = List<Map<String, dynamic>>.from(
+          caseData['documents'] ?? const [],
+        );
+        final protectedDocuments = documents
+            .where(
+              (document) =>
+                  document['status'] == 'reused' ||
+                  document['reusedFromVault'] == true,
+            )
+            .map((document) => (document['name'] ?? '').toString())
+            .where((name) => name.isNotEmpty)
+            .toSet();
+        final invalidDocuments = correctionDocuments
+            .where(protectedDocuments.contains)
+            .toList();
+        if (invalidDocuments.isNotEmpty) {
+          throw StateError(
+            'Verified Citizen Registry documents cannot be marked for '
+            'revision. Request a registry correction instead.',
           );
         }
         updates['correctionRequest'] = {
@@ -518,6 +538,18 @@ class CaseStatusService {
           'readBy': <String>[],
           'deletedBy': <String>[],
         });
+      }
+    }
+
+    if (newStatus == statusApproved ||
+        newStatus == statusReleased ||
+        newStatus == statusRejected) {
+      try {
+        await CashPositionService(
+          firestore: _db,
+        ).notifyTreasurerIfCashIsLow(asOf: effectiveDate);
+      } catch (_) {
+        // A liquidity alert must never block the service-request workflow.
       }
     }
   }

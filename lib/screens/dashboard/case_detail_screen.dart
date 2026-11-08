@@ -50,6 +50,21 @@ class CaseDetailScreen extends StatelessWidget {
             : (data['residentName'] ?? '');
         final ref = data['referenceNumber'] ?? '';
         final status = data['status'] ?? '';
+        final requestDetails = data['requestDetails'] is Map
+            ? Map<String, dynamic>.from(data['requestDetails'] as Map)
+            : <String, dynamic>{};
+        final requestedAssistanceAmount =
+            (data['requestedAssistanceAmount'] as num?)?.toDouble() ??
+            double.tryParse(
+              (requestDetails['assistanceAmount'] ?? '').toString(),
+            );
+        final finalAssistanceAmount = (data['assistanceAmount'] as num?)
+            ?.toDouble();
+        final hasFinalAssistanceAmount = {
+          statusApproved,
+          statusForClaiming,
+          statusReleased,
+        }.contains(normalizeCaseStatus(status.toString()));
         final category = data['serviceCategory'] ?? '';
         final subType = data['serviceSubType'] ?? '';
         final channel = data['submissionChannel'] ?? 'portal';
@@ -270,10 +285,8 @@ class CaseDetailScreen extends StatelessWidget {
                         _infoCard('Service Request Details', [
                           _row('Service Type', category.toUpperCase()),
                           _row('Sub-type', subType),
-                          if (data['requestDetails'] is Map)
-                            ...Map<String, dynamic>.from(
-                                  data['requestDetails'] as Map,
-                                ).entries
+                          if (requestDetails.isNotEmpty)
+                            ...requestDetails.entries
                                 .where(
                                   (entry) =>
                                       entry.key != 'assistanceAmount' &&
@@ -286,10 +299,16 @@ class CaseDetailScreen extends StatelessWidget {
                                     _requestFieldValue(entry.value),
                                   ),
                                 ),
-                          if (data['assistanceAmount'] != null)
+                          if (requestedAssistanceAmount != null)
                             _row(
-                              'Assistance Amount',
-                              '₱${data['assistanceAmount']}',
+                              'Requested Assistance Amount',
+                              '₱$requestedAssistanceAmount',
+                            ),
+                          if (hasFinalAssistanceAmount &&
+                              finalAssistanceAmount != null)
+                            _row(
+                              'Final Approved Amount',
+                              '₱$finalAssistanceAmount',
                             ),
                         ]),
                       ],

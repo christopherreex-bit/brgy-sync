@@ -39,20 +39,69 @@ class AnalyticsDashboardScreen extends StatelessWidget {
         }).length;
         final processingDurations = <Duration>[];
         var beneficiaries = 0;
+        var acceptedDecisions = 0;
+        var rejectedDecisions = 0;
+        var revisionRequests = 0;
+        var repeatSubmissions = 0;
+        var activeOverdue = 0;
 
         // Category counts
         final categoryCounts = <String, int>{};
+        final statusCounts = <String, int>{};
         final rejectionCounts = <String, int>{};
+        final assistanceByCategory = <String, Map<String, double>>{};
         for (final doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
           final cat = (data['serviceCategory'] ?? 'unknown').toString();
           categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
 
           final status = (data['status'] ?? '').toString();
+          final normalizedStatus = normalizeCaseStatus(status);
+          statusCounts[normalizedStatus] =
+              (statusCounts[normalizedStatus] ?? 0) + 1;
+          if ({
+            statusApproved,
+            statusForClaiming,
+            statusReleased,
+          }.contains(normalizedStatus)) {
+            acceptedDecisions++;
+          } else if (normalizedStatus == statusRejected) {
+            rejectedDecisions++;
+          }
+          if (normalizedStatus == statusNeedsCorrection ||
+              data['correctionRequest'] is Map) {
+            revisionRequests++;
+          }
+          if (data['repeatSubmission'] == true) repeatSubmissions++;
+          if (!{statusReleased, statusRejected}.contains(normalizedStatus) &&
+              (data['slaStatus'] ?? '').toString() == 'overdue') {
+            activeOverdue++;
+          }
           if (status == statusRejected) {
             final code = (data['rejectionReasonCode'] ?? 'legacy_unspecified')
                 .toString();
             rejectionCounts[code] = (rejectionCounts[code] ?? 0) + 1;
+          }
+
+          final requestedAmount = _requestedAmount(data);
+          final approvedAmount =
+              {
+                statusApproved,
+                statusForClaiming,
+                statusReleased,
+              }.contains(normalizedStatus)
+              ? _number(data['assistanceAmount'])
+              : null;
+          if (requestedAmount != null || approvedAmount != null) {
+            final label = _assistanceCategoryLabel(data);
+            final amounts = assistanceByCategory.putIfAbsent(
+              label,
+              () => {'requested': 0, 'approved': 0, 'requests': 0},
+            );
+            amounts['requested'] =
+                amounts['requested']! + (requestedAmount ?? 0);
+            amounts['approved'] = amounts['approved']! + (approvedAmount ?? 0);
+            amounts['requests'] = amounts['requests']! + 1;
           }
           if (status == 'released' && _isBeneficiaryCase(data)) {
             beneficiaries++;
@@ -69,6 +118,10 @@ class AnalyticsDashboardScreen extends StatelessWidget {
           }
         }
         final averageProcessingTime = _averageDuration(processingDurations);
+        final decisionTotal = acceptedDecisions + rejectedDecisions;
+        final approvalRate = decisionTotal == 0
+            ? 'N/A'
+            : '${(acceptedDecisions / decisionTotal * 100).toStringAsFixed(1)}%';
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
@@ -137,6 +190,52 @@ class AnalyticsDashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
 
+                  Row(
+                    children: [
+                      Expanded(
+                        child: KpiCard(
+                          label: 'Approval Decision Rate',
+                          value: approvalRate,
+                          icon: Icons.how_to_reg_outlined,
+                          accentColor: Colors.green,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: KpiCard(
+                          label: 'Ever Sent for Revision',
+                          value: '$revisionRequests',
+                          icon: Icons.edit_note_outlined,
+                          accentColor: Colors.orange,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: KpiCard(
+                          label: 'Repeat Submissions',
+                          value: '$repeatSubmissions',
+                          icon: Icons.history,
+                          accentColor: Colors.deepOrange,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: KpiCard(
+                          label: 'Active Overdue',
+                          value: '$activeOverdue',
+                          icon: Icons.warning_amber_rounded,
+                          accentColor: Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Approval rate compares service requests currently Approved, For Claiming, or Released against those Rejected. Revision and repeat figures count affected service requests, not employee performance.',
+                    style: TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                  const SizedBox(height: 24),
+
                   // Case volume per category (simple bar chart using containers)
                   const Text(
                     'Service Request Volume per Category',
@@ -197,6 +296,46 @@ class AnalyticsDashboardScreen extends StatelessWidget {
                         ),
                       );
                     }),
+
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Current Workflow Distribution',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: kNavy,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Where all service requests currently sit in the workflow.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  ..._statusRows(statusCounts, totalCases),
+
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Requested vs Approved Assistance',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: kNavy,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Compares resident-requested amounts with final amounts approved by barangay staff. Education amounts are staff-set and may have no resident-requested value.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  if (assistanceByCategory.isEmpty)
+                    const Text(
+                      'No financial-assistance decisions recorded yet.',
+                      style: TextStyle(color: Colors.grey),
+                    )
+                  else
+                    _buildAssistanceTable(assistanceByCategory),
 
                   const SizedBox(height: 24),
                   const Text(
@@ -270,6 +409,142 @@ class AnalyticsDashboardScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  static double? _number(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse((value ?? '').toString().replaceAll(',', '').trim());
+  }
+
+  static double? _requestedAmount(Map<String, dynamic> data) {
+    final stored = _number(data['requestedAssistanceAmount']);
+    if (stored != null) return stored;
+    final details = data['requestDetails'];
+    if (details is Map) return _number(details['assistanceAmount']);
+    return null;
+  }
+
+  static String _assistanceCategoryLabel(Map<String, dynamic> data) {
+    final category = (data['serviceCategory'] ?? '').toString().toLowerCase();
+    if (category == 'bass') return 'BASS Assistance';
+    if (category == 'education') return 'Education Incentive';
+    return (data['serviceSubType'] ?? data['serviceCategory'] ?? 'Other')
+        .toString();
+  }
+
+  List<Widget> _statusRows(Map<String, int> counts, int total) {
+    const order = [
+      statusPendingReview,
+      statusProcessing,
+      statusNeedsCorrection,
+      statusApproved,
+      statusForClaiming,
+      statusReleased,
+      statusRejected,
+    ];
+    final colors = <String, Color>{
+      statusPendingReview: Colors.amber,
+      statusProcessing: Colors.blue,
+      statusNeedsCorrection: Colors.orange,
+      statusApproved: Colors.green,
+      statusForClaiming: Colors.deepPurple,
+      statusReleased: Colors.teal,
+      statusRejected: Colors.red,
+    };
+    return order.where((status) => (counts[status] ?? 0) > 0).map((status) {
+      final count = counts[status] ?? 0;
+      final share = calculateCategoryShare(count, total);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 140,
+              child: Text(
+                caseStatusLabel(status),
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: share,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation(colors[status] ?? kNavy),
+                  minHeight: 18,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 86,
+              child: Text(
+                '$count · ${(share * 100).toStringAsFixed(1)}%',
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _buildAssistanceTable(
+    Map<String, Map<String, double>> assistanceByCategory,
+  ) {
+    final entries = assistanceByCategory.entries.toList()
+      ..sort((a, b) => b.value['approved']!.compareTo(a.value['approved']!));
+    return Card(
+      margin: EdgeInsets.zero,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('Program')),
+            DataColumn(label: Text('Requests'), numeric: true),
+            DataColumn(label: Text('Requested'), numeric: true),
+            DataColumn(label: Text('Approved'), numeric: true),
+            DataColumn(label: Text('Difference'), numeric: true),
+            DataColumn(label: Text('Fulfillment'), numeric: true),
+          ],
+          rows: entries.map((entry) {
+            final requested = entry.value['requested']!;
+            final approved = entry.value['approved']!;
+            final difference = requested - approved;
+            final fulfillment = requested <= 0
+                ? 'N/A'
+                : '${(approved / requested * 100).toStringAsFixed(1)}%';
+            return DataRow(
+              cells: [
+                DataCell(Text(entry.key)),
+                DataCell(Text(entry.value['requests']!.toInt().toString())),
+                DataCell(
+                  Text(requested <= 0 ? 'Not entered' : _currency(requested)),
+                ),
+                DataCell(Text(_currency(approved))),
+                DataCell(Text(requested <= 0 ? 'N/A' : _currency(difference))),
+                DataCell(Text(fulfillment)),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  static String _currency(double value) {
+    final negative = value < 0;
+    final digits = value.abs().toStringAsFixed(2).split('.');
+    final whole = digits.first.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
+    );
+    return '${negative ? '-' : ''}₱$whole.${digits.last}';
   }
 
   Map<String, Map<String, dynamic>> _staffActivity(
@@ -385,7 +660,10 @@ class AnalyticsDashboardScreen extends StatelessWidget {
   }
 
   List<Widget> _rejectionReasonRows(Map<String, int> counts) {
-    final total = counts.values.fold<int>(0, (sum, count) => sum + count);
+    final total = counts.values.fold<int>(
+      0,
+      (runningTotal, value) => runningTotal + value,
+    );
     final entries = counts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return entries.map((entry) {

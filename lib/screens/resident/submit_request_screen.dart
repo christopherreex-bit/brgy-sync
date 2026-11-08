@@ -135,9 +135,8 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   Future<void> _loadReusableDocuments() async {
     final resident = _resident;
     final documents = _bassDocs;
-    if (resident == null || documents == null || _requestingForSomeoneElse) {
-      return;
-    }
+    if (resident == null || documents == null) return;
+    final requestingForSomeoneElse = _requestingForSomeoneElse;
     try {
       final registry = await _citizenRegistry.findByMobile(resident.mobile);
       if (registry == null ||
@@ -147,15 +146,38 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       final available = await _documentVault.validDocumentsForRegistry(
         registry.id,
       );
-      if (!mounted || documents != _bassDocs || _requestingForSomeoneElse) {
+      if (!mounted ||
+          documents != _bassDocs ||
+          requestingForSomeoneElse != _requestingForSomeoneElse) {
         return;
       }
       setState(() {
         for (final document in documents) {
+          document.reusableDocument = null;
+          document.useReusableDocument = false;
+
+          // The verified registry and its vault belong to the logged-in
+          // resident. When that resident is only the claimant, no patient or
+          // beneficiary evidence may be inherited from their own record.
+          // Their verified personal ID is the sole safe reusable document.
+          if (requestingForSomeoneElse) {
+            if (document.name != 'Valid ID (claimant)') continue;
+            final claimantId =
+                available[DocumentVaultService.documentKey(
+                  'Valid ID (claimant)',
+                )] ??
+                available[DocumentVaultService.documentKey(
+                  'Valid ID (patient)',
+                )];
+            if (claimantId != null) {
+              document.reusableDocument = claimantId;
+              document.useReusableDocument = true;
+            }
+            continue;
+          }
+
           if (document.requiredWhenRequestingForSomeoneElse &&
               !_requestingForSomeoneElse) {
-            document.reusableDocument = null;
-            document.useReusableDocument = false;
             continue;
           }
           final reusable =
@@ -398,6 +420,8 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
       _verifiedRegistryFields.clear();
       _fieldErrors.clear();
       for (final document in _bassDocs ?? <BassDocument>[]) {
+        document.reusableDocument = null;
+        document.useReusableDocument = false;
         if (document.requiredWhenRequestingForSomeoneElse) {
           document.required = value;
           if (!value) {
@@ -432,6 +456,7 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
         unawaited(_prefillFromCitizenRegistry());
       }
     });
+    unawaited(_loadReusableDocuments());
   }
 
   String _applicantName(Map<String, dynamic> formData, String fallbackName) {
@@ -688,6 +713,11 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                 formData['assistanceAmount'].toString().isNotEmpty
             ? double.tryParse(formData['assistanceAmount'].toString())
             : null,
+        requestedAssistanceAmount:
+            formData['assistanceAmount'] != null &&
+                formData['assistanceAmount'].toString().isNotEmpty
+            ? double.tryParse(formData['assistanceAmount'].toString())
+            : null,
         repeatSubmission: repeatDecision.shouldFlag,
         repeatPolicyCode: repeatDecision.shouldFlag
             ? repeatDecision.code
@@ -790,6 +820,10 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
   }
 
   void _removeDocument(BassDocument document) {
+    // A verified vault document is authoritative for this request. Residents
+    // must use My Record to correct the registry source rather than replacing
+    // it with an unverified upload inside an individual request.
+    if (document.reused) return;
     setState(() {
       document.uploaded = false;
       document.fileName = null;
@@ -1327,11 +1361,15 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
                             ],
                           ),
                         ),
-                        if (doc.uploaded || doc.reused)
+                        if (doc.reused)
+                          const Tooltip(
+                            message:
+                                'Verified registry document — it cannot be replaced in this request',
+                            child: Icon(Icons.lock, color: Colors.green),
+                          )
+                        else if (doc.uploaded)
                           IconButton(
-                            tooltip: doc.reused
-                                ? 'Do not reuse this document'
-                                : 'Remove file',
+                            tooltip: 'Remove file',
                             onPressed: () => _removeDocument(doc),
                             icon: const Icon(Icons.close, color: Colors.red),
                           )
