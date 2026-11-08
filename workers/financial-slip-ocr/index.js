@@ -32,19 +32,47 @@ Rules:
 - Never invent a value. Use null or an empty string when unclear.
 - amount is the final transaction amount in Philippine pesos, without commas or currency symbols.
 - transactionNumber is the transaction, reference, trace, deposit-slip, or withdrawal-slip number.
+- Carefully inspect text immediately beside or below labels such as Transaction Reference, Reference No.,
+  Transaction No., Trace No., or Slip No. Preserve every letter, digit, and hyphen exactly.
 - financialInstitution is the printed bank, remittance provider, or government institution.
 - confidence is from 0 to 1 for the structured fields overall.
 - rawText is a short transcription of the relevant printed fields only.`;
 
       const output = await env.AI.run(MODEL, {
-        messages: [{ role: 'user', content: prompt }],
-        image,
+        prompt,
+        image: `data:${contentType};base64,${image}`,
         max_tokens: 500,
         temperature: 0,
       });
       const text = output?.response || output?.result || '';
       const parsed = parseModelJson(text);
-      return json({ result: sanitize(parsed) });
+      const result = sanitize(parsed);
+
+      if (!result.transactionNumber) {
+        const referenceFromText = extractReference(result.rawText);
+        if (referenceFromText) {
+          result.transactionNumber = referenceFromText;
+        } else {
+          try {
+            const referenceOutput = await env.AI.run(MODEL, {
+              prompt: `Inspect only the transaction-reference area of this financial slip.
+Find the value beside or immediately below Transaction Reference, Reference No., Transaction No.,
+Trace No., or Slip No. Preserve all letters, digits, and hyphens exactly.
+Return ONLY JSON: {"transactionNumber":""}. Use an empty string only if no such value is visible.`,
+              image: `data:${contentType};base64,${image}`,
+              max_tokens: 100,
+              temperature: 0,
+            });
+            const referenceText = referenceOutput?.response || referenceOutput?.result || '';
+            const referenceParsed = parseModelJson(referenceText);
+            result.transactionNumber = clean(referenceParsed?.transactionNumber, 120);
+          } catch (_) {
+            // Keep the field blank so the reviewer can enter it manually.
+          }
+        }
+      }
+
+      return json({ result });
     } catch (error) {
       return json({ error: error?.message || 'Slip extraction failed.' }, 500);
     }
@@ -92,6 +120,15 @@ function sanitize(value) {
 
 function clean(value, max) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function extractReference(rawText) {
+  const text = clean(rawText, 1000);
+  if (!text) return '';
+  const match = text.match(
+    /(?:transaction\s*(?:reference|no\.?|number)|reference\s*(?:no\.?|number)?|trace\s*(?:no\.?|number)|slip\s*(?:no\.?|number))\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{3,})/i,
+  );
+  return match ? clean(match[1], 120) : '';
 }
 
 function json(body, status = 200) {
