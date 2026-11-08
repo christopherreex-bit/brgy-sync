@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
+import '../utils/money_formatter.dart';
 import 'status_badge.dart';
 
 class BudgetProgramCard extends StatelessWidget {
@@ -89,7 +90,7 @@ class BudgetProgramCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                '₱${reserved.toStringAsFixed(0)} reserved for release',
+                '${formatPeso(reserved, decimalDigits: 0)} reserved for release',
                 style: const TextStyle(
                   fontSize: 12,
                   color: Colors.blue,
@@ -101,11 +102,11 @@ class BudgetProgramCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '₱${utilized.toStringAsFixed(0)} of ₱${allocated.toStringAsFixed(0)}',
+                '${formatPeso(utilized, decimalDigits: 0)} of ${formatPeso(allocated, decimalDigits: 0)}',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               Text(
-                '₱${remaining.toStringAsFixed(0)} available',
+                '${formatPeso(remaining, decimalDigits: 0)} available',
                 style: TextStyle(
                   fontSize: 12,
                   color: barColor,

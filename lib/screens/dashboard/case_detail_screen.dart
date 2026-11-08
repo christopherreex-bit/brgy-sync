@@ -10,6 +10,7 @@ import 'package:universal_html/html.dart' as html;
 import '../../services/auth_service.dart';
 import '../../services/case_status_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/money_formatter.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/case_location_card.dart';
 
@@ -314,13 +315,13 @@ class CaseDetailScreen extends StatelessWidget {
                           if (requestedAssistanceAmount != null)
                             _row(
                               'Requested Assistance Amount',
-                              '₱$requestedAssistanceAmount',
+                              formatPeso(requestedAssistanceAmount),
                             ),
                           if (hasFinalAssistanceAmount &&
                               finalAssistanceAmount != null)
                             _row(
                               'Final Approved Amount',
-                              '₱$finalAssistanceAmount',
+                              formatPeso(finalAssistanceAmount),
                             ),
                         ]),
                       ],

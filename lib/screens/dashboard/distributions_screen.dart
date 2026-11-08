@@ -179,18 +179,15 @@ class _DistributionsScreenState extends State<DistributionsScreen> {
   }
 
   Future<void> _showReleaseDialog(UserModel actor) async {
-    QuerySnapshot<Map<String, dynamic>> snapshot;
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> registrations;
     try {
-      snapshot = await FirebaseFirestore.instance
-          .collection('cases')
-          .where('serviceCategory', isEqualTo: 'beneficiary')
-          .get();
+      registrations = await _service.loadEligibleRegistrations();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Could not load completed registrations. Check your connection and deploy the latest Firestore rules.',
+              'Could not load eligible registrations. Check your connection and Firestore access.',
             ),
             backgroundColor: Colors.red,
           ),
@@ -198,22 +195,16 @@ class _DistributionsScreenState extends State<DistributionsScreen> {
       }
       return;
     }
-    final registrations =
-        snapshot.docs.where((document) {
-          final data = document.data();
-          return data['status'] == 'released' &&
-              (data['serviceSubType'] == 'Senior Citizen Birthday Program' ||
-                  data['serviceSubType'] == 'PWD Birthday Program');
-        }).toList()..sort(
-          (a, b) =>
-              _beneficiaryName(a.data()).compareTo(_beneficiaryName(b.data())),
-        );
+    registrations.sort(
+      (a, b) =>
+          _beneficiaryName(a.data()).compareTo(_beneficiaryName(b.data())),
+    );
     if (!mounted) return;
     if (registrations.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'No completed Senior Citizen or PWD registrations are eligible.',
+            'No birthday incentives are currently eligible. A registration must be approved, the beneficiary\'s birthday must have been reached this year, and no incentive may have been released for that registration this year.',
           ),
         ),
       );
@@ -240,7 +231,7 @@ class _DistributionsScreenState extends State<DistributionsScreen> {
                   initialValue: selectedId,
                   isExpanded: true,
                   decoration: const InputDecoration(
-                    labelText: 'Completed beneficiary registration',
+                    labelText: 'Eligible beneficiary registration',
                     border: OutlineInputBorder(),
                   ),
                   items: registrations.map((document) {

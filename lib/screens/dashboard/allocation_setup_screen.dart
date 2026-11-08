@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/constants.dart';
 import '../../utils/budget_period.dart';
+import '../../utils/money_formatter.dart';
 
 class AllocationSetupScreen extends StatefulWidget {
   const AllocationSetupScreen({super.key});
@@ -226,7 +227,7 @@ class _AllocationSetupScreenState extends State<AllocationSetupScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 Text(
-                  '₱${_computeTotal().toStringAsFixed(0)}',
+                  formatPeso(_computeTotal(), decimalDigits: 0),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,

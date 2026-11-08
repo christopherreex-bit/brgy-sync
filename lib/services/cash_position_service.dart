@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/user_model.dart';
 import '../utils/budget_period.dart';
+import '../utils/money_formatter.dart';
 import '../utils/philippine_business_calendar.dart';
 import 'financial_evidence_service.dart';
 import 'financial_slip_ocr_service.dart';
@@ -303,7 +304,7 @@ class CashPositionService {
     });
   }
 
-  static String _peso(double value) => '₱${value.toStringAsFixed(2)}';
+  static String _peso(double value) => formatPeso(value);
 
   Future<void> requestBankToHandTransfer({
     required double amount,

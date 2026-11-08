@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../services/export_service.dart';
 import '../../utils/budget_period.dart';
 import '../../utils/constants.dart';
+import '../../utils/money_formatter.dart';
 
 class ExpenditureSummaryScreen extends StatefulWidget {
   const ExpenditureSummaryScreen({super.key});
@@ -387,7 +388,7 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
 
   Widget _moneyCell(double value, {bool bold = false}) {
     return Text(
-      '₱${value.toStringAsFixed(0)}',
+      formatPeso(value, decimalDigits: 0),
       style: TextStyle(
         fontSize: 12,
         fontWeight: bold ? FontWeight.bold : FontWeight.normal,
@@ -446,10 +447,10 @@ class _ExpenditureSummaryScreenState extends State<ExpenditureSummaryScreen> {
           .map<List<String>>(
             (program) => [
               program['name'] as String,
-              '₱${(program['allocated'] as double).toStringAsFixed(0)}',
-              '₱${(program['utilized'] as double).toStringAsFixed(0)}',
-              '₱${(program['reserved'] as double).toStringAsFixed(0)}',
-              '₱${(program['remaining'] as double).toStringAsFixed(0)}',
+              formatPeso(program['allocated'] as double, decimalDigits: 0),
+              formatPeso(program['utilized'] as double, decimalDigits: 0),
+              formatPeso(program['reserved'] as double, decimalDigits: 0),
+              formatPeso(program['remaining'] as double, decimalDigits: 0),
             ],
           )
           .toList(),

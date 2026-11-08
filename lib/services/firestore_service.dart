@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/case_model.dart';
 import '../utils/budget_health.dart';
+import '../utils/money_formatter.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -346,7 +347,7 @@ class FirestoreService {
           'deletionReason': reason,
           'notes': shouldReverse
               ? '$reason Budget reversal: '
-                    '₱${restoredAmount.toStringAsFixed(2)} restored.'
+                    '${formatPeso(restoredAmount)} restored.'
               : reason,
           'budgetReversed': shouldReverse,
           if (shouldReverse) ...{

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../utils/constants.dart';
+import '../../utils/money_formatter.dart';
 
 class AuditTrailScreen extends StatefulWidget {
   const AuditTrailScreen({super.key});
@@ -315,7 +316,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
       if ((log['budgetReversalAmount'] as num?) != null)
         MapEntry(
           'Budget restored',
-          '₱${(log['budgetReversalAmount'] as num).toStringAsFixed(2)}',
+          formatPeso(log['budgetReversalAmount'] as num),
         ),
     ].where((entry) => entry.value.isNotEmpty).toList();
 

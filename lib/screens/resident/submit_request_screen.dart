@@ -180,8 +180,23 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
               !_requestingForSomeoneElse) {
             continue;
           }
-          final reusable =
+          var reusable =
               available[DocumentVaultService.documentKey(document.name)];
+          if (reusable == null &&
+              document.name.toLowerCase().contains('proof of relationship')) {
+            // Keep verified documents issued before the patient/demised label
+            // was made context-specific reusable under the clearer labels.
+            reusable =
+                available[DocumentVaultService.documentKey(
+                  'Proof of relationship to patient / demised',
+                )] ??
+                available[DocumentVaultService.documentKey(
+                  'Proof of relationship to patient',
+                )] ??
+                available[DocumentVaultService.documentKey(
+                  'Proof of relationship to the demised',
+                )];
+          }
           if (reusable != null) {
             document.reusableDocument = reusable;
             document.useReusableDocument = true;

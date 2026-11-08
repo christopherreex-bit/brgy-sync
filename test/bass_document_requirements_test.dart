@@ -71,8 +71,7 @@ void main() {
     () {
       final relationshipProof = kBassDocuments('Medical – Dialysis')
           .singleWhere(
-            (document) =>
-                document.name == 'Proof of relationship to patient / demised',
+            (document) => document.name == 'Proof of relationship to patient',
           );
 
       expect(relationshipProof.required, isFalse);
@@ -83,4 +82,13 @@ void main() {
       expect(relationshipProof.required, isTrue);
     },
   );
+
+  test('burial assistance labels relationship proof for the demised', () {
+    final names = kBassDocuments(
+      'Burial Assistance',
+    ).map((document) => document.name);
+
+    expect(names, contains('Proof of relationship to the demised'));
+    expect(names, isNot(contains('Proof of relationship to patient')));
+  });
 }

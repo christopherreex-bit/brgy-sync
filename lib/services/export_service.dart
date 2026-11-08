@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
+import '../utils/money_formatter.dart';
 
 /// Shared export utilities for CSV downloads and PDF generation.
 class ExportService {
@@ -327,7 +328,10 @@ class ExportService {
   }
 
   static pw.Widget _php(double value, {bool bold = false}) {
-    return _pdfCell('PHP ${value.toStringAsFixed(0)}', bold: bold);
+    return _pdfCell(
+      'PHP ${formatMoneyNumber(value, decimalDigits: 0)}',
+      bold: bold,
+    );
   }
 
   static pw.Widget _pdfCell(String text, {bool bold = false}) {

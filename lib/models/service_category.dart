@@ -744,7 +744,9 @@ List<BassDocument> kBassDocuments(String subType) => [
     requiredWhenRequestingForSomeoneElse: true,
   ),
   BassDocument(
-    name: "Proof of relationship to patient / demised",
+    name: subType == 'Burial Assistance'
+        ? 'Proof of relationship to the demised'
+        : 'Proof of relationship to patient',
     required: false,
     requiredWhenRequestingForSomeoneElse: true,
   ),

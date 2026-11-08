@@ -93,6 +93,15 @@ class RepeatRequestPolicyService {
       return (bDate ?? DateTime(1970)).compareTo(aDate ?? DateTime(1970));
     });
 
+    final normalizedCategory = _normalize(serviceCategory);
+    final normalizedSubType = _normalize(serviceSubType);
+    final isBirthdayEnrollment =
+        normalizedCategory == 'beneficiary' &&
+        {
+          'senior citizen birthday program',
+          'pwd birthday program',
+        }.contains(normalizedSubType);
+
     final active = sameService.where((doc) {
       return _activeStatuses.contains(
         normalizeCaseStatus((doc.data()['status'] ?? '').toString()),
@@ -106,13 +115,37 @@ class RepeatRequestPolicyService {
         code: isRevision ? 'revise_existing_request' : 'active_duplicate',
         message: isRevision
             ? 'Service request ${prior.referenceNumber} is already For Revision. Open My Service Requests and revise that request instead of starting a new one.'
+            : isBirthdayEnrollment
+            ? 'You already have an active ${prior.serviceSubType} enrollment (${prior.referenceNumber}). Once approved, this same enrollment is used for recurring annual birthday incentives, so do not submit another application.'
             : 'You already have an active ${prior.serviceSubType} service request (${prior.referenceNumber}). Please wait for it to be completed before submitting another.',
         relatedRequests: [prior],
       );
     }
 
     final currentDate = now ?? DateTime.now();
-    if (_normalize(serviceCategory) == 'education') {
+    if (isBirthdayEnrollment) {
+      final acceptedEnrollment = sameService.where((doc) {
+        final status = normalizeCaseStatus(
+          (doc.data()['status'] ?? '').toString(),
+        );
+        return {
+          statusApproved,
+          statusForClaiming,
+          statusReleased,
+        }.contains(status);
+      }).toList();
+      if (acceptedEnrollment.isNotEmpty) {
+        final prior = _summary(acceptedEnrollment.first);
+        return RepeatRequestDecision(
+          blocked: true,
+          code: 'active_birthday_program_enrollment',
+          message:
+              'You already have an approved ${prior.serviceSubType} enrollment (${prior.referenceNumber}). This enrollment remains active for annual birthday incentives, so you do not need to apply again.',
+          relatedRequests: [prior],
+        );
+      }
+    }
+    if (normalizedCategory == 'education') {
       final acceptedThisYear = sameService.where((doc) {
         final data = doc.data();
         final submittedAt = _date(data['submissionTimestamp']);

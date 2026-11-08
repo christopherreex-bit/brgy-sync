@@ -24,6 +24,44 @@ class IncentiveDistributionService {
           .where('serviceCategory', isEqualTo: 'beneficiary')
           .snapshots();
 
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  loadEligibleRegistrations({DateTime? asOf}) async {
+    final date = asOf ?? DateTime.now();
+    final results = await Future.wait([
+      _db
+          .collection('cases')
+          .where('serviceCategory', isEqualTo: 'beneficiary')
+          .get(),
+      _db
+          .collection('distributions')
+          .where('fiscalYear', isEqualTo: date.year)
+          .get(),
+    ]);
+    final registrations = results[0];
+    final distributions = results[1];
+    final releasedRegistrationIds = distributions.docs
+        .where((document) => document.data()['status'] == 'released')
+        .map(
+          (document) => (document.data()['beneficiaryRegistrationCaseId'] ?? '')
+              .toString(),
+        )
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    return registrations.docs.where((document) {
+      final data = document.data();
+      final subType = (data['serviceSubType'] ?? '').toString();
+      final status = (data['status'] ?? '').toString();
+      return {
+            'Senior Citizen Birthday Program',
+            'PWD Birthday Program',
+          }.contains(subType) &&
+          {'approved', 'for_claiming', 'released'}.contains(status) &&
+          !releasedRegistrationIds.contains(document.id) &&
+          _birthdayReachedThisYear(data, date);
+    }).toList();
+  }
+
   Future<void> release({
     required String registrationCaseId,
     required String programType,
@@ -86,9 +124,18 @@ class IncentiveDistributionService {
       final caseData = registration.data()!;
       if ((caseData['serviceCategory'] ?? '').toString() != 'beneficiary' ||
           (caseData['serviceSubType'] ?? '').toString() != expectedSubType ||
-          (caseData['status'] ?? '').toString() != 'released') {
+          !{
+            'approved',
+            'for_claiming',
+            'released',
+          }.contains((caseData['status'] ?? '').toString())) {
         throw StateError(
-          'Only a completed $expectedSubType registration can receive this incentive.',
+          'Only an approved $expectedSubType registration can receive this incentive.',
+        );
+      }
+      if (!_birthdayReachedThisYear(caseData, date)) {
+        throw StateError(
+          'This beneficiary can receive the ${date.year} incentive only on or after their birthday.',
         );
       }
       if (existingDistribution.exists) {
@@ -282,6 +329,34 @@ class IncentiveDistributionService {
   }
 
   int _quarter(DateTime date) => ((date.month - 1) ~/ 3) + 1;
+
+  static bool _birthdayReachedThisYear(
+    Map<String, dynamic> caseData,
+    DateTime asOf,
+  ) {
+    final details = caseData['requestDetails'];
+    final rawBirthday = details is Map ? details['birthday'] : null;
+    final birthday = _parseDate(rawBirthday);
+    if (birthday == null) return false;
+    final birthdayThisYear =
+        birthday.month == DateTime.february &&
+            birthday.day == 29 &&
+            !_isLeapYear(asOf.year)
+        ? DateTime(asOf.year, DateTime.february, 28)
+        : DateTime(asOf.year, birthday.month, birthday.day);
+    final today = DateTime(asOf.year, asOf.month, asOf.day);
+    return !today.isBefore(birthdayThisYear);
+  }
+
+  static DateTime? _parseDate(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  static bool _isLeapYear(int year) =>
+      year % 400 == 0 || (year % 4 == 0 && year % 100 != 0);
 }
 
 class IncentiveReleasePreview {

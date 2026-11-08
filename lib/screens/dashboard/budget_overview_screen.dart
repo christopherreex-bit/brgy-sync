@@ -6,6 +6,7 @@ import '../../widgets/kpi_card.dart';
 import '../../widgets/budget_program_card.dart';
 import '../../utils/budget_health.dart';
 import '../../utils/budget_period.dart';
+import '../../utils/money_formatter.dart';
 import '../../services/cash_position_service.dart';
 
 class BudgetOverviewScreen extends StatefulWidget {
@@ -265,7 +266,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                   Expanded(
                     child: KpiCard(
                       label: 'Total Allocated',
-                      value: '₱${totalAllocated.toStringAsFixed(0)}',
+                      value: formatPeso(totalAllocated, decimalDigits: 0),
                       icon: Icons.account_balance,
                     ),
                   ),
@@ -273,7 +274,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                   Expanded(
                     child: KpiCard(
                       label: 'Utilized',
-                      value: '₱${totalUtilized.toStringAsFixed(0)}',
+                      value: formatPeso(totalUtilized, decimalDigits: 0),
                       accentColor: Colors.orange,
                       icon: Icons.payments,
                     ),
@@ -282,7 +283,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                   Expanded(
                     child: KpiCard(
                       label: 'Reserved for Release',
-                      value: '₱${totalReserved.toStringAsFixed(0)}',
+                      value: formatPeso(totalReserved, decimalDigits: 0),
                       accentColor: Colors.blue,
                       icon: Icons.lock_clock,
                     ),
@@ -291,7 +292,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
                   Expanded(
                     child: KpiCard(
                       label: 'Available',
-                      value: '₱${totalRemaining.toStringAsFixed(0)}',
+                      value: formatPeso(totalRemaining, decimalDigits: 0),
                       accentColor: Colors.green,
                       icon: Icons.savings,
                     ),
@@ -431,7 +432,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
 
   Widget _cashValue(String label, double value) {
     return Text(
-      '$label: ₱${value.toStringAsFixed(2)}',
+      '$label: ${formatPeso(value)}',
       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
     );
   }

@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../utils/budget_health.dart';
 import '../../utils/budget_period.dart';
 import '../../utils/constants.dart';
+import '../../utils/money_formatter.dart';
 import '../../widgets/kpi_card.dart';
 import '../../widgets/status_badge.dart';
 
@@ -118,14 +119,14 @@ class ProgramDetailScreen extends StatelessWidget {
                   Expanded(
                     child: KpiCard(
                       label: 'Allocated',
-                      value: '₱${allocated.toStringAsFixed(0)}',
+                      value: formatPeso(allocated, decimalDigits: 0),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: KpiCard(
                       label: 'Utilized',
-                      value: '₱${utilized.toStringAsFixed(0)}',
+                      value: formatPeso(utilized, decimalDigits: 0),
                       accentColor: Colors.orange,
                     ),
                   ),
@@ -133,7 +134,7 @@ class ProgramDetailScreen extends StatelessWidget {
                   Expanded(
                     child: KpiCard(
                       label: 'Reserved for Release',
-                      value: '₱${reserved.toStringAsFixed(0)}',
+                      value: formatPeso(reserved, decimalDigits: 0),
                       accentColor: Colors.blue,
                     ),
                   ),
@@ -141,7 +142,7 @@ class ProgramDetailScreen extends StatelessWidget {
                   Expanded(
                     child: KpiCard(
                       label: 'Available',
-                      value: '₱${remaining.toStringAsFixed(0)}',
+                      value: formatPeso(remaining, decimalDigits: 0),
                       accentColor: remaining < 0 ? Colors.red : Colors.green,
                     ),
                   ),
@@ -321,7 +322,7 @@ class _ReservationList extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '₱${amount.toStringAsFixed(2)}',
+                      formatPeso(amount),
                       style: const TextStyle(
                         color: Colors.blue,
                         fontWeight: FontWeight.bold,
@@ -454,7 +455,7 @@ class _TransactionList extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '-₱${amount.toStringAsFixed(2)}',
+                          '-${formatPeso(amount)}',
                           style: const TextStyle(
                             color: Colors.red,
                             fontWeight: FontWeight.bold,
