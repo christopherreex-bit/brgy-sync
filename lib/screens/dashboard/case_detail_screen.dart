@@ -68,6 +68,14 @@ class CaseDetailScreen extends StatelessWidget {
         }.contains(normalizeCaseStatus(status.toString()));
         final category = data['serviceCategory'] ?? '';
         final subType = data['serviceSubType'] ?? '';
+        final isClaimableIndigency =
+            category == 'documents' &&
+            subType == 'Indigency Certificate' &&
+            {
+              statusForClaiming,
+              statusReleased,
+            }.contains(normalizeCaseStatus(status.toString()));
+        final certificateIssued = data['certificateIssuanceStatus'] == 'issued';
         final channel = data['submissionChannel'] ?? 'portal';
         final ts = data['submissionTimestamp'];
         final dateStr = ts is Timestamp
@@ -267,6 +275,58 @@ class CaseDetailScreen extends StatelessWidget {
                   ),
                 ),
               ],
+              if (!readOnly && isClaimableIndigency && !certificateIssued) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    border: Border.all(color: Colors.orange.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.description_outlined,
+                        color: Colors.orange.shade900,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Certificate has not been issued',
+                              style: TextStyle(
+                                color: Colors.orange.shade900,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              (data['certificateIssuanceError'] ?? '')
+                                      .toString()
+                                      .trim()
+                                      .isNotEmpty
+                                  ? data['certificateIssuanceError'].toString()
+                                  : 'Verify the linked Citizen Registry record and complete its legal name and permanent address, then retry generation.',
+                              style: TextStyle(color: Colors.orange.shade900),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        onPressed: () => _retryIndigencyCertificate(context),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Generate certificate'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
 
               // Two-column layout
@@ -436,6 +496,38 @@ class CaseDetailScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _retryIndigencyCertificate(BuildContext context) async {
+    final user = context.read<AuthService>().currentUserModel;
+    if (user == null || !user.canAccessDashboard) return;
+    try {
+      await CaseStatusService().retryIndigencyCertificateIssuance(
+        caseId: caseId,
+        staffId: user.uid,
+        staffName: user.name,
+        staffRole: user.effectiveRole,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Certificate generated and added to the resident’s My Record.',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not generate certificate: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _approveForClaiming(

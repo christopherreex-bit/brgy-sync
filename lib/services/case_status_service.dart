@@ -49,6 +49,31 @@ class CaseStatusService {
     final registryRef = await _registryReferenceForCase(initialData);
     DocumentReference<Map<String, dynamic>>? programRef;
 
+    if (newStatus == statusForClaiming &&
+        (initialData['serviceCategory'] ?? '').toString() == 'documents' &&
+        (initialData['serviceSubType'] ?? '').toString() ==
+            'Indigency Certificate') {
+      if (registryRef == null) {
+        throw StateError(
+          'Complete and link the resident’s Citizen Registry record before moving this request to For Claiming.',
+        );
+      }
+      final registry = await registryRef.get();
+      final registryData = registry.data();
+      if (!registry.exists ||
+          registryData?['verificationStatus'] != 'verified') {
+        throw StateError(
+          'The resident’s Citizen Registry record must be verified before the Certificate of Indigency can be issued.',
+        );
+      }
+      if ((registryData?['legalName'] ?? '').toString().trim().isEmpty ||
+          (registryData?['permanentAddress'] ?? '').toString().trim().isEmpty) {
+        throw StateError(
+          'Add the resident’s legal name and permanent address to the verified Citizen Registry record before moving this request to For Claiming.',
+        );
+      }
+    }
+
     if (newStatus == statusApproved && _requiresBudgetReview(initialData)) {
       final programName = budgetProgramNameForCase(
         (initialData['serviceCategory'] ?? '').toString(),
@@ -436,14 +461,22 @@ class CaseStatusService {
         });
       }
 
-      // A released case has completed review. Merge the verified personal
-      // facts it contains into the authoritative citizen record and retain
-      // only conservative identity documents for future requests.
-      if (newStatus == statusReleased && registryRef != null) {
+      // Approval is the point at which barangay staff have validated the
+      // request's information and documents. Sync those verified facts to the
+      // citizen record immediately. Released remains a fallback for older
+      // requests that reached the end of the workflow before this behavior
+      // existed.
+      final shouldSyncRegistry =
+          registryRef != null &&
+          (newStatus == statusApproved ||
+              (newStatus == statusReleased &&
+                  caseData['registrySyncedAt'] == null));
+      if (shouldSyncRegistry) {
         updates['registryId'] = registryRef.id;
         updates['registryMatchStatus'] = 'verified_match';
         updates['registryCheckedAt'] = FieldValue.serverTimestamp();
-        _writeReleasedRegistrySync(
+        updates['registrySyncedAt'] = FieldValue.serverTimestamp();
+        _writeVerifiedRegistrySync(
           transaction: transaction,
           registryRef: registryRef,
           caseData: caseData,
@@ -588,6 +621,82 @@ class CaseStatusService {
     }
   }
 
+  /// Re-attempts issuance for an Indigency Certificate request that already
+  /// reached For Claiming/Released before its registry record was complete.
+  Future<void> retryIndigencyCertificateIssuance({
+    required String caseId,
+    required String staffId,
+    required String staffName,
+    required String staffRole,
+  }) async {
+    final caseRef = _db.collection('cases').doc(caseId);
+    try {
+      final initial = await caseRef.get();
+      if (!initial.exists) throw StateError('Service request not found.');
+      final initialData = initial.data()!;
+      final status = normalizeCaseStatus(
+        (initialData['status'] ?? '').toString(),
+      );
+      if (status != statusForClaiming && status != statusReleased) {
+        throw StateError(
+          'The Certificate of Indigency must be For Claiming or Released before it can be generated.',
+        );
+      }
+      final registryRef = await _registryReferenceForCase(initialData);
+      if (registryRef == null) {
+        throw StateError(
+          'No Citizen Registry record is linked to this service request.',
+        );
+      }
+
+      // For Claiming/Released proves that this legacy request already passed
+      // approval. Repair its registry sync before retrying certificate issue.
+      await _db.runTransaction((transaction) async {
+        final current = await transaction.get(caseRef);
+        if (!current.exists) throw StateError('Service request not found.');
+        final data = current.data()!;
+        final currentStatus = normalizeCaseStatus(
+          (data['status'] ?? '').toString(),
+        );
+        if (currentStatus != statusForClaiming &&
+            currentStatus != statusReleased) {
+          throw StateError(
+            'The service request is no longer eligible for certificate generation.',
+          );
+        }
+        _writeVerifiedRegistrySync(
+          transaction: transaction,
+          registryRef: registryRef,
+          caseData: data,
+          caseId: caseId,
+          staffId: staffId,
+          staffName: staffName,
+          effectiveDate: DateTime.now(),
+        );
+        transaction.update(caseRef, {
+          'registryId': registryRef.id,
+          'registryMatchStatus': 'verified_match',
+          'registryCheckedAt': FieldValue.serverTimestamp(),
+          'registrySyncedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      await IndigencyCertificateService(firestore: _db).issueForClaimableCase(
+        caseId: caseId,
+        staffId: staffId,
+        staffName: staffName,
+        staffRole: staffRole,
+      );
+    } catch (error) {
+      await caseRef.update({
+        'certificateIssuanceStatus': 'failed',
+        'certificateIssuanceError': error.toString(),
+        'certificateIssuanceLastAttemptAt': FieldValue.serverTimestamp(),
+      });
+      rethrow;
+    }
+  }
+
   String _notificationType(String status) => switch (status) {
     statusNeedsCorrection => 'needs_correction',
     statusRejected => 'case_rejected',
@@ -666,7 +775,7 @@ class CaseStatusService {
     return linked.exists ? linked.reference : null;
   }
 
-  void _writeReleasedRegistrySync({
+  void _writeVerifiedRegistrySync({
     required Transaction transaction,
     required DocumentReference<Map<String, dynamic>> registryRef,
     required Map<String, dynamic> caseData,
@@ -679,7 +788,7 @@ class CaseStatusService {
     final resolvedReference =
         referenceNumber ?? caseData['referenceNumber'] ?? '';
     transaction.set(registryRef, {
-      ..._registryUpdatesFromReleasedCase(caseData),
+      ..._registryUpdatesFromApprovedCase(caseData),
       'registryId': registryRef.id,
       'verificationStatus': 'verified',
       'verifiedAt': FieldValue.serverTimestamp(),
@@ -750,7 +859,7 @@ class CaseStatusService {
         return;
       }
       final data = current.data()!;
-      _writeReleasedRegistrySync(
+      _writeVerifiedRegistrySync(
         transaction: transaction,
         registryRef: registryRef,
         caseData: data,
@@ -769,7 +878,7 @@ class CaseStatusService {
     return true;
   }
 
-  static Map<String, dynamic> _registryUpdatesFromReleasedCase(
+  static Map<String, dynamic> _registryUpdatesFromApprovedCase(
     Map<String, dynamic> caseData,
   ) {
     if (caseData['requestedForSelf'] == false) return const {};
