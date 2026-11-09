@@ -4,6 +4,7 @@ import '../models/user_model.dart';
 import '../utils/budget_health.dart';
 import '../utils/budget_period.dart';
 import 'cash_position_service.dart';
+import 'budget_risk_notification_service.dart';
 
 class IncentiveDistributionService {
   static const double fixedIncentiveAmount = 1000;
@@ -245,6 +246,15 @@ class IncentiveDistributionService {
       ).notifyTreasurerIfCashIsLow(asOf: date);
     } catch (_) {
       // The completed release remains valid if notification delivery fails.
+    }
+    try {
+      await BudgetRiskNotificationService(firestore: _db).notifyIfNeeded(
+        programId: programRef.id,
+        createdById: actor.uid,
+        asOf: date,
+      );
+    } catch (_) {
+      // The completed release remains valid if warning delivery fails.
     }
   }
 

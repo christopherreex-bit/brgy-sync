@@ -309,7 +309,7 @@ class CaseDetailScreen extends StatelessWidget {
                                 .map(
                                   (entry) => _row(
                                     _requestFieldLabel(entry.key),
-                                    _requestFieldValue(entry.value),
+                                    _requestFieldValue(entry.key, entry.value),
                                   ),
                                 ),
                           if (requestedAssistanceAmount != null)
@@ -882,14 +882,26 @@ class CaseDetailScreen extends StatelessWidget {
             .join(' ');
   }
 
-  String _requestFieldValue(dynamic value) {
+  String _requestFieldValue(String key, dynamic value) {
+    if (key == 'birthday') {
+      final date = value is Timestamp
+          ? value.toDate()
+          : value is DateTime
+          ? value
+          : DateTime.tryParse(value.toString());
+      if (date != null) return _dateOnly(date);
+    }
     if (value is Timestamp) {
       final date = value.toDate();
-      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      return _dateOnly(date);
     }
     if (value is Iterable) return value.join(', ');
     return value.toString();
   }
+
+  String _dateOnly(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 
   // Keep listening so a log written just after the case update appears
   // immediately without requiring the user to leave and reopen the case.

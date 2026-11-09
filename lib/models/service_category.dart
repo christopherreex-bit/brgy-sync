@@ -171,7 +171,7 @@ List<FormFieldConfig> formFieldsFor(String categoryId, String subType) {
     case 'documents':
       return _documentFields(subType);
     case 'bass':
-      return _bassFields();
+      return _bassFields(subType);
     case 'community':
       return _communityFields(subType);
     case 'beneficiary':
@@ -193,13 +193,7 @@ List<FormFieldConfig> _documentFields(String subType) {
       return const [
         FormFieldConfig(
           key: 'beneficiaryName',
-          label: 'Name of Beneficiary/Patient',
-          type: FormFieldType.text,
-          required: true,
-        ),
-        FormFieldConfig(
-          key: 'guardianName',
-          label: 'Name of Guardian/Claimant',
+          label: 'Applicant Name',
           type: FormFieldType.text,
           required: true,
         ),
@@ -207,18 +201,6 @@ List<FormFieldConfig> _documentFields(String subType) {
           key: 'address',
           label: 'Address',
           type: FormFieldType.text,
-          required: true,
-        ),
-        FormFieldConfig(
-          key: 'relationship',
-          label: 'Relationship to Beneficiary/Patient',
-          type: FormFieldType.text,
-          required: true,
-        ),
-        FormFieldConfig(
-          key: 'purpose',
-          label: 'Purpose',
-          type: FormFieldType.textarea,
           required: true,
         ),
       ];
@@ -368,8 +350,18 @@ List<FormFieldConfig> _documentFields(String subType) {
         FormFieldConfig(
           key: 'purpose',
           label: 'Purpose of Clearance / Saan Gagamitin ang Brgy. Clearance',
-          type: FormFieldType.textarea,
+          type: FormFieldType.dropdown,
           required: true,
+          options: [
+            'Employment / Job Application',
+            'Business Permit / Licensing',
+            'School Requirement',
+            'Government Transaction',
+            'Bank / Financial Transaction',
+            'Legal / Court Requirement',
+            'Travel / Visa Requirement',
+            'Other Official Purpose',
+          ],
         ),
       ];
     default:
@@ -377,11 +369,32 @@ List<FormFieldConfig> _documentFields(String subType) {
   }
 }
 
-List<FormFieldConfig> _bassFields() {
-  return const [
+List<FormFieldConfig> _bassFields(String subType) {
+  final isMedical = slaKeyFor('bass', subType) == 'bass_medical';
+  final isBurial = subType == 'Burial Assistance';
+  final isRehabilitation = subType == 'Drug Rehabilitation';
+  final subjectLabel = isMedical || isRehabilitation
+      ? 'Patient Name'
+      : isBurial
+      ? 'Name of Demised Person'
+      : 'Affected Resident / Household Representative';
+  final relationshipLabel = isMedical || isRehabilitation
+      ? 'Relationship to Patient'
+      : isBurial
+      ? 'Relationship to the Demised'
+      : 'Relationship to Affected Resident';
+  final detailsLabel = isMedical
+      ? 'Medical Assistance Details'
+      : isBurial
+      ? 'Burial Assistance Details'
+      : isRehabilitation
+      ? 'Rehabilitation Assistance Details'
+      : 'Fire Incident and Assistance Details';
+
+  return [
     FormFieldConfig(
       key: 'patientName',
-      label: 'Patient/Beneficiary Name',
+      label: subjectLabel,
       type: FormFieldType.text,
       required: true,
     ),
@@ -406,13 +419,13 @@ List<FormFieldConfig> _bassFields() {
     ),
     FormFieldConfig(
       key: 'relationship',
-      label: 'Relationship to Patient',
+      label: relationshipLabel,
       type: FormFieldType.text,
       required: true,
     ),
     FormFieldConfig(
       key: 'purpose',
-      label: 'Purpose / Details',
+      label: detailsLabel,
       type: FormFieldType.textarea,
       required: true,
     ),
@@ -727,7 +740,13 @@ List<BassDocument> kBassDocuments(String subType) => [
   if (subType == 'Drug Rehabilitation')
     BassDocument(name: "Doctor's Certificate", required: true),
   BassDocument(
-    name: "Voter's Certificate from Comelec (patient)",
+    name:
+        slaKeyFor('bass', subType) == 'bass_medical' ||
+            subType == 'Drug Rehabilitation'
+        ? "Voter's Certificate from Comelec (patient)"
+        : subType == 'Burial Assistance'
+        ? "Voter's Certificate from Comelec (demised)"
+        : "Voter's Certificate from Comelec (affected resident)",
     required: true,
   ),
   BassDocument(
@@ -737,7 +756,16 @@ List<BassDocument> kBassDocuments(String subType) => [
   ),
   BassDocument(name: "Barangay Certificate of Indigency", required: true),
   BassDocument(name: 'Proof of Barangay Residency', required: true),
-  BassDocument(name: "Valid ID (patient)", required: true),
+  BassDocument(
+    name:
+        slaKeyFor('bass', subType) == 'bass_medical' ||
+            subType == 'Drug Rehabilitation'
+        ? 'Valid ID (patient)'
+        : subType == 'Burial Assistance'
+        ? 'Valid ID (demised)'
+        : 'Valid ID (affected resident)',
+    required: true,
+  ),
   BassDocument(
     name: "Valid ID (claimant)",
     required: false,
@@ -750,16 +778,25 @@ List<BassDocument> kBassDocuments(String subType) => [
     required: false,
     requiredWhenRequestingForSomeoneElse: true,
   ),
-  BassDocument(name: "Picture of patient (Whole Body)", required: true),
-  BassDocument(
-    name: "House sketch (for medical service requests)",
-    required: false,
-  ),
+  if (subType != 'Burial Assistance')
+    BassDocument(
+      name: subType == 'Fire Relief'
+          ? 'Photo of fire-affected property'
+          : 'Picture of patient (Whole Body)',
+      required: true,
+    ),
+  if (slaKeyFor('bass', subType) == 'bass_medical')
+    BassDocument(name: 'House sketch', required: false),
+  if (subType == 'Fire Relief')
+    BassDocument(
+      name: 'Sketch / location map of fire-affected property',
+      required: false,
+    ),
 ];
 
 List<BassDocument> kIndigencyCertificateDocuments() => [
   BassDocument(name: 'Proof of Barangay Residency', required: true),
-  BassDocument(name: 'Valid ID (patient)', required: true),
+  BassDocument(name: 'Valid ID', required: true),
 ];
 
 // ─── Validation Helpers ───────────────────────────────────────────────

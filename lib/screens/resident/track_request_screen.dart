@@ -572,7 +572,7 @@ class _CaseCorrectionDialogState extends State<_CaseCorrectionDialog> {
         'caseId': widget.caseId,
         'referenceNumber': widget.caseData['referenceNumber'] ?? '',
         'recipientId': '',
-        'audienceRoles': const ['staff', 'officer', 'captain'],
+        'audienceRoles': const ['staff', 'officer'],
         'createdById': user.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'readBy': <String>[],

@@ -289,7 +289,7 @@ class CashPositionService {
         'caseId': '',
         'referenceNumber': '',
         'recipientId': '',
-        'audienceRoles': const ['treasurer'],
+        'audienceRoles': const ['treasurer', 'captain'],
         'createdById': currentUserId,
         'createdAt': FieldValue.serverTimestamp(),
         'readBy': <String>[],

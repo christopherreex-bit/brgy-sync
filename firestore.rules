@@ -70,15 +70,23 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && (isStaff()
                         || (isTreasurer()
-                            && request.resource.data.type
-                                == 'cash_transfer_recommended'
-                            && request.resource.data.audienceRoles
-                                == ['treasurer'])
+                            && ((request.resource.data.type
+                                      == 'cash_transfer_recommended'
+                                  && request.resource.data.audienceRoles
+                                      == ['treasurer', 'captain'])
+                                || (request.resource.data.type
+                                      in ['budget_low', 'budget_critical']
+                                    && request.resource.data.audienceRoles
+                                      == ['captain', 'treasurer'])))
                         || (request.resource.data.type
-                                in ['case_submitted', 'correction_submitted']
+                                in [
+                                  'case_submitted',
+                                  'repeat_service_request',
+                                  'correction_submitted'
+                                ]
                             && request.resource.data.createdById == request.auth.uid
                             && request.resource.data.audienceRoles
-                                == ['staff', 'officer', 'captain']
+                                == ['staff', 'officer']
                             && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId))
                             && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId)).data.residentId
                                 == request.auth.uid));

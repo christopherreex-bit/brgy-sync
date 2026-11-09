@@ -182,6 +182,18 @@ class _SubmitRequestScreenState extends State<SubmitRequestScreen> {
           }
           var reusable =
               available[DocumentVaultService.documentKey(document.name)];
+          if (reusable == null && document.name == 'Valid ID') {
+            // Indigency Certificate uses the general resident-facing label,
+            // while older verified vault entries may retain a role suffix.
+            reusable =
+                available[DocumentVaultService.documentKey('Valid ID')] ??
+                available[DocumentVaultService.documentKey(
+                  'Valid ID (patient)',
+                )] ??
+                available[DocumentVaultService.documentKey(
+                  'Valid ID (claimant)',
+                )];
+          }
           if (reusable == null &&
               document.name.toLowerCase().contains('proof of relationship')) {
             // Keep verified documents issued before the patient/demised label

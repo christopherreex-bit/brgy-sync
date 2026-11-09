@@ -3,9 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/budget_health.dart';
 import '../utils/budget_period.dart';
 import '../utils/constants.dart';
+import '../utils/case_fast_track.dart';
 import 'document_vault_service.dart';
 import 'cash_position_service.dart';
 import 'indigency_certificate_service.dart';
+import 'budget_risk_notification_service.dart';
 
 class CaseStatusService {
   final FirebaseFirestore _db;
@@ -103,7 +105,8 @@ class CaseStatusService {
       final cashPosition = cashDisbursementAmount > 0
           ? await transaction.get(cashPositionRef)
           : null;
-      if (!validNextCaseStatuses(previousStatus).contains(newStatus)) {
+      final validStatuses = validNextStatusesForCase(caseData);
+      if (!validStatuses.contains(newStatus)) {
         throw StateError(
           'Cannot change status from '
           '${caseStatusLabel(previousStatus)} to ${caseStatusLabel(newStatus)}.',
@@ -127,6 +130,18 @@ class CaseStatusService {
         'lastUpdated': FieldValue.serverTimestamp(),
         'statusUpdatedAt': FieldValue.serverTimestamp(),
       };
+      final usedVerifiedRegistryFastTrack =
+          previousStatus == statusPendingReview &&
+          newStatus == statusApproved &&
+          isVerifiedDocumentFastTrackEligible(caseData);
+      if (usedVerifiedRegistryFastTrack) {
+        updates.addAll({
+          'verifiedRegistryFastTrack': true,
+          'verifiedRegistryFastTrackedAt': FieldValue.serverTimestamp(),
+          'verifiedRegistryFastTrackedBy': staffId,
+          'verifiedRegistryFastTrackedByName': staffName,
+        });
+      }
       if (newStatus == statusRejected) {
         if ((rejectionReasonCode ?? '').trim().isEmpty ||
             (rejectionReasonLabel ?? '').trim().isEmpty) {
@@ -448,10 +463,15 @@ class CaseStatusService {
         'staffId': staffId,
         'staffName': staffName,
         'staffRole': staffRole,
-        'action': 'Status changed: $previousStatus → $newStatus',
+        'action': usedVerifiedRegistryFastTrack
+            ? 'Status changed: $previousStatus → $newStatus (verified-registry fast track)'
+            : 'Status changed: $previousStatus → $newStatus',
         'previousStatus': previousStatus,
         'newStatus': newStatus,
         'notes': notes,
+        if (usedVerifiedRegistryFastTrack)
+          'fastTrackReason':
+              'Self-filed Barangay Clearance with a verified Citizen Registry match and no missing requirements.',
         if (newStatus == statusRejected) ...{
           'rejectionReasonCode': rejectionReasonCode,
           'rejectionReasonLabel': rejectionReasonLabel,
@@ -506,12 +526,15 @@ class CaseStatusService {
       }
     });
 
-    if (newStatus == statusReleased &&
+    // Issue the online certificate as soon as it is ready for claiming. Keep
+    // the released trigger as an idempotent fallback for legacy requests or a
+    // failed first generation attempt.
+    if ((newStatus == statusForClaiming || newStatus == statusReleased) &&
         (initialData['serviceCategory'] ?? '').toString() == 'documents' &&
         (initialData['serviceSubType'] ?? '').toString() ==
             'Indigency Certificate') {
       try {
-        await IndigencyCertificateService(firestore: _db).issueForReleasedCase(
+        await IndigencyCertificateService(firestore: _db).issueForClaimableCase(
           caseId: caseId,
           staffId: staffId,
           staffName: staffName,
@@ -532,7 +555,7 @@ class CaseStatusService {
           'referenceNumber':
               referenceNumber ?? initialData['referenceNumber'] ?? '',
           'recipientId': '',
-          'audienceRoles': const ['staff', 'officer', 'captain'],
+          'audienceRoles': const ['staff', 'officer'],
           'createdById': staffId,
           'createdAt': FieldValue.serverTimestamp(),
           'readBy': <String>[],
@@ -550,6 +573,17 @@ class CaseStatusService {
         ).notifyTreasurerIfCashIsLow(asOf: effectiveDate);
       } catch (_) {
         // A liquidity alert must never block the service-request workflow.
+      }
+      if (programRef != null) {
+        try {
+          await BudgetRiskNotificationService(firestore: _db).notifyIfNeeded(
+            programId: programRef.id,
+            createdById: staffId,
+            asOf: effectiveDate,
+          );
+        } catch (_) {
+          // A budget warning must never block the status transition.
+        }
       }
     }
   }

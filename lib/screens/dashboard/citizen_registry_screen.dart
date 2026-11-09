@@ -1134,10 +1134,7 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
     Map<String, dynamic> citizen,
     UserModel actor,
   ) async {
-    final reasonController = TextEditingController(
-      text: 'Medical/Financial Assistance from MAO',
-    );
-    final reason = await showDialog<String>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Generate Certificate of Indigency'),
@@ -1151,15 +1148,12 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
                 '${citizen['legalName'] ?? ''}\n${citizen['permanentAddress'] ?? ''}',
               ),
               const SizedBox(height: 16),
-              TextField(
-                controller: reasonController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Reason for issuance',
-                  helperText: 'This wording will appear on the certificate.',
-                  border: OutlineInputBorder(),
-                ),
+              const Text(
+                'Purpose on certificate',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 4),
+              const Text(kGeneralIndigencyCertificatePurpose),
               const SizedBox(height: 12),
               const Text(
                 'The certificate will be valid for 60 days and saved as a verified reusable document.',
@@ -1174,23 +1168,19 @@ class _CitizenRegistryScreenState extends State<CitizenRegistryScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
-              final value = reasonController.text.trim();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Generate'),
           ),
         ],
       ),
     );
-    reasonController.dispose();
-    if (reason == null || !mounted) return;
+    if (confirmed != true || !mounted) return;
     try {
       await _indigencyCertificates.generateAndStore(
         registryId: registryId,
         citizen: citizen,
         actor: actor,
-        reason: reason,
+        reason: kGeneralIndigencyCertificatePurpose,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

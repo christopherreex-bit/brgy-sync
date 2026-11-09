@@ -26,7 +26,11 @@ class NotificationBell extends StatelessWidget {
       user: user,
       builder: (notifications) {
         final visibleNotifications = notifications
-            .where((item) => !item.deletedBy.contains(user.uid))
+            .where(
+              (item) =>
+                  !item.deletedBy.contains(user.uid) &&
+                  _isRelevantForUser(item, user),
+            )
             .toList();
         final unread = visibleNotifications
             .where((item) => !item.readBy.contains(user.uid))
@@ -45,6 +49,16 @@ class NotificationBell extends StatelessWidget {
         );
       },
     );
+  }
+
+  bool _isRelevantForUser(_NotificationItem item, UserModel user) {
+    if (user.effectiveRole != roleCaptain) return true;
+    return !const {
+      'case_submitted',
+      'repeat_service_request',
+      'correction_submitted',
+      'document_issuance_failed',
+    }.contains(item.type);
   }
 
   Future<void> _showNotifications(
@@ -339,6 +353,7 @@ class NotificationBell extends StatelessWidget {
     'document_issued' => Icons.description_outlined,
     'document_issuance_failed' => Icons.error_outline,
     'cash_transfer_recommended' => Icons.account_balance_outlined,
+    'budget_low' || 'budget_critical' => Icons.warning_amber_rounded,
     _ => Icons.info_outline,
   };
 
@@ -350,6 +365,8 @@ class NotificationBell extends StatelessWidget {
     'document_issued' => Colors.green.shade700,
     'document_issuance_failed' => Colors.red.shade700,
     'cash_transfer_recommended' => Colors.orange.shade800,
+    'budget_low' => Colors.orange.shade800,
+    'budget_critical' => Colors.red.shade700,
     _ => kNavy,
   };
 

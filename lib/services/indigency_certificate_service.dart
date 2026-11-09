@@ -13,6 +13,11 @@ import 'package:uuid/uuid.dart';
 import '../models/user_model.dart';
 import 'document_vault_service.dart';
 
+/// Standard wording keeps an issued certificate reusable across compatible
+/// barangay assistance programs instead of tying it to one service request.
+const kGeneralIndigencyCertificatePurpose =
+    'Barangay social-service and financial assistance';
+
 class IndigencyCertificateService {
   final FirebaseFirestore _firestore;
   final FirebaseDatabase _database;
@@ -110,9 +115,8 @@ class IndigencyCertificateService {
             'verifiedBy': actor.uid,
             'verifiedByName': actor.name,
             'source': 'system_generated',
-            if (sourceCaseId != null) 'sourceCaseId': sourceCaseId,
-            if (sourceReferenceNumber != null)
-              'sourceReferenceNumber': sourceReferenceNumber,
+            'sourceCaseId': ?sourceCaseId,
+            'sourceReferenceNumber': ?sourceReferenceNumber,
             'issuanceStatus': 'issued',
           }, SetOptions(merge: true));
     } catch (_) {
@@ -128,9 +132,10 @@ class IndigencyCertificateService {
     }
   }
 
-  /// Generates the official certificate for a completed Indigency Certificate
-  /// service request and stores it in the resident's verified document vault.
-  Future<void> issueForReleasedCase({
+  /// Generates the official certificate once an approved Indigency Certificate
+  /// request is ready to claim. Released is also accepted so older requests and
+  /// failed first attempts can still be repaired safely.
+  Future<void> issueForClaimableCase({
     required String caseId,
     required String staffId,
     required String staffName,
@@ -140,7 +145,8 @@ class IndigencyCertificateService {
     final caseSnapshot = await caseRef.get();
     if (!caseSnapshot.exists) throw StateError('Service request not found.');
     final caseData = caseSnapshot.data()!;
-    if ((caseData['status'] ?? '').toString() != 'released' ||
+    final status = (caseData['status'] ?? '').toString();
+    if ((status != 'for_claiming' && status != 'released') ||
         (caseData['serviceCategory'] ?? '').toString() != 'documents' ||
         (caseData['serviceSubType'] ?? '').toString() !=
             'Indigency Certificate') {
@@ -176,12 +182,6 @@ class IndigencyCertificateService {
     if (!registry.exists) {
       throw StateError('The linked Citizen Registry record was not found.');
     }
-    final requestDetails = caseData['requestDetails'] is Map
-        ? Map<String, dynamic>.from(caseData['requestDetails'] as Map)
-        : <String, dynamic>{};
-    final reason = (requestDetails['purpose'] ?? 'Proof of indigency')
-        .toString()
-        .trim();
     final actor = UserModel(
       uid: staffId,
       name: staffName,
@@ -194,7 +194,7 @@ class IndigencyCertificateService {
       registryId: registryId,
       citizen: registry.data()!,
       actor: actor,
-      reason: reason.isEmpty ? 'Proof of indigency' : reason,
+      reason: kGeneralIndigencyCertificatePurpose,
       sourceCaseId: caseId,
       sourceReferenceNumber: (caseData['referenceNumber'] ?? '').toString(),
       openPrintDialog: false,
@@ -215,7 +215,7 @@ class IndigencyCertificateService {
         'type': 'document_issued',
         'title': 'Certificate of Indigency issued',
         'message':
-            'Your Certificate of Indigency for ${caseData['referenceNumber'] ?? ''} is available under My Record.',
+            'Your Certificate of Indigency for ${caseData['referenceNumber'] ?? ''} is available under My Record. You may use the online copy now and claim the physical copy at the barangay.',
         'caseId': caseId,
         'referenceNumber': (caseData['referenceNumber'] ?? '').toString(),
         'recipientId': residentId,

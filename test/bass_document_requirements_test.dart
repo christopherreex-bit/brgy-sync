@@ -90,5 +90,51 @@ void main() {
 
     expect(names, contains('Proof of relationship to the demised'));
     expect(names, isNot(contains('Proof of relationship to patient')));
+    expect(names, contains("Voter's Certificate from Comelec (demised)"));
+    expect(names, contains('Valid ID (demised)'));
+    expect(names, isNot(contains('Picture of patient (Whole Body)')));
+    expect(names, isNot(contains('House sketch')));
+  });
+
+  test('fire relief uses affected-property and resident wording', () {
+    final names = kBassDocuments(
+      'Fire Relief',
+    ).map((document) => document.name);
+
+    expect(
+      names,
+      contains("Voter's Certificate from Comelec (affected resident)"),
+    );
+    expect(names, contains('Valid ID (affected resident)'));
+    expect(names, contains('Photo of fire-affected property'));
+    expect(names, contains('Sketch / location map of fire-affected property'));
+    expect(names, isNot(contains('Picture of patient (Whole Body)')));
+  });
+
+  test('indigency certificate asks for a general Valid ID', () {
+    final names = kIndigencyCertificateDocuments().map(
+      (document) => document.name,
+    );
+
+    expect(names, contains('Valid ID'));
+    expect(names, isNot(contains('Valid ID (patient)')));
+  });
+
+  test('BASS form labels follow the selected service request context', () {
+    String label(String subType, String key) => formFieldsFor(
+      'bass',
+      subType,
+    ).singleWhere((field) => field.key == key).label;
+
+    expect(label('Medical – Dialysis', 'patientName'), 'Patient Name');
+    expect(label('Burial Assistance', 'patientName'), 'Name of Demised Person');
+    expect(
+      label('Fire Relief', 'patientName'),
+      'Affected Resident / Household Representative',
+    );
+    expect(
+      label('Burial Assistance', 'relationship'),
+      'Relationship to the Demised',
+    );
   });
 }

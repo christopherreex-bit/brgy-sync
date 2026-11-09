@@ -371,7 +371,9 @@ class _TransactionList extends StatelessWidget {
             style: const TextStyle(color: Colors.red),
           );
         }
-        final transactions = snapshot.data?.docs ?? [];
+        final transactions = (snapshot.data?.docs ?? [])
+            .where((doc) => doc.data()['reversed'] != true)
+            .toList();
         if (transactions.isEmpty) {
           return const _EmptyTransactions(
             message: 'No budget deductions have been recorded yet.',

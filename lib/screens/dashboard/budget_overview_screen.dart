@@ -8,6 +8,9 @@ import '../../utils/budget_health.dart';
 import '../../utils/budget_period.dart';
 import '../../utils/money_formatter.dart';
 import '../../services/cash_position_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/budget_reconciliation_service.dart';
+import 'package:provider/provider.dart';
 
 class BudgetOverviewScreen extends StatefulWidget {
   const BudgetOverviewScreen({super.key});
@@ -18,6 +21,7 @@ class BudgetOverviewScreen extends StatefulWidget {
 
 class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
   final _cashPositionService = CashPositionService();
+  final _budgetReconciliationService = BudgetReconciliationService();
   static const _defaultPrograms = [
     'BASS – Medical Assistance',
     'BASS – Burial Assistance',
@@ -30,6 +34,7 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
 
   int? _selectedFiscalYear;
   String? _selectedPeriod;
+  bool _reconciliationStarted = false;
 
   @override
   void initState() {
@@ -39,6 +44,40 @@ class _BudgetOverviewScreenState extends State<BudgetOverviewScreen> {
     _selectedFiscalYear = now.year;
     _selectedPeriod = 'FY ${now.year} Q$currentQuarter';
     _cashPositionService.reconcileMaturedTransfers().catchError((_) {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_reconciliationStarted) return;
+    final user = context.read<AuthService>().currentUserModel;
+    if (user == null || (!user.isCaptain && !user.isTreasurer)) return;
+    _reconciliationStarted = true;
+    _reconcileDeletedRecords();
+  }
+
+  Future<void> _reconcileDeletedRecords() async {
+    try {
+      final result = await _budgetReconciliationService.reconcile();
+      if (!mounted || !result.changed) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Budget totals repaired: ${result.repairedPrograms} program(s) '
+            'updated and ${result.reversedTransactions} orphaned deduction(s) '
+            'reversed.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not reconcile deleted records: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override

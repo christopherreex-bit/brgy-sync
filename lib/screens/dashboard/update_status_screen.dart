@@ -7,6 +7,7 @@ import '../../services/case_status_service.dart';
 import '../../widgets/budget_approval_preview_dialog.dart';
 import '../../utils/constants.dart';
 import '../../utils/rejection_reasons.dart';
+import '../../utils/case_fast_track.dart';
 import '../../widgets/status_badge.dart';
 
 class UpdateStatusScreen extends StatefulWidget {
@@ -28,10 +29,6 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
   final Set<String> _correctionFields = {};
   final Set<String> _correctionDocuments = {};
   String? _rejectionReasonCode;
-
-  List<String> _getValidNextStatuses(String currentStatus) {
-    return validNextCaseStatuses(currentStatus);
-  }
 
   String get _notesLabel => switch (_newStatus) {
     statusRejected =>
@@ -161,7 +158,7 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
           : '$rejectionLabel — $enteredNotes';
 
       // Validate transition
-      final valid = _getValidNextStatuses(currentStatus);
+      final valid = validNextStatusesForCase(caseData);
       if (!valid.contains(_newStatus)) {
         setState(() {
           _loading = false;
@@ -383,14 +380,20 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
             ? 'Confidential'
             : (data['residentName'] ?? '');
         final ref = data['referenceNumber'] ?? '';
-        final validNext = _getValidNextStatuses(currentStatus);
+        final validNext = validNextStatusesForCase(data);
+        final fastTrackEligible = isVerifiedDocumentFastTrackEligible(data);
         final verifiedRegistryFields = _verifiedRegistryFieldsForCase(data);
+        final hasSystemGeneratedPurpose =
+            (data['serviceCategory'] ?? '').toString() == 'documents' &&
+            (data['serviceSubType'] ?? '').toString() ==
+                'Indigency Certificate';
         final correctableInformation =
             (data['requestDetails'] as Map? ?? const {}).keys
                 .map((key) => key.toString())
                 .where(
                   (key) =>
                       key != 'assistanceAmount' &&
+                      !(key == 'purpose' && hasSystemGeneratedPurpose) &&
                       !verifiedRegistryFields.contains(key),
                 )
                 .toList();
@@ -433,6 +436,30 @@ class _UpdateStatusScreenState extends State<UpdateStatusScreen> {
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
               const SizedBox(height: 24),
+
+              if (fastTrackEligible)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.verified_user, color: Colors.green, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Verified-registry fast track: the resident’s identity and personal information are already verified. Review the clearance purpose, then approve directly or choose another applicable decision.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               // Missing docs warning
               if (missingDocs.isNotEmpty)
