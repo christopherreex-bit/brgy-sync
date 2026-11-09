@@ -119,12 +119,10 @@ class AuthService extends ChangeNotifier {
     if (mobileError != null) return mobileError;
     final normalizedMobile = mobile.trim();
     final normalizedEmail = email.trim().toLowerCase();
-    if (await emailAddressExists(normalizedEmail)) {
-      return 'This email address is already in use.';
-    }
-    if (await mobileNumberExists(normalizedMobile)) {
-      return 'This mobile number is already in use.';
-    }
+    final emailError = validateAccountEmail(normalizedEmail);
+    if (emailError != null) return emailError;
+    final passwordError = validateStaffPassword(password);
+    if (passwordError != null) return passwordError;
     final name = UserModel.composeName(
       firstName: firstName,
       middleName: middleName,

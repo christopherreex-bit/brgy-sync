@@ -35,19 +35,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _loading = true;
       _error = null;
     });
-    final result = await context.read<AuthService>().register(
-      firstName: _firstNameCtrl.text.trim(),
-      middleName: _middleNameCtrl.text.trim(),
-      lastName: _lastNameCtrl.text.trim(),
-      email: _emailCtrl.text.trim(),
-      mobile: _mobileCtrl.text.trim(),
-      password: _passCtrl.text,
-    );
-    if (mounted) {
-      setState(() {
-        _loading = false;
-        _error = result;
-      });
+    try {
+      final result = await context.read<AuthService>().register(
+        firstName: _firstNameCtrl.text.trim(),
+        middleName: _middleNameCtrl.text.trim(),
+        lastName: _lastNameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        mobile: _mobileCtrl.text.trim(),
+        password: _passCtrl.text,
+      );
+      if (!mounted) return;
+      setState(() => _error = result);
       if (result == null) {
         // Account created and the new resident is signed in. Confirm success,
         // then route to the resident portal. (Do NOT navigate to /login — the
@@ -61,6 +59,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
         context.go('/resident');
       }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error =
+            'Registration could not be completed. Check your connection and try again.';
+      });
+      debugPrint('Resident registration failed unexpectedly: $error');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
