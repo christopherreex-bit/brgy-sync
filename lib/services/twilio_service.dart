@@ -35,6 +35,14 @@ class TwilioService {
     return cleaned;
   }
 
+  /// Only Philippine mobile numbers are accepted by the resident SMS flow.
+  /// This also prevents placeholder or malformed seed-data numbers from being
+  /// sent to the gateway.
+  bool isValidPhilippineMobile(String number) {
+    final digits = number.replaceAll(RegExp(r'\D'), '');
+    return RegExp(r'^(09\d{9}|639\d{9})$').hasMatch(digits);
+  }
+
   /// Send an SMS. Tries MySMSGate first, then EasySendSMS, then Twilio.
   /// Returns null on success, error message on failure.
   Future<String?> sendSms(String toNumber, String message) async {
@@ -68,13 +76,15 @@ class TwilioService {
   /// Send via MySMSGate through Cloudflare Worker proxy (avoids CORS).
   Future<String?> _sendMySMSGate(String to, String message) async {
     try {
-      final response = await http.post(
-        _configuredProxyUrl.isNotEmpty
-            ? Uri.parse(_configuredProxyUrl)
-            : Uri.base.resolve('/sms/send'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'to': to, 'message': message}),
-      );
+      final response = await http
+          .post(
+            _configuredProxyUrl.isNotEmpty
+                ? Uri.parse(_configuredProxyUrl)
+                : Uri.base.resolve('/sms/send'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'to': to, 'message': message}),
+          )
+          .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200 || response.statusCode == 202) {
         final body = jsonDecode(response.body);

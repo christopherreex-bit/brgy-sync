@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../utils/budget_health.dart';
@@ -8,6 +10,7 @@ import 'document_vault_service.dart';
 import 'cash_position_service.dart';
 import 'indigency_certificate_service.dart';
 import 'budget_risk_notification_service.dart';
+import 'twilio_service.dart';
 
 class CaseStatusService {
   final FirebaseFirestore _db;
@@ -526,6 +529,23 @@ class CaseStatusService {
       }
     });
 
+    // Keep SMS intentionally limited to important resident-facing events.
+    // It runs after the transaction so provider downtime can never roll back
+    // a valid status change.
+    if (_shouldSendResidentSms(newStatus)) {
+      unawaited(
+        _sendResidentStatusSms(
+          caseRef: caseRef,
+          logRef: logRef,
+          caseData: initialData,
+          newStatus: newStatus,
+          referenceNumber:
+              referenceNumber ??
+              (initialData['referenceNumber'] ?? '').toString(),
+        ),
+      );
+    }
+
     // Issue the online certificate as soon as it is ready for claiming. Keep
     // the released trigger as an idempotent fallback for legacy requests or a
     // failed first generation attempt.
@@ -585,6 +605,68 @@ class CaseStatusService {
           // A budget warning must never block the status transition.
         }
       }
+    }
+  }
+
+  bool _shouldSendResidentSms(String status) => const {
+    statusNeedsCorrection,
+    statusForClaiming,
+    statusRejected,
+    statusReleased,
+  }.contains(status);
+
+  Future<void> _sendResidentStatusSms({
+    required DocumentReference<Map<String, dynamic>> caseRef,
+    required DocumentReference<Map<String, dynamic>> logRef,
+    required Map<String, dynamic> caseData,
+    required String newStatus,
+    required String referenceNumber,
+  }) async {
+    final mobile =
+        (caseData['requesterMobile'] ?? caseData['residentMobile'] ?? '')
+            .toString();
+    final sms = TwilioService();
+    if (!sms.isValidPhilippineMobile(mobile)) return;
+
+    String? error;
+    try {
+      error = switch (newStatus) {
+        statusNeedsCorrection => await sms.sendNeedsCorrection(
+          mobile,
+          referenceNumber,
+        ),
+        statusForClaiming => await sms.sendStatusForClaiming(
+          mobile,
+          referenceNumber,
+        ),
+        statusRejected => await sms.sendStatusRejected(mobile, referenceNumber),
+        statusReleased => await sms.sendStatusReleased(mobile, referenceNumber),
+        _ => null,
+      };
+    } catch (caught) {
+      error = caught.toString();
+    }
+
+    final result = <String, dynamic>{
+      'smsAttemptedAt': FieldValue.serverTimestamp(),
+      'smsSent': error == null,
+      'smsStatus': error == null ? 'sent' : 'failed',
+      if (error != null) 'smsError': error,
+      if (error == null) 'smsError': FieldValue.delete(),
+    };
+    try {
+      final batch = _db.batch();
+      batch.set(caseRef, {
+        'lastSmsStatus': newStatus,
+        'lastSmsAttemptedAt': FieldValue.serverTimestamp(),
+        'lastSmsSent': error == null,
+        if (error != null) 'lastSmsError': error,
+        if (error == null) 'lastSmsError': FieldValue.delete(),
+      }, SetOptions(merge: true));
+      batch.set(logRef, result, SetOptions(merge: true));
+      await batch.commit();
+    } catch (_) {
+      // Do not surface SMS diagnostics failures as status-update failures.
     }
   }
 

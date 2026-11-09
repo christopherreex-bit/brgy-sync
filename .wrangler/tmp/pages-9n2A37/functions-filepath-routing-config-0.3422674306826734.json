@@ -1,0 +1,13 @@
+{
+  "routes": [
+    {
+      "routePath": "/sms/send",
+      "mountPath": "/sms",
+      "method": "",
+      "module": [
+        "sms/send.js:onRequest"
+      ]
+    }
+  ],
+  "baseURL": "/"
+}

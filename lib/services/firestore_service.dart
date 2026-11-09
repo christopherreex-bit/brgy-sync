@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/case_model.dart';
 import '../utils/budget_health.dart';
 import '../utils/money_formatter.dart';
+import 'twilio_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -69,7 +71,7 @@ class FirestoreService {
         ? 'verified_match'
         : 'needs_review';
 
-    return _db.runTransaction((transaction) async {
+    final referenceNumber = await _db.runTransaction((transaction) async {
       final counterSnapshot = await transaction.get(counterRef);
       final currentNumber = counterSnapshot.exists
           ? ((counterSnapshot.data()?['lastNumber'] as num?)?.toInt() ?? 0)
@@ -172,6 +174,51 @@ class FirestoreService {
 
       return referenceNumber;
     });
+
+    // SMS is deliberately best-effort. The service request is already saved,
+    // so an unavailable phone gateway must never make the submission appear
+    // to have failed or encourage the resident to submit a duplicate.
+    if (!isWalkIn) {
+      unawaited(
+        _sendSubmissionSms(
+          caseRef: docRef,
+          mobile: caseData.requesterMobile.isNotEmpty
+              ? caseData.requesterMobile
+              : caseData.residentMobile,
+          referenceNumber: referenceNumber,
+        ),
+      );
+    }
+
+    return referenceNumber;
+  }
+
+  Future<void> _sendSubmissionSms({
+    required DocumentReference<Map<String, dynamic>> caseRef,
+    required String mobile,
+    required String referenceNumber,
+  }) async {
+    final sms = TwilioService();
+    if (!sms.isValidPhilippineMobile(mobile)) return;
+
+    String? error;
+    try {
+      error = await sms.sendSubmissionAck(mobile, referenceNumber);
+    } catch (caught) {
+      error = caught.toString();
+    }
+
+    try {
+      await caseRef.set({
+        'submissionSmsAttemptedAt': FieldValue.serverTimestamp(),
+        'submissionSmsSent': error == null,
+        if (error != null) 'submissionSmsError': error,
+        if (error == null) 'submissionSmsError': FieldValue.delete(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // The SMS result is useful diagnostics, but it is not business data and
+      // must not affect a successfully submitted service request.
+    }
   }
 
   static String _normalizeIdentity(Object? value) => (value ?? '')
