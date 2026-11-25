@@ -15,6 +15,7 @@ class CaseListItem extends StatelessWidget {
   final String claimingRejectionReason;
   final String claimingRejectedByName;
   final bool repeatSubmission;
+  final String assignedStaffName;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
 
@@ -32,6 +33,7 @@ class CaseListItem extends StatelessWidget {
     this.claimingRejectionReason = '',
     this.claimingRejectedByName = '',
     this.repeatSubmission = false,
+    this.assignedStaffName = '',
     this.onTap,
     this.onDelete,
   });
@@ -92,6 +94,17 @@ class CaseListItem extends StatelessWidget {
                     '$displayName · $subType · $dateStr',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                   ),
+                  if (assignedStaffName.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Assigned to $assignedStaffName',
+                      style: TextStyle(
+                        color: Colors.blueGrey.shade700,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                   if (repeatSubmission) ...[
                     const SizedBox(height: 7),
                     Container(

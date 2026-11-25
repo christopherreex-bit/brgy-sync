@@ -89,7 +89,13 @@ service cloud.firestore {
                                 == ['staff', 'officer']
                             && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId))
                             && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId)).data.residentId
-                                == request.auth.uid));
+                                == request.auth.uid)
+                        || (request.resource.data.type == 'case_submitted'
+                            && request.resource.data.createdById == request.auth.uid
+                            && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId))
+                            && request.resource.data.recipientId
+                                == getAfter(/databases/$(database)/documents/cases/$(request.resource.data.caseId)).data.assignedStaffId
+                            && request.resource.data.audienceRoles == []));
       allow update: if request.auth != null
                     && (resource.data.recipientId == request.auth.uid
                         || getRole() in resource.data.audienceRoles)
@@ -100,6 +106,37 @@ service cloud.firestore {
                     && request.resource.data.get('deletedBy', []).removeAll([request.auth.uid])
                         == resource.data.get('deletedBy', []).removeAll([request.auth.uid]);
       allow delete: if false;
+    }
+
+    // Minimal public-to-authenticated workload metadata. This deliberately
+    // excludes staff email/mobile data while allowing resident submissions
+    // to choose the least-loaded available staff member.
+    match /staffAssignmentProfiles/{staffId} {
+      allow read: if request.auth != null;
+      allow create: if isCaptain()
+                    || (request.auth.uid == staffId && getRole() == 'staff');
+      allow update: if isStaff()
+                    || (request.auth != null
+                        && request.resource.data.lastAssignedCaseId is string
+                        && existsAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastAssignedCaseId))
+                        && getAfter(/databases/$(database)/documents/cases/$(request.resource.data.lastAssignedCaseId)).data.assignedStaffId == staffId
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly([
+                              'openCaseCount', 'workloadPoints',
+                              'lastAssignedAt', 'lastAssignedCaseId',
+                              'updatedAt'
+                            ]));
+      allow delete: if isCaptain();
+    }
+
+    match /staffLeaves/{leaveId} {
+      allow read: if request.auth != null
+                  && (resource.data.staffId == request.auth.uid || isStaff());
+      allow create: if request.auth != null
+                    && getRole() == 'staff'
+                    && request.resource.data.staffId == request.auth.uid
+                    && request.resource.data.endsAt > request.time;
+      allow update, delete: if false;
     }
 
     // One active, expiring delegation at a time. Only the permanent captain

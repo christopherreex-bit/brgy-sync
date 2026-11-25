@@ -120,6 +120,18 @@ async function deleteAccount(body, callerUid, accessToken) {
   if (!profileDelete.ok && profileDelete.status !== 404) {
     throw new Error(await responseError(profileDelete));
   }
+  if (targetRole === 'staff') {
+    const assignmentProfileDelete = await fetch(
+      `${FIRESTORE_BASE}/staffAssignmentProfiles/${encodeURIComponent(uid)}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+    if (!assignmentProfileDelete.ok && assignmentProfileDelete.status !== 404) {
+      throw new Error(await responseError(assignmentProfileDelete));
+    }
+  }
   if (targetMobile) {
     const mobileDelete = await fetch(
       `${FIRESTORE_BASE}/mobileIdentifiers/${encodeURIComponent(targetMobile)}`,

@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 import '../utils/account_validators.dart';
+import 'staff_assignment_service.dart';
 
 class AuthService extends ChangeNotifier {
   static const String _accountAdminUrl = String.fromEnvironment(
@@ -47,6 +48,11 @@ class AuthService extends ChangeNotifier {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
         _currentUserModel = UserModel.fromMap(doc.data()!, uid);
+        if (_currentUserModel!.isStaff) {
+          await StaffAssignmentService(
+            firestore: _firestore,
+          ).ensureStaffProfile(_currentUserModel!);
+        }
         _watchCaptainDelegation(uid);
       }
     } catch (e) {
@@ -428,6 +434,22 @@ class AuthService extends ChangeNotifier {
           _firestore.collection('users').doc(createdUser.uid),
           user.toMap(),
         );
+        if (role == 'staff') {
+          transaction.set(
+            _firestore
+                .collection('staffAssignmentProfiles')
+                .doc(createdUser.uid),
+            {
+              'staffId': createdUser.uid,
+              'staffName': name,
+              'active': true,
+              'openCaseCount': 0,
+              'workloadPoints': 0,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+          );
+        }
       });
       return null;
     } on FirebaseAuthException catch (e) {
@@ -454,9 +476,30 @@ class AuthService extends ChangeNotifier {
   /// Updates a user's role in Firestore.
   Future<String?> updateUserRole(String userId, String newRole) async {
     try {
-      await _firestore.collection('users').doc(userId).update({
-        'role': newRole,
-      });
+      final userRef = _firestore.collection('users').doc(userId);
+      final profileRef = _firestore
+          .collection('staffAssignmentProfiles')
+          .doc(userId);
+      final snapshot = await userRef.get();
+      final data = snapshot.data() ?? const <String, dynamic>{};
+      final batch = _firestore.batch();
+      batch.update(userRef, {'role': newRole});
+      if (newRole == 'staff') {
+        batch.set(profileRef, {
+          'staffId': userId,
+          'staffName': (data['name'] ?? '').toString(),
+          'active': data['isActive'] != false,
+          'openCaseCount': FieldValue.increment(0),
+          'workloadPoints': FieldValue.increment(0),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } else {
+        batch.set(profileRef, {
+          'active': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+      await batch.commit();
       return null;
     } catch (e) {
       return e.toString();
@@ -466,9 +509,16 @@ class AuthService extends ChangeNotifier {
   /// Deactivates a user account (soft delete).
   Future<String?> deactivateAccount(String userId) async {
     try {
-      await _firestore.collection('users').doc(userId).update({
+      final batch = _firestore.batch();
+      batch.update(_firestore.collection('users').doc(userId), {
         'isActive': false,
       });
+      batch.set(
+        _firestore.collection('staffAssignmentProfiles').doc(userId),
+        {'active': false, 'updatedAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+      await batch.commit();
       return null;
     } catch (e) {
       return e.toString();
@@ -553,9 +603,25 @@ class AuthService extends ChangeNotifier {
   /// Reactivates a user account.
   Future<String?> activateAccount(String userId) async {
     try {
-      await _firestore.collection('users').doc(userId).update({
-        'isActive': true,
-      });
+      final userRef = _firestore.collection('users').doc(userId);
+      final snapshot = await userRef.get();
+      final batch = _firestore.batch();
+      batch.update(userRef, {'isActive': true});
+      if (snapshot.data()?['role'] == 'staff') {
+        batch.set(
+          _firestore.collection('staffAssignmentProfiles').doc(userId),
+          {
+            'staffId': userId,
+            'staffName': (snapshot.data()?['name'] ?? '').toString(),
+            'active': true,
+            'openCaseCount': FieldValue.increment(0),
+            'workloadPoints': FieldValue.increment(0),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+      await batch.commit();
       return null;
     } catch (e) {
       return e.toString();
@@ -626,9 +692,21 @@ class AuthService extends ChangeNotifier {
     final mobileRef = _firestore
         .collection('mobileIdentifiers')
         .doc(profile.mobile);
+    final assignmentProfileRef = _firestore
+        .collection('staffAssignmentProfiles')
+        .doc(user.uid);
     final mobileSnapshot = await mobileRef.get();
+    final assignmentProfileSnapshot = profile.isStaff
+        ? await assignmentProfileRef.get()
+        : null;
     try {
       final batch = _firestore.batch()..delete(profileRef);
+      if (profile.isStaff) {
+        batch.set(assignmentProfileRef, {
+          'active': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
       if (mobileSnapshot.exists && mobileSnapshot.data()?['uid'] == user.uid) {
         batch.delete(mobileRef);
       }
@@ -641,6 +719,9 @@ class AuthService extends ChangeNotifier {
         await profileRef.set(profileData);
         if (mobileSnapshot.exists) {
           await mobileRef.set(mobileSnapshot.data()!);
+        }
+        if (assignmentProfileSnapshot?.exists == true) {
+          await assignmentProfileRef.set(assignmentProfileSnapshot!.data()!);
         }
         rethrow;
       }

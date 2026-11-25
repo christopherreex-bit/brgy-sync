@@ -34,6 +34,9 @@ class CaseModel {
   final bool repeatSubmission;
   final String? repeatPolicyCode;
   final List<Map<String, dynamic>> priorRequests;
+  final String? assignedStaffId;
+  final String? assignedStaffName;
+  final double? assignmentWeight;
 
   CaseModel({
     this.id,
@@ -69,6 +72,9 @@ class CaseModel {
     this.repeatSubmission = false,
     this.repeatPolicyCode,
     this.priorRequests = const [],
+    this.assignedStaffId,
+    this.assignedStaffName,
+    this.assignmentWeight,
   }) : submissionTimestamp = submissionTimestamp ?? DateTime.now();
 
   factory CaseModel.fromMap(Map<String, dynamic> map, String id) {
@@ -129,6 +135,9 @@ class CaseModel {
       priorRequests: List<Map<String, dynamic>>.from(
         map['priorRequests'] ?? const [],
       ),
+      assignedStaffId: map['assignedStaffId'],
+      assignedStaffName: map['assignedStaffName'],
+      assignmentWeight: (map['assignmentWeight'] as num?)?.toDouble(),
     );
   }
 
@@ -173,6 +182,9 @@ class CaseModel {
       'repeatSubmission': repeatSubmission,
       if (repeatPolicyCode != null) 'repeatPolicyCode': repeatPolicyCode,
       if (priorRequests.isNotEmpty) 'priorRequests': priorRequests,
+      if (assignedStaffId != null) 'assignedStaffId': assignedStaffId,
+      if (assignedStaffName != null) 'assignedStaffName': assignedStaffName,
+      if (assignmentWeight != null) 'assignmentWeight': assignmentWeight,
     };
   }
 }

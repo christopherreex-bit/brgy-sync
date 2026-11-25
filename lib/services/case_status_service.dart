@@ -11,6 +11,7 @@ import 'cash_position_service.dart';
 import 'indigency_certificate_service.dart';
 import 'budget_risk_notification_service.dart';
 import 'twilio_service.dart';
+import 'staff_assignment_service.dart';
 
 class CaseStatusService {
   final FirebaseFirestore _db;
@@ -102,6 +103,13 @@ class CaseStatusService {
 
       final caseData = currentCase.data()!;
       final previousStatus = (caseData['status'] ?? '').toString();
+      final assignedStaffId = (caseData['assignedStaffId'] ?? '').toString();
+      final assignedProfileRef = assignedStaffId.isEmpty
+          ? null
+          : _db.collection('staffAssignmentProfiles').doc(assignedStaffId);
+      final assignedProfile = assignedProfileRef == null
+          ? null
+          : await transaction.get(assignedProfileRef);
       final cashDisbursementAmount = newStatus == statusReleased
           ? budgetDeductionAmountForCase(caseData)
           : 0.0;
@@ -133,6 +141,7 @@ class CaseStatusService {
         'lastUpdated': FieldValue.serverTimestamp(),
         'statusUpdatedAt': FieldValue.serverTimestamp(),
       };
+      Map<String, dynamic>? assignmentProfileUpdates;
       final usedVerifiedRegistryFastTrack =
           previousStatus == statusPendingReview &&
           newStatus == statusApproved &&
@@ -218,6 +227,25 @@ class CaseStatusService {
           'claimingApprovedByName': staffName,
           'claimingApprovedAt': FieldValue.serverTimestamp(),
         });
+      }
+      if (assignmentTerminalStatuses.contains(newStatus) &&
+          !assignmentTerminalStatuses.contains(previousStatus) &&
+          assignedProfileRef != null &&
+          assignedProfile?.exists == true) {
+        final profileData = assignedProfile!.data()!;
+        final currentCount =
+            (profileData['openCaseCount'] as num?)?.toInt() ?? 0;
+        final currentLoad =
+            (profileData['workloadPoints'] as num?)?.toDouble() ?? 0;
+        final caseWeight =
+            (caseData['assignmentWeight'] as num?)?.toDouble() ?? 0;
+        assignmentProfileUpdates = {
+          'openCaseCount': currentCount > 0 ? currentCount - 1 : 0,
+          'workloadPoints':
+              (currentLoad - caseWeight).clamp(0, double.infinity),
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        updates['assignmentStatus'] = 'completed';
       }
       final category = (caseData['serviceCategory'] ?? '')
           .toString()
@@ -458,6 +486,9 @@ class CaseStatusService {
         );
       }
 
+      if (assignedProfileRef != null && assignmentProfileUpdates != null) {
+        transaction.update(assignedProfileRef, assignmentProfileUpdates);
+      }
       transaction.update(caseRef, updates);
       transaction.set(logRef, {
         'caseId': caseId,

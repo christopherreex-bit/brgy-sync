@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
+import '../../services/staff_assignment_service.dart';
 import '../../utils/constants.dart';
 import '../../models/service_category.dart';
 import '../../widgets/case_list_item.dart';
@@ -21,11 +22,14 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
   String _categoryFilter = 'all';
   String _dateFilter = 'all';
   String _sortOrder = 'fifo';
+  String _assignmentFilter = 'all';
+  bool _assigningExisting = false;
 
   bool get _hasAdvancedFilters =>
       _activeFilter != 'all' ||
       _categoryFilter != 'all' ||
-      _dateFilter != 'all';
+      _dateFilter != 'all' ||
+      _assignmentFilter != 'all';
 
   static const _baseFilters = [
     {'key': 'all', 'label': 'All statuses'},
@@ -102,13 +106,37 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Service Request Queue',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: kNavy,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Service Request Queue',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: kNavy,
+                  ),
+                ),
+              ),
+              if (canDelete)
+                OutlinedButton.icon(
+                  onPressed: _assigningExisting
+                      ? null
+                      : _assignExistingRequests,
+                  icon: _assigningExisting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.assignment_ind_outlined),
+                  label: Text(
+                    _assigningExisting
+                        ? 'Assigning…'
+                        : 'Assign existing requests',
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 4),
           const Text(
@@ -202,6 +230,25 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                 }),
               ),
               _queueDropdown(
+                label: 'Assignment',
+                value: _assignmentFilter,
+                width: 190,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All')),
+                  DropdownMenuItem(
+                    value: 'mine',
+                    child: Text('Assigned to me'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'others',
+                    child: Text('Assigned to others'),
+                  ),
+                ],
+                onChanged: (value) => setState(() {
+                  _assignmentFilter = value ?? 'all';
+                }),
+              ),
+              _queueDropdown(
                 label: 'Sort by',
                 value: _sortOrder,
                 width: 210,
@@ -233,6 +280,7 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     _activeFilter = 'all';
                     _categoryFilter = 'all';
                     _dateFilter = 'all';
+                    _assignmentFilter = 'all';
                   }),
                   icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
                   label: const Text('Clear filters'),
@@ -378,6 +426,18 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                     );
                     if (timestamp.toDate().isBefore(cutoff)) return false;
                   }
+                  final assignedStaffId = (data['assignedStaffId'] ?? '')
+                      .toString()
+                      .trim();
+                  if (_assignmentFilter == 'mine' &&
+                      assignedStaffId != currentUser?.uid) {
+                    return false;
+                  }
+                  if (_assignmentFilter == 'others' &&
+                      (assignedStaffId.isEmpty ||
+                          assignedStaffId == currentUser?.uid)) {
+                    return false;
+                  }
                   return true;
                 }).toList();
 
@@ -470,6 +530,8 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
                                 (data['claimingRejectedByName'] ?? '')
                                     .toString(),
                             repeatSubmission: data['repeatSubmission'] == true,
+                            assignedStaffName: (data['assignedStaffName'] ?? '')
+                                .toString(),
                             onTap: () =>
                                 context.go('/dashboard/case/${doc.id}'),
                             onDelete: canDelete
@@ -516,6 +578,67 @@ class _CaseQueueScreenState extends State<CaseQueueScreen> {
         onChanged: onChanged,
       ),
     );
+  }
+
+  Future<void> _assignExistingRequests() async {
+    final user = context.read<AuthService>().currentUserModel;
+    if (user == null || !user.isCaptain) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Assign existing pending requests?'),
+        content: const Text(
+          'This assigns only unassigned requests in Pending Review, '
+          'Processing, For Revision, or the legacy awaiting-documents status. '
+          'Approved, For Claiming, Released, and Rejected requests will not '
+          'be changed. Requests are distributed using SLA urgency and the '
+          'current workload of active staff.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Assign pending requests'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _assigningExisting = true);
+    try {
+      final count = await StaffAssignmentService()
+          .assignExistingPendingRequests(
+            actorId: user.uid,
+            actorName: user.name,
+            actorRole: user.effectiveRole,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              count == 0
+                  ? 'No eligible unassigned pending requests were found.'
+                  : '$count pending service request${count == 1 ? '' : 's'} assigned.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not assign existing requests: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _assigningExisting = false);
+    }
   }
 
   Future<void> _confirmDeleteCase(String caseId, String referenceNumber) async {

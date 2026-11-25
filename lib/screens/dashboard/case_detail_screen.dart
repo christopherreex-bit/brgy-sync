@@ -298,6 +298,19 @@ class CaseDetailScreen extends StatelessWidget {
                         _infoCard('Service Request Details', [
                           _row('Service Type', category.toUpperCase()),
                           _row('Sub-type', subType),
+                          _row(
+                            'Assigned staff',
+                            (data['assignedStaffName'] ??
+                                    'Waiting for an available staff member')
+                                .toString(),
+                          ),
+                          _row(
+                            'Assignment method',
+                            data['assignmentMethod'] ==
+                                    'automatic_sla_balanced'
+                                ? 'Automatic · SLA-balanced workload'
+                                : 'Not recorded',
+                          ),
                           if (requestDetails.isNotEmpty)
                             ...requestDetails.entries
                                 .where(

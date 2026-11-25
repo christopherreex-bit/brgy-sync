@@ -6,12 +6,15 @@ import '../models/case_model.dart';
 import '../utils/budget_health.dart';
 import '../utils/money_formatter.dart';
 import 'twilio_service.dart';
+import 'staff_assignment_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ─── Cases ────────────────────────────────────────────────────
   Future<String> createCase(CaseModel caseData) async {
+    final assignmentService = StaffAssignmentService(firestore: _db);
+    final assignment = await assignmentService.plan(caseData);
     final year = DateTime.now().year;
     final counterRef = _db.collection('caseCounters').doc('$year');
     final docRef = _db.collection('cases').doc();
@@ -106,6 +109,7 @@ class FirestoreService {
       }
       transaction.set(docRef, {
         ...caseData.toMap(),
+        ...StaffAssignmentService.caseAssignmentFields(assignment),
         'referenceNumber': referenceNumber,
         'sequenceYear': year,
         'sequenceNumber': nextNumber,
@@ -113,17 +117,37 @@ class FirestoreService {
         'registryMatchStatus': registryMatchStatus,
         'registryCheckedAt': FieldValue.serverTimestamp(),
       });
+      if (assignment != null) {
+        final profileRef = _db
+            .collection('staffAssignmentProfiles')
+            .doc(assignment.staffId);
+        transaction.set(profileRef, {
+          'staffId': assignment.staffId,
+          'staffName': assignment.staffName,
+          // Increments preserve both assignments if two residents submit at
+          // nearly the same time. The selection is still based on the latest
+          // workload snapshot available to the client.
+          'openCaseCount': FieldValue.increment(1),
+          'workloadPoints': FieldValue.increment(assignment.caseWeight),
+          'lastAssignedAt': FieldValue.serverTimestamp(),
+          'lastAssignedCaseId': docRef.id,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
       transaction.set(notificationRef, {
         'type': 'case_submitted',
         'title': isWalkIn
             ? 'New walk-in service request'
             : 'New resident service request',
-        'message':
-            '${caseData.residentName} submitted ${caseData.serviceSubType} ($referenceNumber).',
+        'message': assignment == null
+            ? '${caseData.residentName} submitted ${caseData.serviceSubType} ($referenceNumber). No active staff account was available for automatic assignment.'
+            : '${caseData.residentName} submitted ${caseData.serviceSubType} ($referenceNumber), assigned to ${assignment.staffName}.',
         'caseId': docRef.id,
         'referenceNumber': referenceNumber,
-        'recipientId': '',
-        'audienceRoles': const ['staff', 'officer'],
+        'recipientId': assignment?.staffId ?? '',
+        'audienceRoles': assignment == null
+            ? const ['staff', 'officer']
+            : const <String>[],
         'createdById': caseData.encodedById ?? caseData.residentId,
         'createdAt': FieldValue.serverTimestamp(),
         'readBy': <String>[],
@@ -283,6 +307,17 @@ class FirestoreService {
         }
 
         final caseData = currentCase.data()!;
+        final currentStatus = (caseData['status'] ?? '').toString();
+        final assignmentAlreadyCompleted =
+            assignmentTerminalStatuses.contains(currentStatus) ||
+            caseData['assignmentStatus'] == 'completed';
+        final assignedStaffId = (caseData['assignedStaffId'] ?? '').toString();
+        final assignedProfileRef = assignedStaffId.isEmpty
+            ? null
+            : _db.collection('staffAssignmentProfiles').doc(assignedStaffId);
+        final assignedProfile = assignedProfileRef == null
+            ? null
+            : await transaction.get(assignedProfileRef);
         final referenceNumber = (caseData['referenceNumber'] ?? '').toString();
         final auditRef = _db.collection('auditEvents').doc(caseId);
         final reversalRef = _db.collection('budgetReversals').doc(caseId);
@@ -303,6 +338,27 @@ class FirestoreService {
             reservedAmount > 0;
         final shouldReverse =
             shouldReverseDeduction || shouldReleaseReservation;
+
+        Map<String, dynamic>? assignmentProfileUpdates;
+        if (!assignmentAlreadyCompleted &&
+            assignedProfileRef != null &&
+            assignedProfile?.exists == true) {
+          final profileData = assignedProfile!.data()!;
+          final currentCount =
+              (profileData['openCaseCount'] as num?)?.toInt() ?? 0;
+          final currentLoad =
+              (profileData['workloadPoints'] as num?)?.toDouble() ?? 0;
+          final caseWeight =
+              (caseData['assignmentWeight'] as num?)?.toDouble() ?? 0;
+          assignmentProfileUpdates = {
+            'openCaseCount': currentCount > 0 ? currentCount - 1 : 0,
+            'workloadPoints': (currentLoad - caseWeight).clamp(
+              0,
+              double.infinity,
+            ),
+            'updatedAt': FieldValue.serverTimestamp(),
+          };
+        }
 
         var restoredAmount = 0.0;
         if (shouldReverse) {
@@ -371,6 +427,10 @@ class FirestoreService {
             'reason': reason,
             'timestamp': FieldValue.serverTimestamp(),
           });
+        }
+
+        if (assignedProfileRef != null && assignmentProfileUpdates != null) {
+          transaction.update(assignedProfileRef, assignmentProfileUpdates);
         }
 
         transaction.set(auditRef, {
